@@ -1,0 +1,130 @@
+{
+  "candidate": "v7_fact_compact_v2_quote",
+  "snapshot_date": "2026-09-09",
+  "status": "CPU_REPLAY_PASS_NOT_SUBMISSION_READY",
+  "metrics": {
+    "dataset": "development_160",
+    "response_source": "480 actual compact768 model responses, reused for CPU replay",
+    "macro_f1": 0.697219980100415,
+    "fp": 60,
+    "fn": 30,
+    "reference_errors_recovered": 8,
+    "new_reference_errors": 0,
+    "fresh_integrated_gpu_run": false,
+    "unseen_evaluation": false,
+    "official_score": null,
+    "full_l40s_runtime_seconds": null
+  },
+  "synthetic_tests": {
+    "count": 17,
+    "passed": 17
+  },
+  "source_normalization": "LF line endings and final whitespace normalized; no source logic changes",
+  "files": [
+    {
+      "path": "model/config.json",
+      "bytes": 1112,
+      "sha256": "c52495ff3916f8c2055929b8ef92ceda5d5e5019cb8443096ce29ccafaa3b92f"
+    },
+    {
+      "path": "pps/__init__.py",
+      "bytes": 82,
+      "sha256": "9dada4f18df0ada1d9dfdcc6aab6e3e0afc8f254e7fb5105dd96728c77245eb8"
+    },
+    {
+      "path": "pps/comparison.py",
+      "bytes": 22498,
+      "sha256": "74c307fada4ab67b4c9e4da0927734207593bcc3913af4e1cde12bb5cff89d05"
+    },
+    {
+      "path": "pps/data.py",
+      "bytes": 6984,
+      "sha256": "47ba1ceeee017b5a0a75061e0152d2536b6c324ad0101bd16adb9571eb5f2dc1"
+    },
+    {
+      "path": "pps/knowledge.py",
+      "bytes": 13156,
+      "sha256": "63a79f02f291a06b5a061233545b449fd361af52e78517cef7162084c29869ff"
+    },
+    {
+      "path": "pps/legal_context.py",
+      "bytes": 19335,
+      "sha256": "bb740c990d9d6f012ef96501a6d99bb3c01485e163610921ba4409a0be9afdd7"
+    },
+    {
+      "path": "pps/model_fact_overlay.py",
+      "bytes": 3564,
+      "sha256": "c849d66d7db6352d5a9aaf40e9c4e38ca1fc5925d5934c4a646d58b10cdd0072"
+    },
+    {
+      "path": "pps/other_checks.py",
+      "bytes": 21448,
+      "sha256": "fac5777fbc4d382fa3f837838f9a25097da2f5b2d11494804caf3f377d32f444"
+    },
+    {
+      "path": "pps/performance.py",
+      "bytes": 20239,
+      "sha256": "9ca9898831cfc3dcf2113d0bb5280f9238c01447ec6d7e4c6a8a58bc223b2eb9"
+    },
+    {
+      "path": "pps/pipeline.py",
+      "bytes": 22286,
+      "sha256": "2c14a44e831d7debb96a377a1f8de4756746678d2b08917b460be1dc1859c940"
+    },
+    {
+      "path": "pps/products.py",
+      "bytes": 15239,
+      "sha256": "9466b291f810a48d18b3b8ee7436ba86a88785e050371bc5ecc48b959c7c23e0"
+    },
+    {
+      "path": "pps/prompts.py",
+      "bytes": 22732,
+      "sha256": "851d3198684583dbf345ce3bbe09786d4e2967f0614a927eef32e9c36e2fb4cc"
+    },
+    {
+      "path": "pps/qualification.py",
+      "bytes": 22229,
+      "sha256": "377cc52858afa1bb3ab8adc050dded37ce461ce854cc2726e7a38d2600e33d07"
+    },
+    {
+      "path": "pps/retrieval.py",
+      "bytes": 24231,
+      "sha256": "a624ca90e7dd4822054e180f2c0c4eb368b283e0e953e6543334e4d11f771980"
+    },
+    {
+      "path": "pps/rubrics.py",
+      "bytes": 19040,
+      "sha256": "ddf5f3be1b6def40401d4ce1d6a0522dad41eb18c44cbb0f5743ec4cf37816c8"
+    },
+    {
+      "path": "pps/rules.py",
+      "bytes": 10227,
+      "sha256": "da8e0e11f813e4e4dccc73dc28dd3ef4a377a01ff8de81cefa406a7776be0ebd"
+    },
+    {
+      "path": "pps/sme.py",
+      "bytes": 25003,
+      "sha256": "d5b4aa06b4543da7b76e57923cc5c263847cbe0e2aa1eacd7dfc88010301ff50"
+    },
+    {
+      "path": "pps/temporal.py",
+      "bytes": 21708,
+      "sha256": "eb2d5f05396146a5d33a5b36d26190c92111c8239b0dca8740e114a78ae11f82"
+    },
+    {
+      "path": "pps/v2_quote_check.py",
+      "bytes": 1233,
+      "sha256": "7670a674fd504c9a241ae681e15d69caa67c2c309f65ad9cfa4a5990f980574f"
+    },
+    {
+      "path": "requirements.txt",
+      "bytes": 129,
+      "sha256": "2049ffe52b7c855b3c96e440505eaf083706bf49de289a0a8d2a8abdc0544127"
+    },
+    {
+      "path": "script.py",
+      "bytes": 149,
+      "sha256": "d33785c6d7315293d92fd1eaa14d3e5b6722d1ce771108988b4501f475f80ae8"
+    }
+  ]
+}

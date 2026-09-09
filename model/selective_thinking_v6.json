@@ -1,0 +1,65 @@
+{
+  "name": "selective_thinking_v6",
+  "mode": "retrieval",
+  "response_format": "factored",
+  "rubric_version": "v4",
+  "span_overlap": 0,
+  "rule_checks": true,
+  "product_facts": true,
+  "judgment_groups": [
+    [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    [
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+    ],
+    [
+      19,
+      20,
+      21,
+      22,
+      23,
+      24
+    ]
+  ],
+  "max_model_len": 16384,
+  "max_output_tokens": 2048,
+  "document_chars": 17000,
+  "legal_chars": 0,
+  "seed": 20260907,
+  "batch_size": 32,
+  "quantization": "int8_per_channel_weight_only",
+  "gpu_memory_utilization": 0.9,
+  "max_num_seqs": 32,
+  "focus_groups": [],
+  "shared_prefix": true,
+  "enable_thinking": true,
+  "thinking_token_budget": 768,
+  "thinking_items": [
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18
+  ]
+}

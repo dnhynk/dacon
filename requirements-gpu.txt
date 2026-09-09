@@ -1,0 +1,10 @@
+# Colab experiment environment; not installed in the DACON submission.
+# Core versions match the official vllm/vllm-openai:v0.26.0 image.
+vllm==0.26.0
+torch==2.11.0
+transformers==5.14.1
+tokenizers==0.22.2
+xgrammar==0.2.3
+safetensors==0.8.0
+numpy==2.2.6
+jsonschema==4.26.0
