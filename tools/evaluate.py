@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pps.data import ITEMS, read_csv
+from submission.pps.data import ITEMS, read_csv
 
 
 def evaluate(truth_path, prediction_path):
@@ -40,17 +40,62 @@ def evaluate(truth_path, prediction_path):
             "zero_support_items": [k for k, m in metrics.items() if m["support"] == 0]}
 
 
+def compare(truth_path, prediction_path, baseline_paths):
+    """Compare the same complete predictions to every declared reference.
+
+    No candidate construction or item-level answer selection takes place here.
+    In particular, a gain over a low fresh baseline is not added to an older score.
+    """
+    candidate = evaluate(truth_path, prediction_path)
+    pred = {r["id"]: r for r in read_csv(prediction_path)}
+    truth = {r["id"]: r for r in read_csv(truth_path)}
+    baselines = {}
+    for path in baseline_paths:
+        name = str(path)
+        if name in baselines:
+            raise ValueError(f"Duplicate baseline: {path}")
+        score = evaluate(truth_path, path)
+        baseline = {r["id"]: r for r in read_csv(path)}
+        changes = [
+            {"id": rid, "item": key, "before": int(baseline[rid][key]),
+             "after": int(pred[rid][key]), "truth": int(truth[rid][key]),
+             "recovery": pred[rid][key] == truth[rid][key]}
+            for rid in truth for key in ITEMS if pred[rid][key] != baseline[rid][key]
+        ]
+        baselines[name] = {
+            "macro_f1": score["macro_f1"],
+            "delta_macro_f1": candidate["macro_f1"] - score["macro_f1"],
+            "recoveries": sum(c["recovery"] for c in changes),
+            "new_errors": sum(not c["recovery"] for c in changes),
+            "per_item_delta": {k: candidate["per_item"][k]["f1"] - score["per_item"][k]["f1"] for k in ITEMS},
+            "changes": changes,
+        }
+    return {"candidate": candidate, "comparisons": baselines,
+            "scope": "Fixed complete predictions on aligned labels; not a new inference or causal attribution."}
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--labels", required=True, type=Path)
     p.add_argument("--predictions", required=True, type=Path)
     p.add_argument("--out", type=Path)
+    p.add_argument("--baseline", type=Path, action="append", default=[],
+                   help="Repeat to compare both the highest preserved and matched fresh baseline")
     a = p.parse_args()
-    report = evaluate(a.labels, a.predictions)
+    if a.out and a.out.exists():
+        p.error(f"Preserve the existing evaluation; use a new --out path: {a.out}")
+    report = compare(a.labels, a.predictions, a.baseline) if a.baseline else evaluate(a.labels, a.predictions)
     if a.out:
         a.out.parent.mkdir(parents=True, exist_ok=True)
-        a.out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({k: v for k, v in report.items() if k != "errors"}, ensure_ascii=False, indent=2))
+        with a.out.open("x", encoding="utf-8") as stream:
+            json.dump(report, stream, ensure_ascii=False, indent=2)
+    if a.baseline:
+        summary = {"macro_f1": report["candidate"]["macro_f1"],
+                   "comparisons": {name: {k: v for k, v in result.items() if k not in {"changes", "per_item_delta"}}
+                                   for name, result in report["comparisons"].items()}}
+    else:
+        summary = {k: v for k, v in report.items() if k != "errors"}
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

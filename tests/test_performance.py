@@ -1,4 +1,4 @@
-from pps.performance import performance_facts, won
+from submission.pps.performance import performance_facts, won
 
 
 def notice(clause, heading="2. 입찰 참가자격"):

@@ -12,11 +12,13 @@ from pathlib import Path, PurePosixPath
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from tools.evaluate import evaluate
-from pps.data import records, validate_csv
+from submission.pps.data import records, validate_csv
 
 
 def extract_results(archive, destination):
     archive, destination = Path(archive), Path(destination).resolve()
+    if destination.exists():
+        raise FileExistsError(f"Preserve prior results; use a new destination: {destination}")
     with zipfile.ZipFile(archive) as z:
         entries = z.infolist()
         if len(entries) > 5000 or sum(e.file_size for e in entries) > 1024**3:
@@ -32,6 +34,8 @@ def extract_results(archive, destination):
             if stat.S_ISLNK(member.external_attr >> 16):
                 raise ValueError("Symlinks are not supported in result archives")
             seen.add(target)
+        # Reserve a new directory only after every archive path has been checked.
+        destination.mkdir(parents=True, exist_ok=False)
         # Do not import or execute any Python/notebook code from the result bundle.
         for member in entries:
             target = destination / member.filename.replace("\\", "/")
@@ -39,15 +43,16 @@ def extract_results(archive, destination):
                 target.mkdir(parents=True, exist_ok=True)
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
-            with z.open(member) as source, target.open("wb") as output:
+            with z.open(member) as source, target.open("xb") as output:
                 while chunk := source.read(1024 * 1024):
                     output.write(chunk)
     return destination
 
 
-def inspect(destination, split_dir=ROOT / "artifacts/audit"):
+def inspect(destination, split_dir=ROOT / "artifacts/audit", *, include_holdout=False):
     destination, split_dir = Path(destination), Path(split_dir)
-    report = {"gpu_checks": {}, "experiments": [], "verified_predictions": [], "errors": []}
+    report = {"gpu_checks": {}, "experiments": [], "verified_predictions": [], "errors": [],
+              "skipped_predictions": []}
     for name in ("colab_preflight.json", "gpu_runtime_check.json"):
         for path in destination.rglob(name):
             report["gpu_checks"][path.relative_to(destination).as_posix()] = json.loads(path.read_text(encoding="utf-8"))
@@ -57,6 +62,12 @@ def inspect(destination, split_dir=ROOT / "artifacts/audit"):
     for prediction in destination.rglob("submission.csv"):
         stage = next((s for s in ("development", "holdout") if s in prediction.relative_to(destination).parts), None)
         if stage is None:
+            continue
+        if stage == "holdout" and not include_holdout:
+            report["skipped_predictions"].append({
+                "path": prediction.relative_to(destination).as_posix(),
+                "reason": "holdout_not_explicitly_enabled",
+            })
             continue
         try:
             recs = list(records(split_dir / f"{stage}.jsonl.gz"))
@@ -87,6 +98,8 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("archive", type=Path)
     p.add_argument("--output-root", type=Path, default=ROOT / "runs/imported")
+    p.add_argument("--include-holdout", action="store_true",
+                   help="Explicitly enable holdout-label scoring; leave off unless that data scope is authorized")
     a = p.parse_args()
     with a.archive.open("rb") as f:
         digest = hashlib.file_digest(f, "sha256").hexdigest()
@@ -94,7 +107,7 @@ def main():
     if destination.exists():
         raise ValueError(f"Results already imported at {destination}; inspect the saved report")
     extract_results(a.archive, destination)
-    report = inspect(destination)
+    report = inspect(destination, include_holdout=a.include_holdout)
     report["archive_sha256"] = digest
     (destination / "verification.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({"directory": str(destination), "gpu_checks": report["gpu_checks"],

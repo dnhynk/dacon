@@ -1,7 +1,7 @@
 """Equivalent Korean contract registers must retain the same operative facts."""
 import pytest
 
-from pps.retrieval import NoticeIndex
+from submission.pps.retrieval import NoticeIndex
 
 
 @pytest.mark.parametrize('ending', ['하여야 한다', '하여야 합니다', '해야 한다', '해야 합니다'])

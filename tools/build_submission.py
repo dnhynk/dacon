@@ -1,62 +1,83 @@
-"""Create a small source-only candidate archive; never include data, secrets or weights."""
+"""Package the one canonical runtime, never an experiment or saved prediction.
+
+The archive is source-only. Building is not a claim of GPU, score, or L40S
+validation. Existing archives are immutable; use a new output path for a record.
+"""
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-import sys
 import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from pps.prompts import Config
+CONFIG_FILES = (
+    "submission/model/config.json",
+    "submission/model/original_a.json",
+    "submission/model/v20_legacy.json",
+)
+PACKAGE_DIRS = ("submission", "submission/pps", "submission/original_a", "submission/v20_legacy")
 
-FILES = ("script.py", "requirements.txt", "pps/__init__.py", "pps/data.py", "pps/knowledge.py",
-         "pps/retrieval.py", "pps/prompts.py", "pps/pipeline.py", "pps/rubrics.py", "pps/rules.py", "pps/products.py",
-         "pps/temporal.py", "pps/performance.py", "pps/sme.py", "pps/other_checks.py",
-         "pps/legal_context.py", "pps/qualification.py", "pps/comparison.py")
+
+def source_files(root=ROOT):
+    """Only Python modules in the declared package and three fixed configs."""
+    root = Path(root)
+    names = {"script.py", "requirements.txt", "submission/requirements.txt", *CONFIG_FILES}
+    for directory in PACKAGE_DIRS:
+        names.update(p.relative_to(root).as_posix() for p in (root / directory).glob("*.py"))
+    names.update(("submission/__init__.py", "submission/main.py"))
+    return tuple(sorted(names))
 
 
-def build(output, config=None, root=ROOT):
-    root, output = Path(root), Path(output)
-    content = {name: (root / name).read_bytes() for name in FILES}
-    if config is None:
-        config = json.loads((root / "model/config.json").read_text(encoding="utf-8"))
-    Config(**config)
-    content["model/config.json"] = json.dumps(config, ensure_ascii=False, indent=2).encode("utf-8")
-    manifest = {"l40s_runtime_verified": False, "submission_uploaded": False,
-                "files": {name: {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)} for name, data in content.items()}}
+def source_payload(root=ROOT):
+    root = Path(root).resolve()
+    payload = {}
+    for name in source_files(root):
+        path = root / name
+        if not path.resolve().is_relative_to(root) or path.is_symlink():
+            raise ValueError(f"Source must stay in this repository: {name}")
+        payload[name] = path.read_bytes()
+    for name in CONFIG_FILES:
+        if not isinstance(json.loads(payload[name]), dict):
+            raise ValueError(f"Expected an object config: {name}")
+    return payload
+
+
+def payload_manifest(content):
+    files = {name: {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
+             for name, data in sorted(content.items())}
+    fingerprint = hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return {"schema_version": 2, "entrypoint": "script.py",
+            "runtime_package": "submission", "source_fingerprint": fingerprint,
+            "l40s_runtime_verified": False, "submission_uploaded": False, "files": files}
+
+
+def build(output, *, root=ROOT):
+    output = Path(output)
+    receipt = output.with_suffix(".manifest.json")
+    if output.exists() or receipt.exists():
+        raise FileExistsError(f"Preserve the existing build; use a new output path: {output}")
+    content = source_payload(root)
+    manifest = payload_manifest(content)
     output.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as z:
+    with output.open("xb") as stream, zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name, data in sorted(content.items()):
-            info = zipfile.ZipInfo(name, date_time=(2026, 9, 8, 0, 0, 0))
+            info = zipfile.ZipInfo(name, date_time=(2026, 9, 12, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
-            z.writestr(info, data)
+            archive.writestr(info, data)
     manifest["archive_sha256"] = hashlib.sha256(output.read_bytes()).hexdigest()
     manifest["archive_bytes"] = output.stat().st_size
-    output.with_suffix(".manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    with receipt.open("x", encoding="utf-8") as stream:
+        json.dump(manifest, stream, ensure_ascii=False, indent=2)
     return manifest
 
 
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--experiment-dir", type=Path)
-    p.add_argument("--output", type=Path, default=Path("artifacts/candidate_unverified_l40s.zip"))
-    a = p.parse_args()
-    config = None
-    if a.experiment_dir:
-        selection = json.loads((a.experiment_dir / "selection.json").read_text(encoding="utf-8"))
-        completed = json.loads((a.experiment_dir / "completed.json").read_text(encoding="utf-8"))
-        environment = json.loads((a.experiment_dir / "environment.json").read_text(encoding="utf-8"))
-        if selection["selected"] != completed["selected"] or selection["config"] is None:
-            raise ValueError("The official prompt won. Review those results before packaging a revised candidate.")
-        for name, expected in environment["source_sha256"].items():
-            if hashlib.sha256((ROOT / name).read_bytes()).hexdigest() != expected:
-                raise ValueError(f"Source changed since GPU evaluation: {name}")
-        config = selection["config"]
-    result = build(a.output, config)
-    print(json.dumps({"archive": str(a.output), **result}, ensure_ascii=False, indent=2))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=ROOT / "artifacts/submission.zip")
+    args = parser.parse_args()
+    print(json.dumps({"archive": str(args.output), **build(args.output)}, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

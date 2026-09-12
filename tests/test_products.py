@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from pps.products import ProductFacts
+from submission.pps.products import ProductFacts
 
 ROOT=Path(__file__).resolve().parents[1]
 

@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from pps.data import ABSENCE, COLUMNS, clean_evidence, make_row, read_csv, records, validate_csv, write_csv
-from pps.pipeline import MockRunner, parse_output, run
-from pps.prompts import Config, build_prompt, output_schema
-from pps.retrieval import NoticeIndex, Span
+from submission.pps.data import ABSENCE, COLUMNS, clean_evidence, make_row, read_csv, records, validate_csv, write_csv
+from submission.pps.pipeline import MockRunner, parse_output, run
+from submission.pps.prompts import Config, build_prompt, output_schema
+from submission.pps.retrieval import NoticeIndex, Span
 from tools.evaluate import evaluate
 
 ROOT = Path(__file__).resolve().parents[1]

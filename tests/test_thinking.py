@@ -4,8 +4,8 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from pps.pipeline import VLLMRunner
-from pps.prompts import Config
+from submission.pps.pipeline import VLLMRunner
+from submission.pps.prompts import Config
 
 
 def test_budget_requires_thinking_and_final_answer_room():

@@ -1,6 +1,6 @@
 import pytest
 
-from pps.rules import joint_share_check, narrow_region_check, apply_rules
+from submission.pps.rules import joint_share_check, narrow_region_check, apply_rules
 
 
 def notice(text, law="국가계약법", mode="공동이행", work="일반용역"):

@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from pps.products import ProductFacts
-from pps.sme import extract_sme_facts, norm, size_facts
+from submission.pps.products import ProductFacts
+from submission.pps.sme import extract_sme_facts, norm, size_facts
 
 CATALOG = Path(__file__).resolve().parents[1] / 'data_open/data/법령패키지/중기부고시/중기부고시_경쟁제품_세부품명.csv'
 

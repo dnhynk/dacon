@@ -1,7 +1,7 @@
 """Synthetic semantic controls; no development labels or record identities."""
 import copy
 import unittest
-from pps.other_checks import predict,pledge_check,sw_check,briefing_check,won,budget_facts,overlay
+from submission.pps.other_checks import predict,pledge_check,sw_check,briefing_check,won,budget_facts,overlay
 
 
 def notice(text,*,complete=True,law='국가계약법',authority='국가기관',award='협상에의한계약',budget=None,extra=()):
@@ -112,7 +112,15 @@ class SoftwareControls(unittest.TestCase):
     def test_incidental_AI_and_software_price_formula(self):
         self.assertIsNone(sw_check(notice('AI 교육 연구용역\n소프트웨어사업인 경우 평가점수 산정공식 적용'))['value'])
     def test_explicit_not_software(self):
-        self.assertIsNone(sw_check(notice('본 사업은 소프트웨어사업이 아니다.'))['value'])
+        # The preserved highest-score consumer resolves an explicit declaration
+        # only in a complete, non-conflicting source; the root legacy did not.
+        decision = sw_check(notice('본 사업은 소프트웨어사업이 아니다.'))
+        self.assertEqual(decision['value'], 0)
+        self.assertEqual(decision['reason'], 'explicit_non_SW_scope_in_complete_source')
+    def test_explicit_not_software_incomplete_is_unresolved(self):
+        self.assertIsNone(sw_check(notice('본 사업은 소프트웨어사업이 아니다.', complete=False))['value'])
+    def test_explicit_not_software_does_not_erase_conflicting_work(self):
+        self.assertIsNone(sw_check(notice('본 사업은 소프트웨어사업이 아니다.\n본 사업은 소프트웨어사업이다.'))['value'])
     def test_license_no_blanket_exception(self):
         self.assertEqual(sw_check(notice('소프트웨어사업자(컴퓨터관련서비스사업) 등록\n라이선스 갱신 구매'))['value'],1)
     def test_applied_floor_and_basis(self):

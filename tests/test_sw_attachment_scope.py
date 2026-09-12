@@ -1,7 +1,7 @@
 """Moving the same operative disclosure between supplied docs preserves facts."""
 import pytest
 
-from pps.other_checks import sw_check
+from submission.pps.other_checks import sw_check
 
 
 DISCLOSURE = '본 사업은 소프트웨어진흥법 제48조에 따른 사업금액별 참여 제한이 적용되며 대기업 참여가 제한됩니다.'

@@ -1,3 +1,4 @@
+"""RETIRED root-pps retrieval audit; not the canonical A/L input producers."""
 from __future__ import annotations
 
 import argparse
@@ -7,6 +8,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+if __name__ == "__main__":
+    from tools.legacy_entry import retired_main
+    retired_main(Path(__file__).name)
+
 from pps.data import records, read_csv
 from pps.knowledge import Knowledge
 from pps.prompts import Config, build_prompt

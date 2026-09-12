@@ -1,7 +1,7 @@
 """Offline robustness and semantic controls; no development labels used here."""
 import copy,unittest
 from unittest.mock import patch
-from pps.temporal import predict,v23,v24
+from submission.pps.temporal import predict,v23,v24
 
 
 def rec(text,**meta):

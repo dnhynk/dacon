@@ -5,17 +5,17 @@ from pathlib import Path
 
 import pytest
 
-from pps.data import read_csv
-from pps.pipeline import MockRunner, parse_output, run
-from pps.prompts import Config, fact_fields, output_schema
-from pps.retrieval import Span
+from submission.pps.data import read_csv
+from submission.pps.pipeline import MockRunner, parse_output, run
+from submission.pps.prompts import Config, fact_fields, output_schema
+from submission.pps.retrieval import Span
 
 ROOT = Path(__file__).resolve().parents[1]
 GROUPS = ((1,2,3,4,5,6,7,8,9), (10,11,12,13,14,15,16,17,18), (19,20,21,22,23,24))
 
 
 def test_thought_switch_is_passed_to_model_chat_template():
-    from pps.prompts import token_ids
+    from submission.pps.prompts import token_ids
 
     class TemplateProbe:
         def apply_chat_template(self, messages, **kwargs):
@@ -84,8 +84,8 @@ def test_group_pipeline_combines_every_item_without_erasing_other_groups(tmp_pat
 
 @pytest.mark.skipif(not (ROOT/"data_open/data/항목표.json").exists(), reason="official material unavailable")
 def test_shared_source_and_evidence_index_fit_every_group_budget():
-    from pps.knowledge import Knowledge
-    from pps.prompts import build_shared_prompts
+    from submission.pps.knowledge import Knowledge
+    from submission.pps.prompts import build_shared_prompts
 
     class CharacterTokenizer:
         def apply_chat_template(self, messages, **kwargs):

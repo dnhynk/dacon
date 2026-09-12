@@ -1,4 +1,4 @@
-"""Use one fixed-model load for smoke, development comparison and one holdout run."""
+"""RETIRED legacy experiment runner; use the canonical root script.py."""
 from __future__ import annotations
 
 import argparse
@@ -15,6 +15,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+if __name__ == "__main__":
+    from tools.legacy_entry import retired_main
+    retired_main(Path(__file__).name)
+
 from pps.data import make_row, records, validate_csv, write_csv
 from pps.pipeline import VLLMRunner, log, run
 from pps.prompts import Config

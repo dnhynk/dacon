@@ -1,17 +1,21 @@
-"""Build a self-contained notebook from the same source tested locally."""
+"""Generate a thin Colab launcher for the SAME canonical submission package.
+
+This notebook never selects experiment branches, installs a second runtime, or
+opens validation labels. Prepare the approved fixed runtime/model/data once and
+set their paths below.
+"""
 from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCES = ["script.py", "requirements.txt", "requirements-gpu.txt", "requirements-gpu.lock", "README.md",
-           "model/config.json", "model/reasoned_v2.json", "model/reasoned_rules_v3.json", "model/factored_groups_v4.json",
-           *[str(p.relative_to(ROOT)).replace("\\", "/") for p in sorted((ROOT / "pps").glob("*.py"))],
-           *["tools/" + name for name in ("colab_preflight.py", "check_gpu_runtime.py", "prepare_data.py",
-                                          "download_model.py", "inspect_data.py", "evaluate.py", "run_experiments.py",
-                                          "build_submission.py", "export_results.py")]]
+sys.path.insert(0, str(ROOT))
+from tools.build_submission import payload_manifest, source_files, source_payload
+
+SOURCES = source_files()
 
 
 def cell(kind, source, title=None):
@@ -26,111 +30,91 @@ def cell(kind, source, title=None):
 
 
 def main():
-    source_files = {name: (ROOT / name).read_text(encoding="utf-8") for name in SOURCES}
-    cells = [cell("markdown", """# DACON 236754 · 이전 기본 후보 비교 실험
+    payload = source_payload()
+    embedded = {name: value.decode("utf-8") for name, value in payload.items()}
+    manifest = payload_manifest(payload)
+    cells = [
+        cell("markdown", """# DACON 236754 · 단일 제출 코드 실행
 
-이 노트북은 루트 기본 구현의 초기 비교 도구이며, experiments/의 최신 후보 실행기가 아닙니다.
-아래 전체 실행에는 모델 다운로드와 유료 GPU 추론이 포함될 수 있습니다.
-GitHub 공개 시점의 최신 결과와 미검증 범위는 저장소 README를 먼저 확인하세요.
+로컬 script.py → submission/과 정확히 같은 소스입니다. 다른 실험 후보를 선택하거나
+개발/검증 자료를 자동 분할하지 않습니다. 검증된 대회 고정 런타임과 모델, 제공 데이터를
+먼저 준비하고 다음 셀의 경로를 맞추세요. 이 노트북은 환경 재설치·모델 재다운로드를 하지 않습니다.
 
-Google 계정으로 실행하는 독립 노트북입니다. **런타임 → 런타임 유형 변경 → A100급 GPU / 고용량 RAM**을 먼저 선택하세요.
-40GB급 VRAM이 필요합니다. A100 선택이 불가능하면 아래 환경 확인만 실행하고 결과를 전달하세요.
-유료 요금제도 특정 GPU를 보장하지 않습니다. [Colab 공식 FAQ](https://research.google.com/colaboratory/faq.html)
+유료 GPU를 사용합니다. 입력 한 묶음에 대해 새 응답을 생성하며, 실행 셀을 다시 누르면
+새 비용이 발생합니다. 모델은 한 번 적재하고 A1/A10/A19를 32공고씩, 이후 L19를 실행합니다.
+재현 제어와 native 응답 기록은 별도 노트북 코드가 아닌 제출 본체가 담당합니다.
 
-첫 환경 확인을 통과하면 필요한 소스, 공식 데이터, 지정 모델을 준비합니다.
-8건의 실제 추론이 성공한 뒤 공식 프롬프트와 두 후보를 개발 160건에서 비교하고, 선택한 후보를 별도 40건에서 확인합니다.
-결과는 마지막에 `dacon_results.zip`으로 내려받습니다. 완료 후 **런타임 연결 해제 및 삭제**로 사용을 종료하세요.
-
-현재 노트북의 GPU 실행은 미검증이며 순위나 점수를 보장하지 않습니다.
-Colab 실행 성공 후에도 실제 평가 GPU인 L40S에서 2시간 제한을 확인해야 합니다.
-"""), cell("code", """from pathlib import Path
+실행 성공과 점수 향상, L40S 2시간 충족은 서로 다른 확인입니다.
+끝나면 결과를 먼저 내려받고 런타임 연결 해제 및 삭제를 완료하세요.
+"""),
+        cell("code", """from pathlib import Path
 import datetime
+import hashlib
 import json
 import os
 import subprocess
 import sys
+import zipfile
 
-WORK = Path('/content/dacon236754')
+WORK = Path('/content/dacon_submission')
+PY = Path(os.environ.get('PPS_PYTHON', sys.executable))
+DATA_DIR = Path(os.environ.get('PPS_DATA_DIR', '/content/data'))
+MODEL_DIR = Path(os.environ.get('PPS_MODEL_DIR', '/opt/models/gemma-4-26B-A4B-it'))
+INPUT = DATA_DIR / 'test.jsonl.gz'
 WORK.mkdir(parents=True, exist_ok=True)
-os.chdir(WORK)
-PREFLIGHT_OK = False
-RUNTIME_OK = False
-
-def execute(args, *, log_file=None):
-    stream = open(log_file, 'w', encoding='utf-8') if log_file else None
-    try:
-        with subprocess.Popen([str(x) for x in args], cwd=WORK, stdout=subprocess.PIPE,
-                              stderr=subprocess.STDOUT, text=True, bufsize=1) as proc:
-            for line in proc.stdout:
-                print(line, end='', flush=True)
-                if stream:
-                    stream.write(line)
-                    stream.flush()
-            code = proc.wait()
-        if code:
-            raise subprocess.CalledProcessError(code, args)
-    finally:
-        if stream:
-            stream.close()
-
-print('작업 폴더:', WORK)
-""", "작업 폴더 준비"), cell("code", "SOURCE_FILES = " + repr(source_files) + "\n" + """for name, content in SOURCE_FILES.items():
+print('Python:', PY, 'Input:', INPUT, 'Model:', MODEL_DIR)
+""", "준비된 런타임·데이터·모델 경로"),
+        cell("code", "SOURCE_FILES = " + repr(embedded) + "\nSOURCE_MANIFEST = " + repr(manifest) + "\n" + """conflicts = [name for name, content in SOURCE_FILES.items()
+             if (WORK / name).exists() and (WORK / name).read_bytes() != content.encode('utf-8')]
+if conflicts:
+    raise RuntimeError('다른 소스가 있는 폴더입니다. WORK를 새 폴더로 지정하세요: ' + str(conflicts))
+for name, content in SOURCE_FILES.items():
     target = WORK / name
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content, encoding='utf-8')
-print(f'{len(SOURCE_FILES)}개 소스 파일 준비 완료')
-""", "검사한 실행 소스 준비"), cell("code", """execute([sys.executable, 'tools/colab_preflight.py'])
-PREFLIGHT_OK = True
-""", "먼저 GPU·메모리·드라이버 확인 — 실패하면 여기서 중단"), cell("markdown", """환경 확인이 통과한 경우에만 아래로 진행하세요.
-설치는 별도 Python 환경을 만들며 Colab 노트북 커널의 PyTorch를 교체하지 않습니다.
-대회 지정 버전의 vLLM, PyTorch, Transformers, xgrammar를 사용합니다.
-"""), cell("code", """assert PREFLIGHT_OK, '먼저 환경 확인을 통과해야 합니다.'
-execute([sys.executable, '-m', 'pip', 'install', '--quiet', 'uv'])
-execute([sys.executable, '-m', 'uv', 'venv', '--python', '3.12.13', '--seed', '.gpu-venv'])
-PY = WORK / '.gpu-venv/bin/python'
-os.environ['PATH'] = str(PY.parent) + os.pathsep + os.environ.get('PATH', '')
-execute([sys.executable, '-m', 'uv', 'pip', 'install', '--python', PY,
-         '--torch-backend', 'cu130', '--no-cache', '-r', 'requirements-gpu.lock'])
-execute([PY, 'tools/check_gpu_runtime.py'])
-RUNTIME_OK = True
-""", "대회 핵심 런타임 설치 및 CUDA 연산 확인"), cell("code", """assert RUNTIME_OK, '런타임 검사가 통과해야 합니다.'
-execute([PY, 'tools/prepare_data.py'])
-execute([PY, 'tools/inspect_data.py'])
-""", "공식 데이터 다운로드·해시 확인·개발/검증 분할"), cell("code", """assert RUNTIME_OK, '런타임 검사가 통과해야 합니다.'
-execute([PY, 'tools/download_model.py', '--target', 'models/gemma'])
-""", "지정 모델의 고정 revision 다운로드"), cell("markdown", """다음 셀에서 모델을 한 번 로드하여 실험합니다. 첫 로드와 커널 준비에는 시간이 걸릴 수 있습니다.
-`SMOKE_ONLY=True`로 바꾸면 8건의 추론/CSV 확인까지만 실행합니다. 기본값은 전체 비교입니다.
-시간 예산은 배치 사이에 검사하므로 이미 시작된 배치는 완료될 수 있습니다.
-실패하더라도 저장된 로그와 결과를 다운로드할 수 있도록 구성했습니다.
-"""), cell("code", """assert RUNTIME_OK, '런타임 검사가 통과해야 합니다.'
-SMOKE_ONLY = False #@param {type:'boolean'}
-EXPERIMENT_MINUTES = 75 #@param {type:'number'}
-stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d_%H%M%S')
-experiment_dir = WORK / 'runs' / stamp
-log_path = WORK / 'runs' / f'{stamp}.log'
-log_path.parent.mkdir(parents=True, exist_ok=True)
-args = [PY, 'tools/run_experiments.py', '--model-dir', 'models/gemma',
-        '--out', experiment_dir, '--max-minutes', str(EXPERIMENT_MINUTES)]
-if SMOKE_ONLY:
-    args.append('--smoke-only')
-try:
-    execute(args, log_file=log_path)
-    if (experiment_dir / 'completed.json').exists():
-        selection = json.loads((experiment_dir / 'selection.json').read_text())
-        if selection['config'] is not None:
-            execute([PY, 'tools/build_submission.py', '--experiment-dir', experiment_dir])
-        else:
-            print('공식 프롬프트가 우세했습니다. 결과를 분석한 뒤 후보를 개선합니다.')
-finally:
-    execute([PY, 'tools/export_results.py'])
-    from google.colab import files
-    files.download(str(WORK / 'dacon_results.zip'))
-""", "첫 비교 실험 실행 및 결과 ZIP 다운로드"), cell("markdown", """다운로드한 `dacon_results.zip`을 Codex 작업공간에 전달하면 항목별 오류와 실행 시간을 분석해 다음 후보를 개선할 수 있습니다.
-다운로드가 막혔다면 왼쪽 파일 목록에서 `/content/dacon236754/dacon_results.zip`을 직접 내려받으세요.
+    target.write_bytes(content.encode('utf-8'))
+    assert hashlib.sha256(target.read_bytes()).hexdigest() == SOURCE_MANIFEST['files'][name]['sha256']
+print('Canonical source:', SOURCE_MANIFEST['source_fingerprint'])
+""", "동일한 제출 소스 준비"),
+        cell("code", """for path in (PY, INPUT, DATA_DIR, MODEL_DIR):
+    if not path.exists():
+        raise FileNotFoundError(path)
+stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d_%H%M%S_%f')
+OUTPUT_DIR = WORK / 'runs' / stamp
+LOG = WORK / 'runs' / (stamp + '.log')
+LOG.parent.mkdir(parents=True, exist_ok=True)
+args = [str(PY), '-B', str(WORK / 'script.py'), '--input', str(INPUT),
+        '--data-dir', str(DATA_DIR), '--model-dir', str(MODEL_DIR),
+        '--output-dir', str(OUTPUT_DIR)]
+with LOG.open('x', encoding='utf-8') as stream:
+    with subprocess.Popen(args, cwd=WORK, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                          text=True, bufsize=1) as proc:
+        for line in proc.stdout:
+            print(line, end='', flush=True)
+            stream.write(line)
+            stream.flush()
+        return_code = proc.wait()
+print('Exit:', return_code, 'Outputs:', OUTPUT_DIR)
+if return_code:
+    raise RuntimeError('추론 실패 원문과 로그를 보존했습니다. 재실행 전에 다음 셀로 회수하세요.')
+""", "단일 제출 경로로 실제 추론 1회"),
+        cell("code", """from google.colab import files
 
-**결과가 저장된 것을 확인한 후 런타임 → 연결 해제 및 런타임 삭제를 선택하세요.**
-결과 ZIP에는 모델 가중치가 없습니다. 생성된 제출 후보도 L40S에서 아직 검증되지 않았으므로 자동 제출하지 않습니다.
-""")]
+archive_path = WORK / ('result_' + stamp + '.zip')
+with zipfile.ZipFile(archive_path, 'x', compression=zipfile.ZIP_DEFLATED) as archive:
+    if LOG.exists():
+        archive.write(LOG, 'runtime.log')
+    for path in sorted(OUTPUT_DIR.rglob('*')):
+        if path.is_file() and not path.is_symlink():
+            archive.write(path, 'results/' + path.relative_to(OUTPUT_DIR).as_posix())
+    archive.writestr('source_manifest.json', json.dumps(SOURCE_MANIFEST, ensure_ascii=False, indent=2))
+print('Private result SHA256:', hashlib.sha256(archive_path.read_bytes()).hexdigest())
+files.download(str(archive_path))
+""", "실패를 포함한 결과·실행 소스 해시 회수"),
+        cell("markdown", """결과 ZIP은 개발용 비공개 자료입니다. 공개 GitHub에 올리지 마세요.
+제출용 소스 ZIP은 로컬 tools/build_submission.py로 만듭니다.
+다운로드와 원문 개수·해시를 확인한 뒤 런타임 → 연결 해제 및 삭제로 과금을 종료하세요.
+"""),
+    ]
     notebook = {"nbformat": 4, "nbformat_minor": 5, "metadata": {
         "colab": {"name": "dacon_colab.ipynb", "provenance": []},
         "kernelspec": {"display_name": "Python 3", "name": "python3"},
@@ -138,7 +122,8 @@ finally:
     destination = ROOT / "notebooks/dacon_colab.ipynb"
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(notebook, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(json.dumps({"notebook": str(destination), "cells": len(cells), "embedded_files": len(SOURCES), "bytes": destination.stat().st_size}))
+    print(json.dumps({"notebook": str(destination), "cells": len(cells),
+                      "embedded_files": len(payload), "source_fingerprint": manifest["source_fingerprint"]}))
 
 
 if __name__ == "__main__":

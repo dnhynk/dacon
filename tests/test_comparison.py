@@ -8,11 +8,11 @@ from unittest.mock import patch
 
 import pytest
 
-from pps.comparison import amount_facts, compare, positive_decision, priority_ranges, prompt_packet, won_value
-from pps.knowledge import Knowledge
-from pps.prompts import Config, build_prompt, build_shared_prompts
-from pps.pipeline import _response_row
-from pps.retrieval import NoticeIndex, Span
+from submission.pps.comparison import amount_facts, compare, positive_decision, priority_ranges, prompt_packet, won_value
+from submission.pps.knowledge import Knowledge
+from submission.pps.prompts import Config, build_prompt, build_shared_prompts
+from submission.pps.pipeline import _response_row
+from submission.pps.retrieval import NoticeIndex, Span
 
 
 def record(notice, attachment=None, **meta):

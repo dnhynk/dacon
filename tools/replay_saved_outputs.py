@@ -1,4 +1,4 @@
-"""Reparse frozen model answers before recomputing rules; no model result cache lookup."""
+"""RETIRED legacy cache replay; use replay_preserved_reference for frozen B4."""
 from __future__ import annotations
 
 import argparse
@@ -13,6 +13,10 @@ from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+if __name__ == "__main__":
+    from tools.legacy_entry import retired_main
+    retired_main(Path(__file__).name)
+
 from pps.data import make_row, records, validate_csv, write_csv
 from pps.knowledge import Knowledge
 from pps.pipeline import parse_output

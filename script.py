@@ -1,5 +1,6 @@
-"""DACON entry point; model initialization must remain under the main guard."""
-from pps.pipeline import main
+"""The single DACON entry point. All runtime code lives in submission/."""
 
 if __name__ == "__main__":
+    from submission.main import main
+
     main()

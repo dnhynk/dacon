@@ -12,6 +12,7 @@ artifacts/
 runs/
 # Private research, agent state, and generated outputs stay local.
 research/
+docs/LOCAL_HANDOFF.md
 HANDOFF.md
 STATUS.md
 DACON_236754_FriendliAI_Addendum_KR.md
@@ -35,6 +36,7 @@ experiments/precision_joined_v1/*
 !experiments/precision_joined_v1/b4_entry_candidate_20260912/
 experiments/precision_joined_v1/b4_entry_candidate_20260912/*
 !experiments/precision_joined_v1/b4_entry_candidate_20260912/source/
+!experiments/precision_joined_v1/b4_entry_candidate_20260912/README.md
 experiments/v20_uniform_route_v1/*
 !experiments/v20_uniform_route_v1/source/
 experiments/precision_audit_fix_v2/*

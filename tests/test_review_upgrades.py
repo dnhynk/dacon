@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
 
-from pps.knowledge import Knowledge
-from pps.pipeline import _response_row
-from pps.prompts import Config, build_shared_prompts
-from pps.retrieval import Span
-from pps.retrieval import NoticeIndex
+from submission.pps.knowledge import Knowledge
+from submission.pps.pipeline import _response_row
+from submission.pps.prompts import Config, build_shared_prompts
+from submission.pps.retrieval import Span
+from submission.pps.retrieval import NoticeIndex
 
 ROOT = Path(__file__).resolve().parents[1]
 GROUPS = (tuple(range(1, 10)), tuple(range(10, 19)), tuple(range(19, 25)))
@@ -74,7 +74,7 @@ def test_adjacent_source_lines_share_headers_without_losing_whitespace_or_polari
 
 
 def test_range_packing_never_bridges_omitted_words():
-    from pps.retrieval import _merge_ranges
+    from submission.pps.retrieval import _merge_ranges
     text = '참가 허용\n제외 조건\n참가 제한'
     left, right = (0, 5), (13, len(text))
     assert _merge_ranges([left, right], text) == [left, right]

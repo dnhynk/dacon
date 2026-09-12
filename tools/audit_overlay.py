@@ -1,4 +1,4 @@
-"""Evaluate current deterministic checks on saved development model predictions."""
+"""RETIRED root-pps rule-only audit; not the canonical full CPU chain."""
 from __future__ import annotations
 
 import argparse
@@ -10,6 +10,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+if __name__ == "__main__":
+    from tools.legacy_entry import retired_main
+    retired_main(Path(__file__).name)
+
 from pps.data import ITEMS, records, validate_csv, write_csv
 from pps.rules import apply_rules
 from pps.knowledge import Knowledge

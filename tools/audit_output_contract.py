@@ -1,4 +1,4 @@
-"""Read saved development outputs; never call a model or replace failed labels."""
+"""RETIRED legacy output-contract audit; historical helpers are retained."""
 from __future__ import annotations
 
 import argparse
@@ -13,6 +13,10 @@ from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+if __name__ == "__main__":
+    from tools.legacy_entry import retired_main
+    retired_main(Path(__file__).name)
+
 from pps.data import ABSENCE, clean_evidence, records, validate_csv
 from pps.pipeline import parse_output
 from pps.prompts import fact_fields
