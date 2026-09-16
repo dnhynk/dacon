@@ -55,13 +55,13 @@ def test_absence_requires_full_input_and_actual_identity(catalog):
     assert extract_sme_facts(rec,catalog)['product']['status']=='unknown'
 
 
-def test_forms_are_not_eligibility_and_price_conflict_is_unknown(catalog):
+def test_forms_are_not_eligibility_and_notice_price_has_official_priority(catalog):
     text='1. 사업개요\n용역명: 축제 행사대행 용역\n2. 입찰참가자격\n사업자등록을 마친 업체\n3. 제출서류\n직접생산확인증명서(9015189001) 1부'
     result=extract_sme_facts(notice(text,300_000_000),catalog)
     assert result['direct_production']['active_clauses']==0
     assert result['decisions']['v12']['value'] is None
     result=extract_sme_facts(notice('추정가격: 200,000,000원\n'+text,300_000_000),catalog)
-    assert result['price']['effective_won'] is None
+    assert result['price']['effective_won'] == 200_000_000
 
 
 def test_negated_withdrawn_and_alternative_requirements_do_not_clear_absence(catalog):

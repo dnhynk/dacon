@@ -2,6 +2,7 @@ data_archive/
 data_open/
 models/
 .venv/
+.venv-bge/
 __pycache__/
 .pytest_cache/
 *.pyc

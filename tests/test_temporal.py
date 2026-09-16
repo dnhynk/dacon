@@ -46,16 +46,20 @@ class Dates(unittest.TestCase):
     def test_date_range_last_endpoint(self):
         r=rec('사업설명회 : 2026. 1. 15.\n\n제안서 접수기간 : 2026. 1. 20. ~ 1. 31.')
         self.assertEqual(v23(r)['value'],0)
-    def test_metadata_estimate_conflict(self):
+    def test_notice_estimate_priority_preserves_registration_conflict(self):
         r=rec('추정가격 : 100,000,000원\n\n사업설명회 : 2026. 1. 15.\n\n제안서 제출 마감 : 2026. 1. 20.')
-        self.assertIsNone(v23(r)['value'])
+        decision=v23(r)
+        self.assertEqual(decision['value'],1)
+        calc=next(f for f in decision['facts'] if f['kind']=='calculation')
+        self.assertEqual(calc['required_days'],20)
+        self.assertTrue(calc['price_resolution']['source_conflict'])
     def test_invalid_estimate_abstains_without_crash(self):
         text='사업설명회 : 2026. 1. 15.\n\n제안서 제출 마감 : 2026. 1. 20.'
         for price in ['알 수 없음','미입력',None,True,'NaN']:
             with self.subTest(price=price):self.assertIsNone(v23(rec(text,입찰추정가격=price))['value'])
     def test_unknown_law_and_conflicting_law(self):
         self.assertIsNone(v23(rec('사업설명회:2026.1.15.',적용계약법=None))['value'])
-        self.assertIsNone(v23(rec('본 계약은 국가계약법을 적용합니다.\n사업설명회:2026.1.15.'))['value'])
+        self.assertEqual(v23(rec('본 계약은 국가계약법을 적용합니다.\n사업설명회:2026.1.15.'))['value'],0)
     def test_national_outside_scope(self):
         self.assertEqual(v23(rec('사업설명회:2026.1.15.',적용계약법='국가계약법'))['value'],0)
     def test_nonnegotiated_outside_scope(self):

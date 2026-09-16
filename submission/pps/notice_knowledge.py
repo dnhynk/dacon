@@ -33,9 +33,12 @@ class NoticeKnowledge:
         self.packet = None
         self.sme_packet = None
         self.provider_log = {'accepted': False, 'reason': 'incomplete_response'}
-        if response.get('finish_reason') not in {'stop', 'eos_token'}:
+        if response is not None and response.get('finish_reason') not in {'stop', 'eos_token'}:
             return
-        facts = json.loads(response['text']).get('facts', {})
+        # provide() resolves source predicates, not the model's category claim.
+        # A None response is an explicit pre-generation source context, never
+        # a generated response or an empty model judgment.
+        facts = json.loads(response['text']).get('facts', {}) if response is not None else {}
         if not isinstance(facts, dict):
             return
         pf = knowledge._product_facts

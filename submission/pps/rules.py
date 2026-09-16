@@ -1,6 +1,7 @@
 """Deterministic checks grounded in the supplied law snapshot, per notice only."""
 from __future__ import annotations
 
+from .legal_context import applicable_law
 import re
 
 from .data import clean_evidence
@@ -8,6 +9,10 @@ from .temporal import predict as temporal_checks
 from .performance import performance_facts
 from .other_checks import predict as other_checks
 from .assertions import assertion_scope, unresolved_assertion, has_withdrawal
+from .anonymized_tokens import (
+    anonymous_tokens, basic_notice_authority, registered_region_tokens,
+)
+from .region_thresholds import regional_price_bounds
 
 
 def narrow_region_check(rec):
@@ -21,37 +26,46 @@ def narrow_region_check(rec):
         return None
     meta = rec["meta"]
     from .prices import project_prices
-    law = meta.get("적용계약법")
+    from .regions import regional_competition_scope
+    law = applicable_law(rec)
     price = project_prices(rec)['estimated_price']['value_won']
     if (law not in {"국가계약법", "지방계약법"} or type(price) not in (int, float)
-            or price <= 0 or meta.get("계약방법") != "제한경쟁"
+            or price <= 0 or not regional_competition_scope(rec)
             or meta.get("업무구분") not in {"일반용역", "물품(내자)"}):
         return None
-    token = re.compile(r"\[지역:[^\]\n]*단위=기초[^\]\n]*\]|\[수요기관\(기초자치단체\)\]")
+    bounds = regional_price_bounds(rec)
+    ceiling = bounds['below_ceiling']
+    if ceiling is None:
+        return None
+    registered = registered_region_tokens(rec)
+    structured_basic_scope = (
+        meta.get('지역제한여부') == 'Y'
+        and bool(registered)
+        and all(token.attribute('단위') == '기초' for token in registered)
+    )
     for doc in rec["docs"]:
         if doc["type"] != "공고문":
             continue
         text = doc["text"]
-        if re.search(r"수의\s*계약\s*(?:안내|공고)|계\s*약\s*방\s*법[^\n]{0,20}수의|견적\s*(?:제출)?\s*(?:안내|공고)", text[:3000]):
-            return None  # Actual quote procedure can contradict a generic meta label.
-        for match in token.finditer(text):
-            if unresolved_assertion(assertion_scope(text, match.start(), match.end(), 'region')):
+        for token in anonymous_tokens(text):
+            if token.errors or not (
+                    token.kind == 'region' and token.attribute('단위') == '기초'
+                    or token.kind == 'institution' and token.value == '기초자치단체'):
                 continue
-            paragraph = text.rfind("\n\n", 0, match.start())
-            left = max(paragraph + 2 if paragraph >= 0 else 0, match.start()-420, 0)
-            end = text.find("\n\n", match.end())
-            right = min(end if end >= 0 else len(text), match.end()+160)
+            if unresolved_assertion(assertion_scope(text, token.start, token.end, 'region')):
+                continue
+            paragraph = text.rfind("\n\n", 0, token.start)
+            left = max(paragraph + 2 if paragraph >= 0 else 0, token.start-420, 0)
+            end = text.find("\n\n", token.end)
+            right = min(end if end >= 0 else len(text), token.end+160)
             context = text[left:right]
-            prefix, suffix = text[left:match.start()], text[match.end():right]
+            prefix, suffix = text[left:token.start], text[token.end:right]
             if not re.search(r"본점|주된\s*영업소|본사", prefix):
                 continue
             if not (re.search(r"소재|둔|두고|있는", suffix) and re.search(r"업체|갖춘\s*자", suffix)):
                 continue
             if re.search(r"견적|수의계약|해제|지역제한\s*없", context):
                 continue
-            ceiling = 230_000_000
-            if law == "지방계약법" and "[수요기관(기초자치단체)]" in context:
-                ceiling = 500_000_000
             if price >= ceiling:
                 continue
             evidence = clean_evidence(context, rec)
@@ -59,7 +73,33 @@ def narrow_region_check(rec):
                 return {"item": 6, "value": 1, "evidence": evidence,
                         "source": "국가 시행규칙25조③ / 지방 시행규칙25조③",
                         "estimated_price": price, "ceiling": ceiling,
-                        "matched_region_token": match.group()}
+                        "regional_price_bounds": bounds,
+                        "matched_region_token": token.text}
+        # The official input also carries the registered restriction regions.
+        # Their r-symbols cannot be matched to visible names, but an all-basic
+        # structured list plus an independently observed operative office
+        # restriction is sufficient for item 6.  Keep the source clause as the
+        # evidence and use the metadata only for its declared administrative
+        # unit; a delivery location or an unbound region flag is insufficient.
+        if structured_basic_scope and price < min(ceiling, 230_000_000):
+            for office in re.finditer(r'본점|주된\s*(?:영업소|사무소)|본사', text):
+                target = assertion_scope(text, office.start(), office.end(), 'region')
+                n = re.sub(r'\s+', '', target)
+                if unresolved_assertion(target):
+                    continue
+                if not (re.search(r'(?:소재지|소재|둔|두고|있는)', n)
+                        and re.search(r'(?:업체|사업자|갖춘자|이어야|제한)', n)):
+                    continue
+                if re.search(r'납품(?:지|장소)|사업현장|공사현장|운행구간|대상시설', n):
+                    continue
+                evidence = clean_evidence(target, rec)
+                if evidence:
+                    return {"item": 6, "value": 1, "evidence": evidence,
+                            "source": "official_structured_region_units_and_observed_office_clause",
+                            "estimated_price": price, "ceiling": ceiling,
+                            "regional_price_bounds": bounds,
+                            "registered_region_units": [token.attribute('단위') for token in registered],
+                            "region_symbols_are_record_local": True}
     return None
 
 
@@ -72,7 +112,7 @@ def joint_share_check(rec):
     """
     if has_withdrawal(rec, 'share'):
         return None
-    scope = str(rec["meta"].get("적용계약법", ""))
+    scope = applicable_law(rec)
     if scope not in {"국가계약법", "지방계약법"}:
         return None
     if "공사" in str(rec["meta"].get("업무구분", "")):
@@ -132,21 +172,35 @@ def joint_share_check(rec):
             "source": "공동계약운용요령 제9조⑤ / 지방 집행기준 제6장 구성원 수 등"}
 
 
-def apply_rules(rec, row, knowledge=None, *, comparison=None):
+def apply_rules(rec, row, knowledge=None, *, comparison=None, items=tuple(range(1, 25))):
     result = dict(row)
-    from .regions import multiple_region_check
-    checks = [joint_share_check(rec), narrow_region_check(rec), multiple_region_check(rec)]
+    wanted = set(items)
+    from .regions import multiple_region_check, above_ceiling_region_check
+    checks = [fn(rec) for k, fn in ((21, joint_share_check), (6, narrow_region_check),
+                                  (7, multiple_region_check), (5, above_ceiling_region_check)) if k in wanted]
+    if 1 in wanted:
+        from .eligibility_restrictions import direct_facility_ownership_check
+        checks.append(direct_facility_ownership_check(rec))
     # Dates and metadata extraction only prove specific violations. Their
     # explicit negatives or abstentions cannot certify a whole legal item.
-    checks.extend(check for key, check in temporal_checks(rec).items()
-                  if check["value"] == 1 and (key != 'v24' or comparison is None))
-    if comparison is not None:
+    if wanted & {23, 24}:
+        checks.extend(check for key, check in temporal_checks(rec).items()
+                      if int(key[1:]) in wanted and check["value"] == 1 and (key != 'v24' or comparison is None))
+    if comparison is not None and 24 in wanted:
         from .comparison import positive_decision
         checks.append(positive_decision(rec, comparison))
-    performance = performance_facts(rec)
-    from .v2_quote_check import check as v2_quote_check
-    checks.append(v2_quote_check(rec, performance))
+    performance = performance_facts(rec) if wanted & {2, 3, 4, 8} else {'overlays': {}}
+    from .performance import validate_model_witness
+    for k in sorted(wanted & {2, 3, 4, 8}):
+        checks.append(validate_model_witness(rec, row, k, performance))
+    from .v2_quote_check import check_item as local_quote_check
+    if 2 in wanted:
+        checks.append(local_quote_check(rec, performance, 2))
+    if 8 in wanted:
+        checks.append(local_quote_check(rec, performance, 8))
     for item, decision in performance["overlays"].items():
+        if int(item[1:]) not in wanted:
+            continue
         # Item2 specifically concerns experience restrictions below the notice
         # amount. A resolved, in-scope project price above that amount rules
         # out item2 even when another experience clause was not extracted.
@@ -163,14 +217,20 @@ def apply_rules(rec, row, knowledge=None, *, comparison=None):
             if evidence:
                 checks.append({"item": int(item[1:]), "value": 1, "evidence": evidence,
                                "reason": decision["reason"], "source": "supplied_performance_rules"})
-    for item, decision in other_checks(rec).items():
+    other = other_checks(rec, wanted)
+    if 19 in wanted:
+        from .pledge_witness import validate_model_witness as validate_pledge_witness
+        checks.append(validate_pledge_witness(rec, row, other['v19']['facts']))
+    for item, decision in other.items():
         if decision["value"] is not None:
             checks.append({"item": int(item[1:]), "value": decision["value"],
                            "evidence": clean_evidence(decision["evidence"], rec),
                            "reason": decision["reason"], "source": "supplied_pledge_SW_briefing_rules"})
-    if knowledge is not None:
+    if knowledge is not None and wanted & set(range(10, 19)):
         for item, decision in knowledge.sme_record_facts(rec)["decisions"].items():
             k, value = int(item[1:]), decision["value"]
+            if k not in wanted:
+                continue
             # Positive absence/size branches without observed development
             # activation remain model decisions pending further review.
             if value is None or value == 1 and k not in {12, 14}:

@@ -15,11 +15,10 @@ from pathlib import Path
 
 from submission.v20_legacy.knowledge import Knowledge as LegacyKnowledge
 from submission.v20_legacy.pipeline import VLLMRunner as LegacyVLLMRunner
-from submission.v20_legacy.pipeline import _response_row as legacy_response_row
 from submission.v20_legacy.prompts import Config as LegacyConfig
 from submission.v20_legacy.prompts import build_shared_prompts
 
-from .data import read_csv, records, write_csv
+from .data import read_csv, records, write_csv, clean_evidence
 from .pipeline import log, run as run_base
 
 GROUPS = (tuple(range(1, 10)), tuple(range(10, 19)), tuple(range(19, 25)))
@@ -61,12 +60,27 @@ class SharedModelRunner(LegacyVLLMRunner):
 
 
 class UniformV20Route:
-    def __init__(self, data_dir, tokenizer):
-        self.config = legacy_config()
-        self.knowledge = LegacyKnowledge(data_dir)
+    def __init__(self, data_dir, tokenizer, *, audited_config=None):
+        self.audited = audited_config is not None
+        if self.audited:
+            from .knowledge import Knowledge
+            self.config = dataclasses.replace(audited_config, shared_prefix=False,
+                judgment_groups=((20,),),
+                response_format=audited_config.v20_fact_format if audited_config.v20_fact_contract else 'factored', sme_facts=False,
+                thinking_items=(), thinking_token_budget=0 if audited_config.enable_thinking else None)
+            self.knowledge = Knowledge(data_dir)
+        else:
+            self.config = legacy_config()
+            self.knowledge = LegacyKnowledge(data_dir)
         self.tokenizer = tokenizer
 
-    def prompt(self, record):
+    def prompt(self, record, *, source_selection=None):
+        if self.audited:
+            from .prompts import build_prompt
+            return build_prompt(record, self.knowledge, self.config, self.tokenizer, (20,),
+                                source_selection=source_selection)
+        if source_selection is not None:
+            raise ValueError('Explicit source search requires the audited v20 route')
         # Build ALL original groups before selecting this call: shared source
         # selection and context fitting depend on the complete bundle.
         bundle = build_shared_prompts(record, self.knowledge, self.config,
@@ -79,9 +93,47 @@ class UniformV20Route:
     def consume(self, record, response, prompt):
         if response.get('finish_reason') not in {'stop', 'eos_token', 'mock'}:
             raise ValueError('Uniform route requires a complete model response')
-        row, details = legacy_response_row(record, response, prompt, ROUTE_ITEMS,
-            self.config, self.knowledge, ROUTE_ITEMS)
-        return {'v20': int(row['v20']), 'e20': row['e20']}, details
+        if prompt.get('generation', {}).get('response_format', prompt.get('response_format')) in {'software_facts', 'software_refs'}:
+            from .software_facts import decide
+            if tuple(prompt['items']) != (20,):
+                raise ValueError('Software facts may only set item20')
+            decision = decide(record, response['text'], prompt['spans'], expected_format=
+                prompt.get('generation', {}).get('response_format', prompt.get('response_format')))
+            return {'v20': int(decision['value'] == 1), 'e20': ''}, [
+                {'source': 'source_bound_software_relations', 'decision': decision}]
+        # Keep the original L prompt, but use the ONE current CPU rule.
+        # The frozen rule chain resurrected defects already fixed in A,
+        # including affirmative treatment of the negation "아닙니다".
+        from .pipeline import parse_output
+        from .other_checks import sw_check
+        items = tuple(prompt.get('items', ROUTE_ITEMS))
+        if items not in {ROUTE_ITEMS, (20,)}:
+            raise ValueError('Uniform route requires the preserved group or audited v20 item')
+        values, evidence = parse_output(response['text'], prompt['spans'], items, rec=record)
+        decision = sw_check(record)
+        value, quote = values[19], evidence[19]
+        if decision['value'] is not None:
+            value = decision['value']
+            quote = clean_evidence(decision['evidence'], record) if value else ''
+        elif (not value and decision['reason'] == 'missing_documents_prevent_absence_conclusion'
+              and decision['facts']['actual_work']
+              and decision['facts']['public_authority_supported']):
+            # L is an additional refinement call.  Once the independent source
+            # rule establishes SW applicability but cannot prove absence across
+            # a missing attachment, an L=0 is not evidence that may erase A's
+            # independently produced positive.  An empty replacement keeps A;
+            # a positive L result is still allowed through below.
+            return {}, [{'source': 'canonical_SW_rule_on_L_response',
+                'response_items': list(items), 'decision': decision},
+                {'source': 'deferred_negative_preserves_independent_A',
+                 'reason': decision['reason']}]
+        from .fact_consistency import apply as apply_consistency
+        row, consistency = apply_consistency({'v20': int(value), 'e20': quote}, response,
+                                             {20: values[19]}, sw=decision)
+        details = [{'source': 'canonical_SW_rule_on_L_response', 'response_items': list(items), 'decision': decision}]
+        if consistency:
+            details.append({'source': 'model_applicability_consistency', 'details': consistency})
+        return row, details
 
     def apply(self, input_records, base_rows, runner, *, trace_path=None):
         if len(input_records) != len(base_rows):

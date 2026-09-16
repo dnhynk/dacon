@@ -77,15 +77,17 @@ class MoneyControls(unittest.TestCase):
     def test_VAT_negations_not_inclusive(self):
         for tax in ['부가세 미포함','부가가치세 제외','VAT 별도']:
             with self.subTest(tax=tax):self.assertIsNone(budget_facts(notice('사업예산: 20억원 ('+tax+')'))['effective_won'])
-    def test_one_won_conflict_stays_unresolved(self):
-        self.assertTrue(budget_facts(notice('사업예산: 20억원 (부가세 포함)',budget=2_000_000_001))['conflict'])
+    def test_one_won_meta_conflict_retained_with_official_notice_priority(self):
+        facts=budget_facts(notice('사업예산: 20억원 (부가세 포함)',budget=2_000_000_001))
+        self.assertTrue(facts['metadata_conflict'])
+        self.assertEqual(facts['effective_won'],'2000000000')
     def test_base_price_not_project_budget(self):
         self.assertIsNone(budget_facts(notice('기초금액: 2,000,000,000원 (부가세 포함)'))['effective_won'])
     def test_metadata_tax_basis_unknown(self):
         self.assertIsNone(budget_facts(notice('',budget=2_000_000_000))['effective_won'])
     def test_body_metadata_conflict(self):
         b=budget_facts(notice('사업예산: 20억원 (부가세 포함)',budget=3_000_000_000))
-        self.assertTrue(b['conflict']);self.assertIsNone(b['effective_won'])
+        self.assertTrue(b['metadata_conflict']);self.assertEqual(b['effective_won'],'2000000000')
     def test_long_maintenance_annualization(self):
         b=budget_facts(notice('사업예산: 80억원 (부가세 포함)\n장기계속계약 소프트웨어 유지보수\n계약기간: 24개월'))
         self.assertTrue(b['annualized']);self.assertEqual(b['effective_won'],'4000000000')

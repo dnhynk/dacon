@@ -85,6 +85,12 @@ class Knowledge:
         self.detailed_product_facts(rec)
         return NoticeKnowledge(self, rec, response)
 
+    def for_source(self, rec):
+        """Resolve the same source-only service relations before generation."""
+        from .notice_knowledge import NoticeKnowledge
+        self.detailed_product_facts(rec)
+        return NoticeKnowledge(self, rec, None)
+
     def product_matches(self, rec):
         text = "\n".join(d["text"] for d in rec["docs"])
         meta = json.dumps(rec["meta"].get("세부품명번호목록"), ensure_ascii=False)
@@ -114,8 +120,11 @@ class Knowledge:
         return text[m.start():end].strip()
 
     def legal_context(self, rec, items, max_chars):
-        local = "지방" in str(rec["meta"].get("적용계약법", ""))
-        scope = "지방계약법" if local else "국가계약법"
+        from .legal_context import applicable_law
+        scope = applicable_law(rec)
+        if scope is None:
+            return self.legal_context_v2(rec, items, max_chars)
+        local = scope == '지방계약법'
         candidates = []
         if any(k in items for k in range(1, 9)):
             candidates.append((scope + " 시행규칙", "제25조", self._article(scope + " 시행규칙", "제25조")))
@@ -166,6 +175,23 @@ class Knowledge:
 
         packet = build_legal_context(rec, items, max_chars, self.laws, self.table, ALIASES)
         return packet if return_metadata else packet["text"]
+
+    def search_legal_dependencies(self, topic, *, max_chars=3600, tokenizer=None,
+                                  max_source_tokens=None):
+        """Explicit follow-up tool; preserve the default v2 context and law map."""
+        from .legal_search import EXTRA_ALIASES, PLANS, search_legal_dependencies
+
+        if topic not in PLANS:
+            raise ValueError('Unknown legal dependency topic')
+        laws = dict(self.laws)
+        for _, units in PLANS[topic]:
+            for unit in units:
+                if unit.alias not in laws and unit.alias in EXTRA_ALIASES:
+                    path = self.data_dir / '법령패키지/법령' / EXTRA_ALIASES[unit.alias]
+                    if path.is_file():
+                        laws[unit.alias] = path.read_text(encoding='utf-8')
+        return search_legal_dependencies(topic, laws, {**ALIASES, **EXTRA_ALIASES},
+            max_chars=max_chars, tokenizer=tokenizer, max_source_tokens=max_source_tokens)
 
     def item_instructions(self, items):
         return "\n".join(f"v{k} {self.table[f'v{k}']['항목명']}: {GUIDANCE[k]}" for k in items)

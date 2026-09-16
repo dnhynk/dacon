@@ -1,4 +1,8 @@
-"""Source-verified school transport / ordinary human guarding, per notice."""
+"""Source-verified school transport / ordinary human guarding, per notice.
+
+Candidate discovery uses the operative certificate code. Contract scope and
+catalog exclusions are verified independently; model prose is diagnostic only.
+"""
 import copy
 import re
 
@@ -38,6 +42,38 @@ def purchase_titles(record, fallback):
     return found or [evidence(record, x['doc_index'], x['start'], x['end']) for x in fallback
                      if len(x['text']) <= 350 and x.get('role') in ('title_or_scope_field', 'intro_title_candidate')]
 
+
+def whole_contract_scope(record):
+    """An explicit whole-contract statement can identify scope without its title.
+
+    A component, example, task plan or certificate is not such a statement.
+    Actual performance and catalog conditions are still checked independently.
+    """
+    from .products import has_scope_content
+    anchor = re.compile(r'(?m)^[ \t]*(?:[가-하\d][.)][ \t]*)?'
+        r'(?:(?:본|이)\s*(?:용역|계약|사업|과업)의\s*(?:전체\s*)?(?:과업|범위|목적|내용)|'
+        r'전체\s*(?:과업|계약)\s*(?:범위|내용))\s*(?:은|는|[:：])(?P<value>[^\r\n]{1,350})(?=\r?$)')
+    direct = re.compile(r'(?m)^[ \t]*(?:[가-하\d][.)][ \t]*)?'
+        r'(?:본|이)\s*(?:용역|계약|사업|과업)\s*(?:은|는)\s*'
+        r'(?P<value>[^\r\n]{1,350})(?=\r?$)')
+    found = []
+    for di, doc in enumerate(record['docs']):
+        candidates = [(match, False) for match in anchor.finditer(doc['text'])]
+        candidates += [(match, True) for match in direct.finditer(doc['text'])]
+        for match, direct_definition in sorted(candidates, key=lambda pair: pair[0].start()):
+            if not has_scope_content(match['value']):
+                continue
+            text = norm(match[0])
+            if (NEGATED_ROLE.search(text) or re.search(r'일부|구성요소|예시|참고|경우|가능|'
+                    r'검토(?:할|중|예정)|계획(?:중|임|이다)|(?:할|될)수있|대상으로하지않|대상이아니', text)):
+                continue
+            if direct_definition and (not re.search(r'(?:하는|할)(?:용역|과업|사업)|'
+                    r'(?:수행|실시)(?:하여야|해야|한다|합니다)', text)
+                    or not re.search(r'(?:한다|합니다|이다|임|함|것이다)[.。]?$', text)):
+                continue  # A bare "this contract" subject also starts procedural clauses.
+            found.append(evidence(record, di, match.start(), match.end()))
+    return found
+
 def provide(record, model_facts, sme_product, qualification_facts, catalog):
     """Return a product packet or abstain; leave every nonproduct fact alone."""
     product = qualification_facts['product']
@@ -50,34 +86,34 @@ def provide(record, model_facts, sme_product, qualification_facts, catalog):
         return reject('existing_candidate_set_or_conflict_requires_review')
     if not qualification['complete'] or any(record.get('dropped_doc_counts', {}).values()):
         return reject('incomplete_source')
-    claim = model_facts.get('실제구매대상_경쟁제품_고시조건', '')
-    compact = norm(claim)
-    codes = set(re.findall(r'(?<!\d)\d{10}(?!\d)', claim))
-    if (len(codes) != 1 or not codes <= {BUS, GUARD} or
-            not re.search(r'경쟁제품(?:에해당|임)', compact) or
-            re.search(r'아니|않|불명|불확실|미확정|후보|판단불가|가능|일반제품|비경쟁|제외|하지만|다만', compact)):
-        return reject('no_unambiguous_supported_model_candidate')
-    code = next(iter(codes))
-    row = catalog.get(code)
-    if not row or norm(row['세부품명']) not in compact:
-        return reject('catalog_identity_mismatch')
     direct = qualification['active_direct']
     direct_codes = {c for item in direct for c in item['codes']}
-    if direct_codes != {code} or not set(sme_product['meta_codes']) <= {code}:
+    if len(direct_codes) != 1 or not direct_codes <= {BUS, GUARD}:
+        return reject('no_single_supported_source_candidate')
+    code = next(iter(direct_codes))
+    row = catalog.get(code)
+    if not row:
+        return reject('candidate_not_in_supplied_catalog')
+    if not set(sme_product['meta_codes']) <= {code}:
         return reject('code_not_corroborated_or_multiple_codes')
     certs = [item['evidence'] for item in direct if code in item['codes']]
-    titles = []
-    for ev in purchase_titles(record, product['scope_evidence']):
+    def scope_matches(ev):
         t = norm(ev['text'])
         scope_text = re.sub(r'임차및(?:운행|운영)|운행및임차', '임차운행', t)
         if WRONG_SCOPE.search(scope_text) or NEGATED_ROLE.search(t):
-            continue
-        if code == BUS and re.search(r'(?:통학(?:버스|차량)|학생통학|등하교수송).{0,25}(?:임차|운행|운송|수송)(?:.{0,8}용역)?', t):
-            titles.append(ev)
-        elif code == GUARD and re.search(r'(?:보안인력|시설경비|인력경비|경비원|보안경비).{0,15}(?:위탁|용역|배치)', t):
-            titles.append(ev)
+            return False
+        return bool((code == BUS and re.search(r'(?:통학(?:버스|차량)|학생통학|등하교수송).{0,25}(?:임차|운행|운송|수송)(?:.{0,8}용역)?', t))
+            or (code == GUARD and re.search(r'(?:보안인력|시설경비|인력경비|경비원|보안경비).{0,15}(?:위탁|용역|배치)', t)))
+    observed_titles = purchase_titles(record, product['scope_evidence'])
+    titles = [ev for ev in observed_titles if scope_matches(ev)]
+    scope_path = 'affirmative_purchase_title'
     if not titles:
-        return reject('no_affirmative_purchase_role_title')
+        if any(WRONG_SCOPE.search(norm(ev['text'].strip().splitlines()[0])) for ev in observed_titles):
+            return reject('title_scope_conflicts_with_service_candidate')
+        titles = [ev for ev in whole_contract_scope(record) if scope_matches(ev)]
+        scope_path = 'explicit_whole_contract_body'
+    if not titles:
+        return reject('no_affirmative_whole_purchase_scope')
 
     if code == BUS:
         if row['특이사항'].strip():
@@ -125,9 +161,13 @@ def provide(record, model_facts, sme_product, qualification_facts, catalog):
     for ev in proofs:
         assert record['docs'][ev['doc_index']]['text'][ev['start']:ev['end']] == ev['text']
     result = copy.deepcopy(product)
-    result.update(status='competition', mechanism='automatic_source_verified_service_identity_v2',
+    result.update(status='competition', mechanism='automatic_source_verified_service_identity_v4',
                   products=[{'code': code, 'listed': True, 'name': row['세부품명'],
                              'note': row['특이사항'], 'condition': condition}],
                   identity_evidence=copy.deepcopy(proofs), uncertainty=[])
-    return result, {'accepted': True, 'code': code, 'reason': 'model_candidate_source_role_and_catalog_conditions_verified',
-                    'proofs': proofs, 'condition': condition}
+    return result, {'accepted': True, 'code': code, 'reason': 'source_candidate_role_and_catalog_conditions_verified',
+                    'proofs': proofs, 'condition': condition,
+                    'scope_path': scope_path,
+                    'candidate_source': 'operative_direct_certificate_code_not_itself_identity',
+                    'model_fact_used_for_identity': False,
+                    'model_claim_for_review': model_facts.get('실제구매대상_경쟁제품_고시조건')}

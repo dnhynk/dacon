@@ -4,6 +4,7 @@ Pass a preloaded ProductFacts catalog helper. Original text offsets are kept.
 Catalog candidate retrieval is reused, but weak candidates never set scope.
 """
 from __future__ import annotations
+from .legal_context import applicable_law
 import re
 from .products import normalized_map, ProductFacts
 
@@ -23,6 +24,21 @@ END=re.compile(r'소지한|보유한|갖춘|소지하여|보유하여|소지해�
 def norm(s):return normalized_map(s)[0]
 
 
+def small_enterprise_special_reference(text):
+    """Resolve the statute namespace, not just the article number.
+
+    Article 7-2 also occurs in negotiated-contract price evaluation rules.
+    Likewise, an ordinary joint project is not an SME procurement exception.
+    """
+    n = norm(text)
+    statute = (r'(?:중소기업제품구매촉진및판로지원에관한법률|판로지원법)'
+               r'[」｣』]?(?:시행령[」｣』]?)?(?:제)?7조의2')
+    return bool(re.search(statute, n) or re.search(
+        r'(?:소기업|소상공인).{0,80}(?:공동사업|유찰)|'
+        r'공동사업.{0,80}(?:소기업|소상공인)|'
+        r'(?:중소기업|소기업).{0,80}자격.{0,35}3인이하', n))
+
+
 def evidence(record,di,a,b):
     d=record['docs'][di]
     return {'doc_index':di,'doc_id':d.get('doc_id'),'document_role':d.get('type'),
@@ -39,11 +55,87 @@ def mask_laws(n):
     return n
 
 
+_HEADING_DECORATION = r'[|○●□■❍•·ㆍ※-]*'
+_SECTION_PATH = r'\d{1,3}(?:[.-]\d{1,3}){0,4}'
+_HEADING_PREFIX = (_HEADING_DECORATION + r'(?:' + _SECTION_PATH +
+                   r'[.)]?|[가-하][.)]|[ivx]{1,8}[.)]?)?' + _HEADING_DECORATION)
+_BID_METHOD = (r'(?:입찰서제출|견적서제출|견적제출자|견적제출|견적입찰|전자입찰|'
+               r'용역입찰|물품입찰|제안서제출|용역업체|공급업체|제안업체|입찰|견적|공모|응모|제안|사업)')
+_QUALIFICATION_TITLE = re.compile('^' + _HEADING_PREFIX + r'(?:계약방법및)?(?P<below>(?:아래|다음)의)?(?:' +
+    _BID_METHOD + r'(?:[·ㆍ/]' + _BID_METHOD + r'|\(' + _BID_METHOD + r'\))?)?(?:' + ELIG.pattern + r'|견적(?:서)?제출자격)')
+_QUALIFICATION_OBLIGATION = (r'(?:갖춘(?:자|업체|사업자)(?:(?:이어야|여야)(?:만)?(?:함|한다|합니다)|에한함)?|'
+    r'(?:갖추어야|갖춰야)(?:만)?(?:함|한다|합니다)|갖출것|'
+    r'충족(?:(?:하는|한)(?:자|업체|사업자)(?:에한함)?|(?:하여야|해야)(?:만)?(?:함|한다|합니다))?)')
+_ALL_CONDITIONS = re.compile(r'(?:다음|아래)(?:의)?(?:각호(?:의)?)?(?:입찰참가)?(?:조건|요건|자격|사항|기준)(?:을|를)?모두' +
+                             _QUALIFICATION_OBLIGATION + r'(?:[/,]증빙서류(?:要|요|필요))?')
+_ENUMERATED_CONDITIONS = re.compile(r'(?:하기|아래)(?:\d{1,2}\)[,]?){1,10}의자격사항을모두' + _QUALIFICATION_OBLIGATION)
+_QUALIFICATION_REFERENCE = re.compile(r'(?:자세한사항은)?입찰공고(?:문|서)(?:에의함|참조)(?:\(나라장터g2b\))?')
+_NUMBERED_SECTION = re.compile(r'^(?:' + _SECTION_PATH + r'[.)](?![\d.]|$)|[ivx]{1,8}[.)])')
+_SCALAR_LINE = re.compile(r'^\d+(?:\.\d+)+(?:[.]?)(?:%|ghz|mhz|khz|hz|mm|cm|km|kg|억원|만원|원|이상|이하|미만|초과)')
+
+
 def heading(n):
-    if len(n)<100 and ELIG.search(n) and not re.search(r'규정|법률|시행령|제\d+조|갖춘|등록한|문의',n):return 'eligibility'
-    if len(n)<100 and re.search(r'제출서류|구비서류|제출목록|제안서작성|서식\d|붙임\d',n):return 'forms'
+    if not n or len(n) >= 220:
+        return None
+    from .qualification_tables import certificate_header
+    if certificate_header(n):
+        return None  # Column captions do not erase a parent example/stage.
+    # Interpretation only: a known HWP export prefix is not part of the
+    # title. extract_inventory still records the entire original line.
+    n = re.sub(r'^parashape="\d+"style="\d+">', '', n)
+    if len(n) >= 150:
+        return None
+    if n.startswith('【') and n.endswith('】'):
+        n = n[1:-1]
+    title = _QUALIFICATION_TITLE.match(n)
+    if title:
+        tail = n[title.end():].lstrip(':：').rstrip('.。')
+        if re.search(r'예시|작성예|가정|참고용|적용하지|적용되지|요구하지|삭제|철회|필요.{0,5}없', tail):
+            return 'other'  # Close any prior operative section before this example/withdrawal.
+        # A separately marked note does not erase the title. Its complete
+        # text remains available to the obligation/exception consumers. PDF
+        # text may put that marker inside the heading's parentheses, so unwrap
+        # both before and after removing the note.
+        def unwrap(value):
+            if value[:1] in ('(', '[') and value.endswith(
+                    ')' if value[0] == '(' else ']'):
+                return value[1:-1].rstrip('.。')
+            return value
+        tail = unwrap(tail)
+        tail = unwrap(tail.partition('※')[0].rstrip('.。'))
+        if title['below']:
+            if re.fullmatch(r'을모두' + _QUALIFICATION_OBLIGATION, tail):
+                return 'eligibility'
+        elif (tail in ('', '및조건', '조건', '요건', '및방법', '및선정방법', '에관련공통사항',
+                       '에관한사항', '에관한공통사항', '모두해당', '모두충족',
+                       '일반경쟁입찰', '제한경쟁입찰', '지명경쟁입찰')
+              or _ALL_CONDITIONS.fullmatch(tail) or _ENUMERATED_CONDITIONS.fullmatch(tail)
+              or _QUALIFICATION_REFERENCE.fullmatch(tail)):
+            return 'eligibility'
+        else:
+            # A statutory preamble can precede the actual "all following
+            # conditions" governor on the same heading line.  Preserve the
+            # whole line, but recognize the section when that governor ends it.
+            all_conditions = _ALL_CONDITIONS.search(tail)
+            if (all_conditions and all_conditions.end() == len(tail)
+                    and re.search(r'자격을갖춘(?:자|업체)(?:로서)?[,，]?$',
+                                  tail[:all_conditions.start()])):
+                return 'eligibility'
+    # A mention in a sanction, registration sentence or verification note is
+    # not a header and cannot create a closed section proving absence.
+    form = re.search(r'제출서류|구비서류|제출목록|제안서작성|서식\d|붙임\d', n)
+    if len(n)<100 and form and not re.search(r'직접생산.{0,150}(?:소지한|보유한)', n[:form.start()]):
+        return 'forms'
     if len(n)<90 and re.search(r'배점|평가기준|평가항목|평가방법|정량평가',n) and not re.search(r'각\d+부|자료.{0,15}\d+부',n):return 'scoring'
-    if len(n)<85 and re.match(r'^(?:\d+(?:[-.]\d+)*[.)]|[ⅠⅡⅢⅣⅤⅥ]+[.)]?)',n) and not END.search(n):return 'other'
+    if re.fullmatch(_HEADING_PREFIX + r'(?:입찰서|견적서)제출안내', n):
+        return 'other'
+    from .qualification_structure import explicit_other_title
+    if explicit_other_title(n):
+        return 'other'
+    if (len(n)<85 and _NUMBERED_SECTION.match(n) and not _SCALAR_LINE.match(n)
+            and not END.search(n) and not direct_verification_requirement(n)
+            and not re.search(r'입찰참가자(?:격)?등록규정.{0,12}(?:에의하여|에따라)', n)):
+        return 'other'
     return None
 
 
@@ -91,25 +183,73 @@ def size_facts(n):
     return None
 
 
+def exception_kind(text):
+    """A conditional price settlement does not grant bidder eligibility.
+
+    Retain the source observation, and leave ambiguous permission or statutory
+    references for review. The narrow nonoperative case requires both a bidder
+    hypothetical and an explicit tax/profit deduction in the contract price.
+    """
+    n = norm(text)
+    statutory = bool(re.search(r'제2조의3|우선조달.{0,15}(?:예외|제외|적용하지)', n))
+    nonprofit = bool(re.search(r'비영리.{0,40}(?:참가|참여)', n))
+    if not statutory and not nonprofit:
+        return None
+    if re.search(r'제2조의3.{0,25}해당되지않|비영리.{0,40}참가불가', n):
+        return 'priority_exception_denied'
+    permission = re.search(r'비영리.{0,100}(?:참가|참여)(?:할수있|가가능|가능|를허용)|'
+                           r'비영리.{0,100}(?:확인서|자격).{0,40}(?:없어도|면제|불필요)|'
+                           r'(?:참가|참여)자격.{0,20}(?:인정|부여)|참가대상.{0,30}비영리', n)
+    hypothetical = re.search(r'비영리.{0,100}(?:투찰할경우|(?:낙찰자|계약상대자).{0,30}경우)|'
+                             r'(?:낙찰자|계약상대자).{0,45}비영리.{0,40}경우', n)
+    deduction = re.search(r'(?:이윤|부가가치세|부가세).{0,35}(?:제외|차감|공제).{0,45}(?:금액|계약)', n)
+    if nonprofit and hypothetical and deduction and not statutory and not permission:
+        return 'conditional_price_settlement'
+    return 'nonprofit_alternative' if nonprofit else 'priority_exception_reference'
+
+
+def requires_exception_review(observation):
+    return observation['kind'] not in {'priority_exception_denied', 'conditional_price_settlement'}
+
+
+def direct_verification_requirement(text):
+    """An explicit database check with exclusion is a substantive obligation.
+
+    A database mention alone is not possession. Keep this narrower relation
+    separate from certificate-holding language and commodity-code assignment.
+    """
+    n = norm(text)
+    subject = r'직접생산(?:여부|확인(?:증명)?서|증명서)?(?:의)?(?:확인)?(?:은|는|이|가|도)?'
+    system = r'(?:중소기업(?:제품)?공공구매종합정보망|공공구매종합정보망)(?:\([^)]{1,100}\))?'
+    prefix = subject + system + r'에서'
+    affirmative = r'확인(?:이)?(?:가능하여야|가능해야|되어야|돼야)(?:하며|하고|한다|합니다)'
+    denied = r'확인(?:이)?(?:되지않(?:을|는|은)|안(?:되|될))경우(?:에는|에)?(?:입찰|견적)(?:참가|제출)?자격(?:이|은)?없'
+    # Both halves must share this direct-production subject. Another note or
+    # certificate cannot supply a missing predicate.
+    return bool(re.search(prefix + affirmative + r'[,.;。]?' + denied, n)
+                or re.search(prefix + denied, n))
+
+
 def extract_inventory(record, *, heading_fn=None):
     recognize = heading if heading_fn is None else heading_fn
     inventory=[];sections=[];quotes=[];exceptions=[];declarations=[]
     for di,d in enumerate(record['docs']):
-        t=d['text'];ls=list(re.finditer(r'[^\r\n]+',t));role='unknown';head=None;section_start=None
+        t=d['text'];ls=list(re.finditer(r'[^\r\n]+',t))
+        from .qualification_tables import certificate_rows
+        from .table_structure import pipe_separators
+        table_rows = certificate_rows(t)
+        from .qualification_structure import contexts
+        roles, doc_sections = contexts(record, di, ls, recognize, norm, evidence)
+        sections.extend(doc_sections)
         for li,m in enumerate(ls):
-            raw=m.group();n=norm(raw);new=recognize(n)
-            if new:
-                if section_start is not None:
-                    sections.append({'evidence':evidence(record,di,section_start,m.start()),'closed':True});section_start=None
-                role=new;head=evidence(record,di,m.start(),m.end())
-                if new=='eligibility':section_start=m.start()
+            raw=m.group();n=norm(raw)
+            role,head=roles[li]['role'],roles[li]['heading']
             ev=evidence(record,di,m.start(),m.end())
             if len(n)<250 and re.search(r'소액수의|수의계약.{0,15}(?:견적|안내)|견적제출안내공고|견적서제출안내공고',n) and not re.search(r'경우|법률|시행령|준용',n):quotes.append(ev)
-            if re.search(r'제2조의3|우선조달.{0,15}(?:예외|제외|적용하지)|비영리.{0,40}(?:참가|참여)',n):
-                denied=bool(re.search(r'제2조의3.{0,25}해당되지않|비영리.{0,40}참가불가',n))
-                kind='priority_exception_denied' if denied else 'nonprofit_alternative' if '비영리' in n and re.search(r'참가|참여',n) else 'priority_exception_reference'
+            kind = exception_kind(n)
+            if kind is not None:
                 exceptions.append({'kind':kind,'evidence':ev,'role':role})
-            if re.search(r'제7조의2|공동사업|자격.{0,35}3인이하|소기업.{0,45}유찰',n):
+            if small_enterprise_special_reference(n):
                 exceptions.append({'kind':'small_enterprise_special_case_reference','evidence':ev,'role':role})
             if CODE.search(n) and re.search(r'세부품명|품명번호|품목번호',n):
                 purchase=bool(re.search(r'본입찰대상물품|본사업대상물품|구매대상물품',n))
@@ -122,10 +262,11 @@ def extract_inventory(record, *, heading_fn=None):
             if not signal:continue
             end=m.end()
             # Join immediately following wrapped wording only; headings stop it.
-            if (DIRECT.search(n) or SIZE_SIGNAL.search(n)) and not END.search(n) and len(n)<400:
+            if signal and not END.search(n) and len(n)<400 and not pipe_separators(raw):
                 for nx in ls[li+1:li+5]:
                     nn=norm(nx.group())
-                    if recognize(nn) or re.match(r'^[가-하][.)]|^[①-⑳]',nn):break
+                    if (pipe_separators(nx.group()) or recognize(nn)
+                            or re.match(r'^[가-하][.)]|^[①-⑳]|^\d+(?:[-.]\d+)*[.)]',nn)):break
                     if nx.end()-m.start()>900:break
                     end=nx.end();n=norm(t[m.start():end])
                     if END.search(n):break
@@ -133,6 +274,8 @@ def extract_inventory(record, *, heading_fn=None):
             direct='직접생산' in n;sz=size_facts(n)
             direct_required=bool(re.search(r'직접생산.{0,240}(?:소지한|보유한|소지하여|보유하여|업체이어야)',masked) or
                                  re.search(r'직접생산확인기준.{0,150}세부품명.{0,100}소지한',n))
+            verified_requirement = direct_verification_requirement(n)
+            direct_required |= verified_requirement
             is_certificate=bool(re.search(r'확인서|확인증|직접생산',n))
             operative=role=='eligibility' and bool(END.search(n))
             note=bool(re.match(r'^(?:※|다만|단[,.:]|[-✓])',n))
@@ -145,20 +288,34 @@ def extract_inventory(record, *, heading_fn=None):
             elif conditional:status='special_entity_branch'
             elif role=='forms':status='submission_or_form'
             elif role=='scoring':status='scoring'
+            elif role=='eligibility' and verified_requirement:status='mandatory_eligibility'
             elif operative and not note:status='mandatory_eligibility'
+            elif (operative and note and re.match(r'^[-✓]',n) and is_certificate
+                  and re.search(r'소지한|보유한|소지하여|보유하여',masked)
+                  and not re.search(r'경우|신청|다만|없어도|불필요|면제',n)):
+                status='mandatory_eligibility'  # A list bullet can require an issued certificate.
             elif operative and note and not re.search(r'경우|신청|유효|발급된',n):status='mandatory_eligibility'
             elif note and is_certificate:status='verification_or_exception_note'
             else:status='incidental_or_unresolved'
+            table = table_rows.get(m.start())
+            if table:
+                if (table['header']['kind'] == 'checklist' or table['header']['submission_caption']) and role in ('forms', 'eligibility', 'unknown'):
+                    status = 'submission_or_form'
+                elif table['status'] != 'applicant_scope' and status == 'mandatory_eligibility':
+                    status = 'incidental_or_unresolved'
             inventory.append({'status':status,'section_role':role,'heading':head,'evidence':ev,
+                **({'certificate_table':table} if table else {}),
+                'heading_ancestors':roles[li]['ancestors'],
                 'direct_production':direct,'direct_requirement':direct_required,'size':sz,'codes':CODE.findall(n),
-                'other_entity_options':re.findall(r'비영리법인|벤처기업|창업기업|특별법인|협동조합|중견기업',n),
-                'alternative_size_branch_unresolved':bool(re.search(r'(?:또는|혹은)(?:벤처기업|창업기업)|(?:벤처기업|창업기업).{0,30}(?:중하나|어느하나|또는|혹은)',n)),
+                'direct_requirement_basis': ('mandatory_database_verification_with_exclusion' if verified_requirement
+                                             else 'possession_wording' if direct_required else None),
+                'other_entity_options':re.findall(r'비영리법인|벤처기업|창업기업|특별법인|협동조합|중견기업',masked),
+                'alternative_size_branch_unresolved':bool(re.search(r'(?:또는|혹은)(?:벤처기업|창업기업)|(?:벤처기업|창업기업).{0,30}(?:중하나|어느하나|또는|혹은)',masked)),
                 'validity':{'required_valid_period':bool(re.search(r'유효기간(?:내|이내)|유효한',n)),
                             'pre_bid_issue_wording':bool(re.search(r'마감.{0,12}전일까지.{0,12}(?:발급|신청)',n)),
                             'application_grace_wording':bool(re.search(r'신청한.{0,12}(?:업체|사항)|5일이내',n)),
                             'actual_bidder_certificate':'not_supplied_not_verified'},
                 'nonprofit_alternative':bool(re.search(r'비영리.{0,35}(?:법인|참가|참여)',n))})
-        if section_start is not None:sections.append({'evidence':evidence(record,di,section_start,len(t)),'closed':False})
     # Wrapped candidates can overlap; retain the earliest complete span.
     result=[]
     for x in inventory:
@@ -198,7 +355,8 @@ def product_scope(record,pf,product,inventory,declarations,price):
     rows=[{'code':c,'listed':c in pf.products,
            'name':pf.products[c]['세부품명'] if c in pf.products else None,
            'note':pf.products[c]['특이사항'] if c in pf.products else None,
-           'condition':ProductFacts.condition(pf.products[c]['특이사항'],price) if c in pf.products else {'status':'unlisted'}} for c in codes]
+           'condition':ProductFacts.condition(pf.products[c]['특이사항'],price,
+               record=record, product_name=pf.products[c]['세부품명']) if c in pf.products else {'status':'unlisted'}} for c in codes]
     status='unknown'
     if rows:
         states=[r['condition']['status'] for r in rows]
@@ -222,13 +380,19 @@ def product_scope(record,pf,product,inventory,declarations,price):
 def extract_sme_facts(record,pf, *, product_override=None):
     product=pf.extract(record,top_k=3)
     inventory,sections,quotes,exceptions,declarations=extract_inventory(record)
-    p=product['price'];price=None if p['meta_body_conflict'] else p['value_krw']
+    # The shared resolver preserves registration disagreement separately from
+    # the notice value that governs the official applicability bands.
+    p=product['price'];price=p['value_krw']
     scope=product_scope(record,pf,product,inventory,declarations,price)
     if product_override is not None:
         scope=product_override
     active=[x for x in inventory if x['status']=='mandatory_eligibility']
     sizes=[x for x in active if x['size']]
     direct=[x for x in active if x['direct_requirement']]
+    from .production_certificate import coverage as certificate_coverage
+    direct_coverage=certificate_coverage(record,direct)
+    definite_direct=[e['evidence'] for e in direct_coverage['observations']
+        if e['production_required_in_every_branch']]
     # Distinct mandatory commercial clauses combine by AND, while OR inside
     # one certificate clause is retained by size_facts.
     allowed=set.intersection(*(set(x['size']['allowed']) for x in sizes)) if sizes else None
@@ -239,23 +403,24 @@ def extract_sme_facts(record,pf, *, product_override=None):
         if re.search(r'(?:다음|아래|각호).{0,30}(?:어느하나|중하나)',context):
             unresolved_size_branch=True  # Cross-clause alternatives need a scoped parse.
     if unresolved_size_branch:allowed=None
-    complete=(record.get('input_completeness',{}).get('완전관측') is True
-              and not any(record.get('dropped_doc_counts',{}).values()))
+    from .input_contract import provided_complete
+    complete=provided_complete(record)
     recovered=any(s['closed'] and s['evidence']['document_role']=='공고문' for s in sections)
+    unclosed=[s['evidence'] for s in sections if not s['closed']]
     # Absence needs full-record scan, completed input, a closed eligibility
     # section and no unresolved lexical candidate for the relevant obligation.
     direct_ambiguous=[x for x in inventory if x['direct_production'] and x['status'] not in ('scoring','incidental_or_unresolved')]
     size_ambiguous=[x for x in inventory if x['size'] and x['status'] not in ('scoring',)]
-    no_direct=complete and recovered and not any(x['direct_production'] for x in inventory)
+    no_direct=complete and recovered and not unclosed and not any(x['direct_production'] for x in inventory)
     raw_size_uncertain=[x for x in inventory if SIZE_SIGNAL.search(mask_laws(norm(x['evidence']['text']))) and x['status'] not in ('scoring',)]
-    no_size=complete and recovered and not raw_size_uncertain and not sizes
-    commercial_exceptions=[x for x in exceptions if x['role']=='eligibility' and x['kind']!='priority_exception_denied']
+    no_size=complete and recovered and not unclosed and not raw_size_uncertain and not sizes
+    commercial_exceptions=[x for x in exceptions if x['role']=='eligibility' and requires_exception_review(x)]
     meta_exception=record.get('meta',{}).get('조항호내용')
     meta_exception_relevant=bool(re.search(r'제2조의3|비영리|우선조달.{0,10}예외',str(meta_exception)))
     exception_uncertain=bool(commercial_exceptions or meta_exception_relevant)
-    meta_small_special=bool(re.search(r'제7조의2|공동사업|3인이하|유찰',str(meta_exception)))
+    meta_small_special=small_enterprise_special_reference(norm(str(meta_exception)))
     quote_uncertain=bool(quotes) or record.get('meta',{}).get('계약방법')=='수의계약'
-    law=record.get('meta',{}).get('적용계약법')
+    law=applicable_law(record)
     ordinary=law in ('국가계약법','지방계약법') and record.get('meta',{}).get('업무구분') in ('일반용역','물품(내자)')
     decisions={f'v{i}':{'value':None,'reason':'insufficient_semantic_proof','evidence':[]} for i in ITEMS}
     def put(i,value,reason,evs=()):decisions[f'v{i}']={'value':value,'reason':reason,'evidence':list(evs)}
@@ -277,12 +442,12 @@ def extract_sme_facts(record,pf, *, product_override=None):
             else:put(17,0,'small_or_micro_only_not_broad_sme_restriction',es)
         known=scope['status'];identity=[s['evidence'] for s in scope['identity_evidence']]
         targets={r['code'] for r in scope['supported_products']}
-        direct_codes={c for x in direct for c in x['codes']}
+        direct_codes=set(direct_coverage['guaranteed_codes'])
         all_declared_supported=(not scope['uncertainty'] and set(scope['meta_codes']).issubset(targets))
         if targets and all_declared_supported and targets.issubset(direct_codes):put(10,0,'all_supported_purchase_targets_have_operative_direct_requirement',[x['evidence'] for x in direct])
         if known=='general_in_supplied_catalog':
             for i in (10,11,13):put(i,0,'supported_purchase_outside_supplied_competition_catalog',identity)
-            if direct:put(12,1,'general_purchase_with_mandatory_direct_production',identity+[x['evidence'] for x in direct])
+            if definite_direct:put(12,1,'general_purchase_with_mandatory_direct_production',identity+definite_direct)
             if price is not None:
                 if price>=NOTICE and allowed:put(14,1,'general_above_notice_has_commercial_sme_restriction',es+identity)
                 if FLOOR<=price<NOTICE and allowed and 'medium' not in allowed and not quote_uncertain and not exception_uncertain and not meta_small_special:put(15,1,'general_middle_band_excludes_medium_enterprise',es+identity)
@@ -299,19 +464,26 @@ def extract_sme_facts(record,pf, *, product_override=None):
                     # The provided competition table does not establish the
                     # separate Article 7-2 small-enterprise designation list.
                     put(13,None,'small_only_competition_requires_article7_2_designation_check',es+identity)
-        quote_small=bool(quotes) and record.get('meta',{}).get('계약방법')=='수의계약' and price is not None and 20_000_000<price<=100_000_000 and allowed and 'medium' not in allowed
-        if quote_small:put(13,0,'actual_small_quote_with_statutory_small_enterprise_band',[*quotes,*es])
+        from .small_quote import review as small_quote_review
+        quote_sizes={tuple(sorted(x['size']['allowed'])) for x in sizes}
+        quote_review=small_quote_review(record,price,
+            allowed if len(quote_sizes)==1 and not unresolved_size_branch else None)
+        if quote_review['status']=='permitted_small_size_route':
+            put(13,0,quote_review['reason'],[*quote_review['evidence'],*es])
     return {'version':'sme_logic_v1','product':scope,'product_candidates':product,
             'price':{'effective_won':price,**p},'inventory':inventory,'eligibility_sections':sections,
             'enterprise_size':{'allowed_commercial':sorted(allowed) if allowed else None,'active_clauses':len(sizes),
                                'unresolved_alternative_branch':unresolved_size_branch,
                                'special_entities_are_separate':True},
-            'direct_production':{'active_clauses':len(direct),'supported_target_codes':sorted(direct_codes) if ordinary else []},
+            'direct_production':{'active_clauses':len(direct),'supported_target_codes':sorted(direct_codes) if ordinary else [],
+                                 'certificate_coverage':direct_coverage},
             'absence_proof':{'full_input_scanned':True,'complete':complete,'closed_notice_eligibility_found':recovered,
+                             **({'unclosed_eligibility':unclosed} if unclosed else {}),
                              'no_direct_requirement':no_direct,'no_size_requirement':no_size,
                              'unresolved_direct_candidates':len(direct_ambiguous),'size_candidates':len(size_ambiguous),
                              'dropped_doc_counts':record.get('dropped_doc_counts'), 'input_completeness':record.get('input_completeness')},
             'exceptions':{'body':exceptions,'actual_quote_evidence':quotes,'meta_reason':meta_exception,
+                          'small_quote_v13_review':quote_review if ordinary else None,
                           'meta_reason_relevant':meta_exception_relevant,'priority_exception_requires_review':exception_uncertain,
                           'meta_small_enterprise_special_case':meta_small_special,'quote_or_quote_metadata':quote_uncertain,
                           'article7_2_designation_status':'not_established_from_competition_catalog'},
@@ -337,7 +509,8 @@ def compact_prompt(facts):
         lines.append(f"[{e['document_role']} D{e['doc_index']} {e['start']}:{e['end']}] {e['text']}")
         lines.append(f"role={x['status']}; size={x['size']}; direct={x['direct_production']}; validity={x['validity']}")
     for x in facts['exceptions']['body']:
-        e=x['evidence'];lines.append(f"EXCEPTION {x['kind']} [D{e['doc_index']} {e['start']}:{e['end']}] {e['text']}")
+        label = 'EXCEPTION' if requires_exception_review(x) else 'NONOPERATIVE_EXCEPTION_OBSERVATION'
+        e=x['evidence'];lines.append(f"{label} {x['kind']} [D{e['doc_index']} {e['start']}:{e['end']}] {e['text']}")
     lines.append('META_EXCEPTION '+str(facts['exceptions']['meta_reason']))
     for e in facts['exceptions']['actual_quote_evidence']:
         lines.append(f"QUOTE [D{e['doc_index']} {e['start']}:{e['end']}] {e['text']}")

@@ -6,9 +6,13 @@ not an asserted current-law service. See legal_sources.json and report.
 """
 from __future__ import annotations
 
+from .anonymized_tokens import anonymous_tokens, province_projection
+
+from .legal_context import applicable_law
 import re
 import unicodedata
-from decimal import Decimal
+
+from .comparison import _WON, won_value
 
 NOTICE_WON = 230_000_000  # supplied national notice; local decree 20(1)(5)
 ITEMS = (2, 3, 4, 8)
@@ -45,23 +49,15 @@ def lines(doc, di):
 
 
 NUM = r'\d[\d,]*(?:\.\d+)?'
-UNIT = r'(?:천만|백만|십만|억|만|천|백|십)'
-MONEY = re.compile(r'(?<![\d.,])(?:' + NUM + UNIT + r'?(?:' + NUM + UNIT + r')?원|' + NUM + r'억(?![\d원]))')
-MULT = {'억': 100000000, '천만': 10000000, '백만': 1000000,
-        '십만': 100000, '만': 10000, '천': 1000, '백': 100, '십': 10, '': 1}
+MONEY = re.compile(_WON.pattern + r'|(?<![\d.,])' + NUM + r'억(?![\d원조억만천백십])')
 
 
 def won(raw):
-    raw = compact(raw).removesuffix('원').replace(',', '')
-    total, end = Decimal(0), 0
-    for m in re.finditer(r'(\d+(?:\.\d+)?)(천만|백만|십만|억|만|천|백|십)?', raw):
-        if m.start() != end:
-            raise ValueError(raw)
-        total += Decimal(m[1]) * MULT[m[2] or '']
-        end = m.end()
-    if end != len(raw) or total != total.to_integral_value():
+    text = str(raw).strip()
+    value = won_value(text if '원' in text else text + '원')
+    if value is None or value != value.to_integral_value():
         raise ValueError(raw)
-    return int(total)
+    return int(value)
 
 
 def vat(text):
@@ -80,18 +76,44 @@ def amounts(ev, doc):
         comparator = cm[2] if cm else None
         # Current-project amounts are facts, never silently experience cutoffs.
         project = bool(re.search(r'(?:본사업|금회|금번|현재사업)(?:의)?(?:예산|금액|기초금액)[^\d]{0,8}$', n[max(0,m.start()-22):m.start()]))
-        out.append({'won': won(m.group()), 'comparator': comparator,
+        source = subspan(doc, ev['doc_index'], ev['start'], pos, m.start(), m.end())
+        try:
+            # Normalization finds candidates; the original spacing still owns
+            # the literal. Joining damaged numeric columns must not invent 23.
+            value = won(unicodedata.normalize('NFKC', source['text']))
+        except ValueError:
+            value = None  # Preserve the failed observation without aborting the notice.
+        out.append({'won': value, 'comparator': comparator,
+                    'parse_status': 'exact' if value is not None else 'unresolved_unit_expression',
                     'vat': vat(n[max(0,m.start()-12):m.end()+27]),
                     'binding': 'current_project' if project else 'experience_candidate',
-                    'evidence': subspan(doc, ev['doc_index'], ev['start'], pos, m.start(), m.end())})
+                    'evidence': source})
     return out
 
 
 ELIG = re.compile(r'(?:입찰|견적(?:서)?제출|제안(?:\(입찰\))?)(?:참가|참여)?자격|참가자격|입찰참가조건')
 SCORE = re.compile(r'배점|정량(?:적)?평가|평가기준|평가항목|평가방법|적격심사|수행능력평가|기술능력평가')
 FORM = re.compile(r'서식\s*\d|붙임\d|서식[〉>\]]|제출서류|제출목록|작성요령|작성지침|증명서양식')
-PAST = re.compile(r'실적|수행경험|납품경험|최근\d+년.{0,240}(?:수행|완료|납품)')
-MANDATORY_END = re.compile(r'(?:실적|경험).{0,200}(?:업체|자격|있어야|보유한자|있는자)|(?:수행|완료|납품)\)?한업체')
+PAST = re.compile(r'(?<!현)실적|수행경험|납품경험|최근\d+년.{0,240}(?:수행|완료|납품)')
+# A flattened certificate's "업체명" field names its submitter; it is not the
+# bidder subject of an experience requirement. Keep genuine "실적 보유 업체"
+# clauses, including those restated in a form, eligible for substantive review.
+MANDATORY_END = re.compile(r'(?:실적|경험).{0,200}(?:업체(?!명)|자격|있어야|보유한자|있는자)|(?:수행|완료|납품)\)?한업체(?!명)')
+
+
+def unresolved_requirement(n):
+    """Reject a nonasserted substantive condition, not a certificate waiver."""
+    if re.search(r'예시|가정|참고용|주장|단정할수없|확인불가', n):
+        return True
+    # The predicate is about the bidder's experience. A preceding exemption
+    # from submitting a certificate does not remove a later actual condition.
+    for m in MANDATORY_END.finditer(n):
+        tail = n[m.end():]
+        if re.search(r'(?:요건|조건|제한|의무)(?:은|는|을|를)?(?:삭제|철회|폐지|면제)|'
+                     r'(?:일|이어야할)?필요(?:가|는|도)?없|'
+                     r'(?:삭제|철회|폐지)(?:한다|합니다|함|된|되었)', tail):
+            return True
+    return False
 
 
 def heading_role(n):
@@ -150,8 +172,21 @@ def performance_facts(record):
                 exclusions.append(ev)
             # A past purchaser/facility's location is not a restriction on the
             # bidder's current office. Preserve that distinction for v8.
-            if role == 'eligibility' and re.search(r'본점|본사|주된영업소|주된사무소', n):
-                place = re.search(r'\[지역:|\[수요기관\(기초자치단체\)\].{0,3}내|(?:특별|광역)시|특별자치도|경기|경북|경남|경상|강원|충청|전라|제주', n)
+            explicit_province_bidder = re.search(
+                r'(?:특별시|광역시|특별자치도|경기|경북|경남|경상|강원|충청|전라|제주)'
+                r'(?:에|내에)?소재(?:한|하고있는|해있는)?[^\n]{0,80}(?:업체|사업자|갖춘자)', n)
+            if role == 'eligibility' and (
+                    re.search(r'본점|본사|주된영업소|주된사무소', n)
+                    or explicit_province_bidder):
+                # Keep anonymous attributes out of the free-text place matcher.
+                # A malformed token is not a geographic witness just because
+                # one of its attributes contains a recognizable province.
+                literal = province_projection(n, allowed_provinces=())
+                place = re.search(r'(?:특별|광역)시|특별자치도|경기|경북|경남|경상|강원|충청|전라|제주', literal)
+                place = place or any(not token.errors and (
+                    token.kind == 'region' or token.kind == 'institution' and token.value == '기초자치단체'
+                    and re.match(r'(?:관할(?:구역)?|행정구역|지역)?내', n[token.end:]))
+                    for token in anonymous_tokens(n))
                 operative = re.search(r'업체|사업자|제한|두고|둔|갖춘자|있는자', n)
                 neg = re.search(r'지역제한없|소재지.{0,15}(?:무관|관계없)|소재지.{0,10}제한하지', n)
                 if place and operative and not neg:
@@ -161,13 +196,22 @@ def performance_facts(record):
             local_score = bool(re.search(r'배점|\d+(?:\.\d+)?점|평가한다|평가하며|실적으로평가', n))
             local_form = bool(re.search(r'실적증명서.{0,20}(?:[1-9]부|서식)|실적만기재|실적은.{0,20}기재|기재한|잔존구성원|집행실적|배출실적', n))
             positive_gate = bool(MANDATORY_END.search(n))
-            actual_gate = role == 'eligibility' and positive_gate and not local_score and not local_form
-            vague = bool(re.search(r'실적이우수|풍부한실적|실적이풍부|업체또는|보유하거나', n))
+            nonasserted = unresolved_requirement(n)
+            actual_gate = role == 'eligibility' and positive_gate and not local_score and not local_form and not nonasserted
+            qualitative_gate = bool(re.search(r'실적이우수|풍부한실적|실적이풍부', n))
+            vague = qualitative_gate or bool(re.search(r'업체또는|보유하거나', n))
             qualifier_note = n.startswith('※') and bool(re.search(r'공동수급체중|대표사를제외|조건만충족|실적증명서는.{0,25}제출',n))
             if permission:
                 status = 'explicit_permission'
+            elif nonasserted:
+                status = 'unresolved_modality'
             elif qualifier_note:
                 status = 'qualification_note'
+            elif actual_gate and qualitative_gate:
+                # The threshold cannot support amount or purchaser arithmetic,
+                # but it is still an affirmative experience qualification. It
+                # can therefore establish the experience side of item 8.
+                status = 'qualitative_mandatory'
             elif actual_gate and not vague:
                 status = 'mandatory'
             elif actual_gate and vague:
@@ -180,6 +224,8 @@ def performance_facts(record):
                 status = 'unresolved'
             money = amounts(ev, doc)
             req = [a for a in money if a['comparator'] in ('이상', '초과') and a['binding']=='experience_candidate']
+            if any(a['won'] is None for a in money):
+                req = []
             if '합산' in n or '합계' in n or '누계' in n:
                 aggregation = 'sum' if not re.search(r'단일|단독계약', n) else 'mixed'
             elif re.search(r'단일|단독계약', n):
@@ -207,16 +253,19 @@ def performance_facts(record):
                                'quantities': quantities, 'aggregation': aggregation,
                                'purchaser': purchaser(combined)})
     meta=record.get('meta',{})
-    law=meta.get('적용계약법')
+    law=applicable_law(record)
     work=meta.get('업무구분')
     prices=project_prices(record)
-    estimate=prices['estimated_price']['value_won']
+    estimate_price=prices['estimated_price']
+    estimate=estimate_price['value_won']
     budget=prices['budget']['value_won']
     mandatory=[c for c in candidates if c['status']=='mandatory']
+    qualitative_mandatory=[c for c in candidates if c['status']=='qualitative_mandatory']
     ambiguous=[c for c in candidates if c['status']=='ambiguous_eligibility']
     quote=bool(procedures)
     blockers=[]
     if ambiguous: blockers.append('vague_experience_eligibility')
+    if qualitative_mandatory: blockers.append('qualitative_experience_threshold_not_numeric')
     if exclusions and mandatory: blockers.append('conflicting_experience_permission')
     if quote: blockers.append('actual_quote_procedure_exception_review')
     if any(c['amount_status']!='known' for c in mandatory): blockers.append('mandatory_amount_unknown_or_multiple')
@@ -227,12 +276,21 @@ def performance_facts(record):
     def decide(i,value,reason,evidence):
         decisions[f'v{i}']={'value':value,'reason':reason,'evidence':evidence}
     valid=law in ('국가계약법','지방계약법') and work in ('일반용역','물품(내자)') and not (exclusions and mandatory)
+    # The necessary price predicate is independent of whether the experience
+    # clause parser recognized an operative requirement. At/above the supplied
+    # ceiling item 2 cannot apply, including goods. Unknown authority thresholds
+    # and conflicting prices still abstain.
+    from .prices import in_band
+    below_notice = in_band(estimate_price, upper=NOTICE_WON)
+    if (law in ('국가계약법', '지방계약법') and work in ('일반용역', '물품(내자)')
+            and below_notice is False):
+        decide(2,0,'known_estimate_not_below_supplied_notice',[])
     if valid and mandatory:
         es=[c['evidence'] for c in mandatory]
         if work=='일반용역' and estimate is not None and not quote:
             if estimate < NOTICE_WON:
                 decide(2,1,'mandatory_service_experience_below_supplied_notice',es)
-            elif law=='지방계약법' or meta.get('소관구분')=='국가기관':
+            elif below_notice is False:
                 decide(2,0,'known_estimate_not_below_supplied_notice',es)
         numeric=[c for c in mandatory if c['required_money']]
         if budget and estimate:
@@ -260,6 +318,11 @@ def performance_facts(record):
             decide(4,0,'mandatory_experience_explicitly_accepts_private_purchasers',es)
         if regions and not quote and work=='일반용역':
             decide(8,1,'mandatory_service_experience_and_operative_region',es+[r['evidence'] for r in regions])
+    if (valid and qualitative_mandatory and regions and not quote
+            and work == '일반용역'):
+        decide(8, 1, 'qualitative_mandatory_service_experience_and_operative_region',
+               [c['evidence'] for c in qualitative_mandatory]
+               + [r['evidence'] for r in regions])
     if quote:
         for i in (2,8):
             decisions[f'v{i}']['reason']='actual_quote_procedure_requires_exception_review'
@@ -272,6 +335,38 @@ def performance_facts(record):
             'scan':{'documents':len(record['docs']), 'characters':scanned,
                     'input_completeness':record.get('input_completeness'),
                     'dropped_doc_counts':record.get('dropped_doc_counts')}}
+
+
+def validate_model_witness(record, row, item, facts):
+    """A scoring/form quote cannot support an eligibility violation.
+
+    This rejects only the model's supplied proof, not other source conditions.
+    The caller applies independent positive source rules afterwards. Unknown is
+    emitted as0 and never recorded as a full-document absence certificate.
+    """
+    quote = row.get(f'e{item}', '')
+    if row.get(f'v{item}') not in (1, '1') or not isinstance(quote, str) or not quote.strip():
+        return None
+    # A form can restate a substantive eligibility condition. Do not reject it
+    # merely because a section heading or another line describes a form.
+    if MANDATORY_END.search(compact(quote)):
+        return None
+    occurrences = []
+    for di, doc in enumerate(record['docs']):
+        for match in re.finditer(re.escape(quote), doc['text']):
+            candidates = [c for c in facts['candidates'] if c['evidence']['doc_index'] == di
+                and c['evidence']['start'] < match.end() and c['evidence']['end'] > match.start()]
+            if not candidates or any(c['status'] not in ('scoring', 'forms_or_submission') for c in candidates):
+                return None
+            occurrences.append({'evidence': span(doc, di, match.start(), match.end()),
+                'purposes': [{'status': c['status'], 'evidence': c['evidence'],
+                              'governing_heading': c['governing_heading']} for c in candidates]})
+    if not occurrences:
+        return None
+    return {'item': item, 'value': 0, 'evidence': '', 'semantic_value': None,
+            'reason': 'model_witness_has_only_scoring_or_form_purpose',
+            'source': 'performance_witness_validation', 'absence_verified': False,
+            'rejected_witness': quote, 'occurrences': occurrences}
 
 
 def compact_prompt(facts, *, max_examples=3):

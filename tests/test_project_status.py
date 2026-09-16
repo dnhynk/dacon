@@ -80,6 +80,23 @@ def test_current_public_registry_is_coherent():
     assert status.repo_path(ROOT, state["entrypoints"]["current_input_b4"]).is_file()
 
 
+def test_new_comparison_does_not_silently_replace_the_standalone_reference():
+    records = [
+        {'id': 'standalone', 'kind': 'fresh_model_inference', 'macro_f1': .4},
+        {'id': 'old-grid-best', 'kind': 'fresh_whole_cohort_policy_comparison',
+         'comparison_round': 'old', 'policy': 'candidate', 'macro_f1': .9},
+        {'id': 'new-grid-control', 'kind': 'fresh_whole_cohort_policy_comparison',
+         'comparison_round': 'new', 'policy': 'current', 'macro_f1': .6},
+        {'id': 'new-grid-best', 'kind': 'fresh_whole_cohort_policy_comparison',
+         'comparison_round': 'new', 'policy': 'candidate', 'macro_f1': .7},
+        {'id': 'new-grid-last', 'kind': 'fresh_whole_cohort_policy_comparison',
+         'comparison_round': 'new', 'policy': 'another', 'macro_f1': .5},
+    ]
+    displayed = status.summarized_measurements({'records': records})
+    assert [row['id'] for label, row in displayed] == [
+        'standalone', 'new-grid-control', 'new-grid-best']
+
+
 def test_current_document_navigation_has_no_missing_targets():
     files = [ROOT / "README.md", ROOT / "START_HERE.md", ROOT / "experiments/README.md"]
     files += [p for p in (ROOT / "docs").glob("*.md") if p.name != "LOCAL_HANDOFF.md"]
@@ -88,6 +105,30 @@ def test_current_document_navigation_has_no_missing_targets():
             if target.startswith(("https://", "http://", "#")):
                 continue
             assert (file.parent / target.split("#", 1)[0]).resolve().exists(), (file, target)
+
+
+def test_standalone_normal_can_be_the_best_in_its_whole_comparison():
+    records = [
+        {'id': 'normal', 'kind': 'fresh_model_inference', 'macro_f1': .8,
+         'comparison_round': 'new', 'policy': 'normal'},
+        {'id': 'diagnostic', 'kind': 'fresh_whole_cohort_policy_comparison',
+         'comparison_round': 'new', 'policy': 'alternative', 'macro_f1': .7},
+    ]
+    displayed = status.summarized_measurements({'records': records})
+    assert [r['id'] for _, r in displayed] == ['normal', 'normal']
+    assert displayed[-1][1]['kind'] == 'fresh_model_inference'
+
+
+def test_newer_standalone_hides_an_older_completed_comparison():
+    records = [
+        {'id': 'old-grid', 'kind': 'fresh_whole_cohort_policy_comparison',
+         'comparison_round': 'old', 'policy': 'candidate', 'macro_f1': .7},
+        {'id': 'new-standalone', 'kind': 'fresh_model_inference', 'macro_f1': .8},
+    ]
+    displayed = status.summarized_measurements({'records': records})
+    assert [(label, row['id']) for label, row in displayed] == [
+        ('Latest standalone whole fresh', 'new-standalone')
+    ]
 
 
 def test_replay_command_help_does_not_start_work():

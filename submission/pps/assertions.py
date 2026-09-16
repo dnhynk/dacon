@@ -21,20 +21,27 @@ SUBJECTS = {
     'share': re.compile(r'지분율|최소\s*지분|출자\s*비율|참여\s*비율'),
     'software': re.compile(r'(?:소프트웨어|SW)\s*사업', re.I),
     'floor': re.compile(r'하한제도|사업금액별\s*참여|제\s*48\s*조'),
+    'industry': re.compile(r'업종|면허|운송사업|등록\s*(?:조건|요건|의무)'),
 }
 CONNECTIVE = re.compile(r'하며|이며|이고|하되|하지만|그러나|(?:하여야|해야|이어야)\s*하고')
+# Split after a negative connective so its polarity remains with the preceding
+# registration clause rather than disappearing at the cut.
+INDUSTRY_CONNECTIVE = re.compile(CONNECTIVE.pattern + r'|(?<=않으며)|(?<=아니하고)')
 REFERENCE = re.compile(r'^\s*(?:다만\s*)?(?:이|그|위|상기|해당|당해)(?:의)?\s*(?:조건|요건|제한|의무|요구사항|문구|선언|분류)')
 
 
-def assertion_scope(text, start, end, subject):
+def assertion_scope(text, start, end, subject, *, bounds=None):
     """Bind a predicate to its subject inside connected clauses.
 
     Separate explicit subjects keep their own polarity. A repeated subject or
     an anaphoric 'that condition' carries withdrawal back to the target.
     Ambiguous references remain in scope and can only block a forced decision.
     """
-    lo, hi = clause(text, start, end)
-    cuts = [(lo, lo)] + [(m.start(), m.end()) for m in CONNECTIVE.finditer(text, lo, hi)] + [(hi, hi)]
+    lo, hi = clause(text, start, end) if bounds is None else bounds
+    if not 0 <= lo <= start <= end <= hi <= len(text):
+        raise ValueError('Assertion bounds must contain the source anchor')
+    connective = INDUSTRY_CONNECTIVE if subject == 'industry' else CONNECTIVE
+    cuts = [(lo, lo)] + [(m.start(), m.end()) for m in connective.finditer(text, lo, hi)] + [(hi, hi)]
     segments = [(cuts[i][1], cuts[i+1][0]) for i in range(len(cuts)-1)]
     containing = [i for i, (a,b) in enumerate(segments) if a <= start < b or a < end <= b]
     if not containing:

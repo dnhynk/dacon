@@ -7,22 +7,27 @@ import hashlib
 import importlib.metadata
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
+import sysconfig
 import time
 
 from .pps.pipeline import VLLMRunner
 
 REPRODUCIBILITY_SOURCE = 'https://docs.vllm.ai/en/v0.26.0/usage/reproducibility/'
 POLICY = {
-    'a_order': 'input-order cohorts of 32; A1, A10, A19 within each cohort',
+    'a_order': 'input-order cohorts of config.a_cohort_size (default32); A1, A10, A19 within each cohort',
     'l_order': 'after all A calls; L19 in input-order cohorts of 32',
     'engine_loads': 1,
+    'text_only': 'Canonical config disables image/audio/video input capacity; all submitted inputs are original text tokens. Reprofiled cache capacity is recorded, not claimed numerically identical to older multimodal defaults.',
     'prefix_cache': 'enabled; reused across all A and L calls; no reset',
     'historical_difference': 'Historical L responses used a separate engine with prior L1/L10 calls; those unused calls are not repeated.',
-    'parse_retries': 0,
+    'parse_retries': 'config.max_response_retries, only invalid format/termination, after all primary calls',
+    'recovery_inputs': 'full original tokens, spans and schema; thinking budget zero; no document shrinking',
     'quality_retries': 0,
-    'runtime_deadline': None,
+    'structured_output': 'Fixed guidance backend; engine-level compact JSON whitespace; CPU actual-token progress check before weights. Long JSON whitespace stalls abort after native evidence is saved.',
+    'runtime_deadline': 'checked between batches; config.total_runtime_seconds including preparation/load minus 15s; no claim of preempting an in-flight native call',
     'batch_invariance': 'not enabled',
     'reproducibility_scope': 'Fixed offline scheduler, inputs and call history; no claim of equality across hardware or vLLM versions.',
     'official_source': REPRODUCIBILITY_SOURCE,
@@ -57,6 +62,28 @@ def configure_environment():
     os.environ['VLLM_NO_USAGE_STATS'] = '1'
 
 
+def native_toolchain_preflight():
+    """Activate this interpreter's console tools before expensive CUDA loading.
+
+    Launching a venv's python by absolute path does not activate its bin directory.
+    FlashInfer invokes ninja by name, even when the Python package is installed.
+    """
+    scripts = str(Path(sysconfig.get_path('scripts')).resolve())
+    old = os.environ.get('PATH', '').split(os.pathsep)
+    key = lambda value: os.path.normcase(os.path.abspath(value))
+    os.environ['PATH'] = os.pathsep.join([scripts, *(p for p in old if p and key(p) != key(scripts))])
+    ninja = shutil.which('ninja')
+    if ninja is None:
+        raise RuntimeError('Native toolchain preflight: ninja executable unavailable; model not loaded')
+    try:
+        version = subprocess.check_output([ninja, '--version'], text=True,
+                                          stderr=subprocess.STDOUT, timeout=10).strip()
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError('Native toolchain preflight: ninja could not run; model not loaded') from exc
+    return {'scripts_directory': scripts, 'ninja_executable': ninja, 'ninja_version': version,
+            'ninja_sha256': hashlib.sha256(Path(ninja).read_bytes()).hexdigest()}
+
+
 def environment(model_dir):
     model = Path(model_dir)
     files = {}
@@ -86,21 +113,32 @@ def environment(model_dir):
 class CanonicalRunner(VLLMRunner):
     def __init__(self, model_dir, config, journal):
         configure_environment()
+        journal.save('native_toolchain.json', native_toolchain_preflight())
+        from .pps.generation_contract import preflight
+        journal.save('generation_grammar_preflight.json', preflight())
+        from transformers import AutoTokenizer
+        from .pps.generation_contract import progress_preflight
+        tokenizer = AutoTokenizer.from_pretrained(model_dir, local_files_only=True, trust_remote_code=False)
+        journal.save('generation_progress_preflight.json', progress_preflight(tokenizer))
         journal.save('environment.json', environment(model_dir))
         # Import only after configuring the documented offline process contract.
         import vllm
         if vllm.__version__.split('+')[0] != '0.26.0':
             raise RuntimeError(f'This execution contract requires vLLM 0.26.0; found {vllm.__version__}')
         super().__init__(model_dir, config)
-        # Complete the single authorized run; the inherited research timer is not a kill policy.
-        self.deadline = float('inf')
         engine_config = getattr(self.llm.llm_engine, 'vllm_config', None)
         model_config = getattr(engine_config, 'model_config', None)
+        structured = getattr(engine_config, 'structured_outputs_config', None)
+        if (getattr(structured, 'backend', None) != 'guidance'
+                or getattr(structured, 'disable_any_whitespace', None) is not True):
+            self.close()
+            raise RuntimeError('Actual engine JSON grammar options differ from CPU-verified settings')
         journal.save('engine.json', {
             'version': self.version, 'load_seconds': self.load_seconds,
             'config_repr': str(engine_config),
             'scheduler_config': serial(getattr(engine_config, 'scheduler_config', None)),
             'cache_config': serial(getattr(engine_config, 'cache_config', None)),
+            'structured_outputs_config': serial(structured),
             'model_generation_config': model_config.try_get_generation_config() if model_config else None,
             'tokenizer_class': type(self.tokenizer).__name__,
             'tokenizer_chat_template': getattr(self.tokenizer, 'chat_template', None),

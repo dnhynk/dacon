@@ -8,38 +8,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from .law_declarations import clean_scopes, declarations
 
 
-_NATIONAL = r"(?:국가\s*계약법|국가를\s*당사자로\s*하는\s*계약에\s*관한\s*법률)"
-_LOCAL = r"(?:지방\s*계약법|지방자치단체를\s*당사자로\s*하는\s*계약에\s*관한\s*법률)"
-_LAW = rf"[「『\[]?(?:{_NATIONAL}|{_LOCAL})[」』\]]?"
-_LAW_LIST = rf"{_LAW}(?:\s*(?:및|과|와|,|/)\s*{_LAW})*"
-_DECLARATION = re.compile(
-    rf"(?:^|(?<=[.;。]))[ \t]*(?:[-*•]\s*|\d+[.)]\s*)?(?:"
-    rf"(?:적용\s*계약법|계약\s*적용\s*법령)\s*[:：=]\s*(?P<label>{_LAW_LIST})"
-    rf"(?:입니다|이다)?(?=\s*(?:$|[.;。]))|"
-    rf"(?:본|이|금번|해당)\s*(?:입찰(?:공고)?|공고|계약)\s*의\s*"
-    rf"적용\s*(?:계약법|법령)(?:은|는)\s*(?P<defined>{_LAW_LIST})\s*(?:이다|입니다|임)|"
-    rf"(?:본|이|금번|해당)\s*(?:입찰(?:공고)?|공고|계약)\s*(?:은|는|에(?:는)?)\s*"
-    rf"(?P<operative>{_LAW_LIST})\s*(?:"
-    rf"(?:을|를)\s*적용(?:한다|합니다|함|하며|하여)|"
-    rf"에\s*(?:따라|의하여)\s*(?:체결|집행|진행|실시)(?:한다|합니다|함|하며|되는|하는))"
-    rf")(?=$|[\s,.;。])", re.M,
-)
-_EXCLUSION = re.compile(
-    rf"(?:^|(?<=[.;。]))[ \t]*(?:[-*•]\s*|\d+[.)]\s*)?"
-    rf"(?:본|이|금번|해당)\s*(?:입찰(?:공고)?|공고|계약)\s*(?:은|는|에(?:는)?)\s*"
-    rf"(?P<excluded>{_LAW_LIST})\s*(?:을|를)\s*적용하지\s*"
-    rf"(?:않는다|않습니다|않음|아니한다)(?=$|[\s,.;。])", re.M,
-)
 _SCOPE_NAMES = {"national": "국가", "local": "지방", "unknown": "미확정", "conflict": "충돌"}
-
-
-def _named_scopes(value):
-    if not isinstance(value, str):
-        return []
-    return [scope for scope, pattern in (("national", _NATIONAL), ("local", _LOCAL))
-            if re.search(pattern, value)]
 
 
 def resolve_scope(rec):
@@ -55,41 +27,49 @@ def resolve_scope(rec):
              else "null" if raw is None else "present")
     # Metadata is an explicit field, but arbitrary prose in it is not a clean
     # declaration (e.g. '국가계약법 미적용'). Retain unrecognized values verbatim.
-    scopes = _named_scopes(raw) if isinstance(raw, str) and re.fullmatch(
-        rf"\s*{_LAW_LIST}\s*", raw) else []
-    signals = []
+    scopes = clean_scopes(raw)
+    signals, ignored = [], []
     if scopes:
         signals.append({"source": "meta.적용계약법", "text": raw, "scopes": scopes,
                         "kind": "affirmed"})
     elif state == "present":
         state = "unrecognized"
     for doc_index, doc in enumerate(rec.get("docs") or []):
-        content = doc.get("text") or ""
-        declarations = [(m, "affirmed") for m in _DECLARATION.finditer(content)]
-        declarations += [(m, "excluded") for m in _EXCLUSION.finditer(content)]
-        for match, kind in sorted(declarations, key=lambda pair: pair[0].start()):
-            # A preceding example/quotation heading does not make its sample operative.
-            prefix = content[:match.start()].rstrip().splitlines()
-            if prefix and re.match(r"^\s*(?:참고|예시|인용|교육자료)\s*[:：]", prefix[-1]):
-                continue
-            value = (match.group("excluded") if kind == "excluded" else
-                     match.group("label") or match.group("defined") or match.group("operative"))
-            signals.append({"source": "document", "doc_index": doc_index,
-                            "doc_id": doc.get("doc_id"), "start": match.start(),
-                            "end": match.end(), "text": match.group().strip(),
-                            "scopes": _named_scopes(value), "kind": kind})
-    found = {scope for signal in signals if signal["kind"] == "affirmed" for scope in signal["scopes"]}
-    excluded = {scope for signal in signals if signal["kind"] == "excluded" for scope in signal["scopes"]}
+        for observation in declarations(doc.get("text") or ""):
+            signal = {"source": "document", "doc_index": doc_index, "doc_type": doc.get('type'),
+                      "doc_id": doc.get("doc_id"), **observation}
+            (ignored if observation['ignored_reason'] else signals).append(signal)
+    all_found = {scope for signal in signals if signal["kind"] == "affirmed" for scope in signal["scopes"]}
+    all_excluded = {scope for signal in signals if signal["kind"] == "excluded" for scope in signal["scopes"]}
+    notice = [signal for signal in signals if signal.get('doc_type') == '공고문']
+    notice_affirmed = any(signal['kind'] == 'affirmed' for signal in notice)
+    notice_unresolved = any(signal['kind'] == 'unresolved' for signal in notice)
+    # Official notice priority concerns an actual governing-law declaration,
+    # not ordinary law citations. Preserve every other signal for inspection.
+    selected = notice if notice_affirmed or notice_unresolved else signals
+    found = {scope for signal in selected if signal["kind"] == "affirmed" for scope in signal["scopes"]}
+    excluded = {scope for signal in selected if signal["kind"] == "excluded" for scope in signal["scopes"]}
+    unresolved = any(signal['kind'] == 'unresolved' for signal in selected)
     status = ("conflict" if len(found) > 1 or found.intersection(excluded)
+              else "unknown" if unresolved
               else next(iter(found)) if found else "unknown")
     container_state = ("missing" if "meta" not in rec else "null" if meta is None
                        else "object" if isinstance(meta, dict) else "invalid")
     return {"status": status, "metadata_state": state, "metadata_value": raw,
             "metadata_container_state": container_state,
             "excluded_scopes": sorted(excluded),
-            "signals": signals, "alternatives": ["national", "local"]
+            "signals": signals, "ignored_declarations": ignored, "alternatives": ["national", "local"]
             if status in ("unknown", "conflict") else [status],
+            "source_conflict": len(all_found) > 1 or bool(all_found.intersection(all_excluded)),
+            "effective_source": ("notice_declaration" if notice_affirmed else "unresolved_notice_declaration"
+                                 if notice_unresolved else "available_declarations_and_metadata"),
+            "selected_signal_indices": [i for i, signal in enumerate(signals) if signal in selected],
             "legal_applicability_determined": False}
+
+
+def applicable_law(rec):
+    """One shared law value for CPU rules; never rewrite original registration."""
+    return {'national': '국가계약법', 'local': '지방계약법'}.get(resolve_scope(rec)['status'])
 
 
 @dataclass(frozen=True)

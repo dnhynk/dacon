@@ -1,8 +1,12 @@
 """Pure notice-local v19/v20/v22 facts and conservative tri-state decisions."""
 from __future__ import annotations
+from .legal_context import applicable_law
 import re
 from decimal import Decimal, InvalidOperation
 from .assertions import unresolved_assertion, assertion_scope
+from .amounts import WON, won_value
+from .software_roles import work_review
+from .software_disclosure import passages as disclosure_passages
 
 
 def evidence(di,doc,left,right):
@@ -14,8 +18,8 @@ def result(value,reason,facts,quote=''):
 
 
 def complete(rec):
-    c=rec.get('input_completeness',{})
-    return c.get('완전관측') is True and not any(v for v in rec.get('dropped_doc_counts',{}).values())
+    from .input_contract import provided_complete
+    return provided_complete(rec)
 
 
 def block(doc,start,end,pad=0):
@@ -25,7 +29,7 @@ def block(doc,start,end,pad=0):
 
 
 def legal_scope(rec):
-    meta=rec.get('meta',{});law=meta.get('적용계약법')
+    meta=rec.get('meta',{});law=applicable_law(rec)
     known=law in {'국가계약법','지방계약법'}
     return {'law':law if known else None,'known':known,'authority':meta.get('소관구분')}
 
@@ -75,6 +79,12 @@ def _pledge_check_basic(rec):
         e=p['evidence']
         if not any(x['evidence']==e for x in dedup):dedup.append(p)
     pledges=dedup
+    from .pledge_modality import apply as apply_action_modality
+    for pledge in pledges:
+        apply_action_modality(pledge)
+        if (pledge['issuer']=='manufacturer_or_support_provider'
+                and not issuer.search(pledge['source_subject_text'])):
+            pledge['issuer']='unresolved'
     facts={'pledges':pledges,'other_document_functions':irrelevant,'certificate_facts':certificates,'complete':complete(rec),'scope':legal_scope(rec)}
     positive=[p for p in pledges if p['issuer']=='manufacturer_or_support_provider' and p['timing']=='explicit_pre_bid' and not p['explicit_no_bid_time_requirement'] and not p['submission_capability_only'] and not p['uncertain_context']]
     usable=[p for p in positive if 0<len(p['evidence']['quote'])<=500]
@@ -106,39 +116,37 @@ def decimal(value):
 
 
 def won(text):
-    s=re.sub(r'\s','',text).replace(',','').removeprefix('금')
-    if s.endswith('원'):s=s[:-1]
-    if re.fullmatch(r'\d+(?:\.\d+)?',s):return decimal(s)
-    pieces=list(re.finditer(r'(\d+(?:\.\d+)?)(억|천만|백만|십만|만|천|백)',s))
-    if not pieces or ''.join(m[0] for m in pieces)!=s:return None
-    unit={'억':100000000,'천만':10000000,'백만':1000000,'십만':100000,'만':10000,'천':1000,'백':100}
-    return sum((Decimal(m[1])*unit[m[2]] for m in pieces),Decimal(0))
+    s=str(text).strip().removeprefix('금').strip()
+    return won_value(s if '원' in s else s+'원')
 
 
 def budget_facts(rec):
     amounts=[];durations=[];separated=[];maintenance=[];bundled=[]
-    amount_pattern=re.compile(r'(?:사업\s*예산|사업\s*금액|총\s*사업\s*금액|배정\s*예산)\s*[:：|]?\s*(?:금\s*)?([\d,]+(?:\.\d+)?(?:\s*(?:억|천만|백만|만|천)\s*[\d,]*(?:\.\d+)?)?\s*원)')
+    from .prices import project_prices
+    shared = project_prices(rec)['budget']
+    # The SW band needs an affirmative whole notice budget on an inclusive
+    # tax basis. A second regex used to resurrect excluded/negated amounts,
+    # miss explicit field aliases, and borrow VAT from an unrelated next duty.
+    # All rejected observations remain in the receipt for review.
+    for reading in shared['body']:
+        if (reading['price_role']=='project_total_candidate' and reading['vat']=='included'
+                and reading['evidence']['document_role']=='공고문'):
+            ev=reading['evidence']
+            amounts.append({'won':str(reading['won']),
+                'evidence':evidence(ev['doc_index'],rec['docs'][ev['doc_index']],ev['start'],ev['end'])})
     for di,d in enumerate(rec.get('docs',[])):
         if d['type']!='공고문':continue
         t=d['text']
-        for m in amount_pattern.finditer(t):
-            context=t[max(0,m.start()-35):min(len(t),m.end()+100)]
-            if re.search(r'연차별|차년도|연간|단가|예시|평균',context):continue
-            if re.search(r'(?:부가(?:가치)?세|VAT)[^\n]{0,25}(?:별도|미포함|제외)',context,re.I):continue
-            if re.search(r'부가(?:가치)?세[^\n]{0,35}포함|VAT\s*포함',context,re.I):
-                n=won(m[1])
-                if n is not None:amounts.append({'won':str(n),'evidence':evidence(di,d,m.start(),min(len(t),m.end()+100))})
         for m in re.finditer(r'(?:사업기간|계약기간|용역기간)\s*[:：|][^\n]{0,80}?(\d+)\s*개월',t):durations.append({'months':int(m[1]),'evidence':evidence(di,d,m.start(),m.end())})
         for m in re.finditer(r'[^\n]{0,80}(?:장기계속계약|소프트웨어\s*(?:유지|보수))[^\n]{0,100}',t):maintenance.append(evidence(di,d,m.start(),m.end()))
         for m in re.finditer(r'[^\n]{0,100}(?:소프트웨어사업|SW사업)[^\n]{0,100}(?:분리|분담이행)[^\n]{0,100}',t):separated.append(evidence(di,d,m.start(),m.end()))
         for m in re.finditer(r'[^\n]*(?:소프트웨어사업|SW사업)[^\n]*(?:일괄\s*발주|통합\s*발주)[^\n]*',t):
             if re.search(r'둘\s*이상|2\s*개|복수|각\s*사업|여러',m[0]):bundled.append(evidence(di,d,m.start(),m.end()))
     vals={Decimal(a['won']) for a in amounts};meta=decimal(rec.get('meta',{}).get('배정예산금액'))
-    from .prices import project_prices
-    shared = project_prices(rec)['budget']
-    conflict=(len(vals)>1 or bool(vals and meta is not None and next(iter(vals))!=meta)
-              or shared['status']=='conflict' or shared['unresolved_tax_basis'])
-    value=next(iter(vals)) if len(vals)==1 and not conflict else None
+    metadata_conflict=bool(vals and meta is not None and any(v!=meta for v in vals))
+    conflict=(len(vals)>1 or shared['status']=='conflict' or shared['unresolved_tax_basis'])
+    value=(next(iter(vals)) if len(vals)==1 and not conflict and shared['status']=='known'
+           and shared['effective_source']=='notice' and shared['value_won']==next(iter(vals)) else None)
     # Metadata-only budget retains an explicitly unverified tax basis.
     basis='explicit_VAT_inclusive_project_amount' if value is not None else 'unresolved_VAT_or_project_basis'
     effective=value;annualized=False
@@ -152,11 +160,27 @@ def budget_facts(rec):
             effective=value*12/next(iter(months));annualized=True
         else:effective=None;basis='long_maintenance_duration_unresolved'
     band=None if effective is None else 'below_20eok' if effective<2000000000 else '20_to_below_40eok' if effective<4000000000 else '40_to_below_80eok' if effective<8000000000 else 'at_least_80eok'
-    return {'project_won':str(value) if value is not None else None,'effective_won':str(effective) if effective is not None else None,'metadata_budget_won':str(meta) if meta is not None else None,'basis':basis,'conflict':conflict,'amount_evidence':amounts,'duration_evidence':durations,'maintenance_evidence':maintenance,'separated_evidence':separated,'bundled_evidence':bundled,'annualized':annualized,'band':band,'legal_floors_won':{'SME_to_midsize_within_five_years':2000000000,'large_revenue_below_800b':4000000000,'large_revenue_at_least_800b':8000000000}}
+    return {'project_won':str(value) if value is not None else None,'effective_won':str(effective) if effective is not None else None,'metadata_budget_won':str(meta) if meta is not None else None,'basis':basis,'conflict':conflict,'metadata_conflict':metadata_conflict,'amount_evidence':amounts,'typed_budget_observations':shared['body'],'duration_evidence':durations,'maintenance_evidence':maintenance,'separated_evidence':separated,'bundled_evidence':bundled,'annualized':annualized,'band':band,'legal_floors_won':{'SME_to_midsize_within_five_years':2000000000,'large_revenue_below_800b':4000000000,'large_revenue_at_least_800b':8000000000}}
+
+
+def _sw_work_candidates(q, doc_type, registered, service):
+    patterns = []
+    if doc_type == '공고문':
+        if registered:
+            patterns.append(('actual_service_qualification_and_SW_registration', r'(?P<work>정보시스템유지관리서비스)'))
+        if not re.search(r'등록|확인서|담당|부서|처\s', q):
+            patterns.append(('software_system_work_statement', r'(?:정보시스템|경영정보시스템)[^\n.。;；]{0,45}?(?P<work>구축|운영|유지보수)'))
+        if registered:
+            patterns.append(('software_license_procurement_with_SW_registration', r'라이선스\s*(?P<work>갱신|구매)'))
+    if registered and service:
+        patterns.append(('mandatory_software_installation_work', r'(?:소프트웨어|S/W|\bSW\b)[^\n.。;；]{0,80}?(?P<work>설치)[^\n.。;；]{0,50}(?:하여야|해야)'))
+    for kind, pattern in patterns:
+        for match in re.finditer(pattern, q, re.I):
+            yield kind, match.start('work'), match.end('work')
 
 
 def sw_check(rec):
-    actual=[];incidental=[];disclosures=[];exceptions=[];registration=[];unresolved_disclosures=[];explicit_non_sw=[]
+    actual=[];incidental=[];disclosures=[];exceptions=[];registration=[];unresolved_disclosures=[];explicit_non_sw=[];rejected_work=[]
     docs=rec.get('docs',[])
     for di,d in enumerate(docs):
         t=d['text']
@@ -175,38 +199,43 @@ def sw_check(rec):
             explicit=bool(declaration) and not re.search(r'사업(?:이|에)?\s*(?:아니|아님|아닙|아닌|해당하지|해당되지)|가정|예시',declaration_scope)
             if explicit and not unresolved_assertion(declaration_scope):proof='explicit_SW_project_declaration'
             elif not generic:
-                if d['type']=='공고문' and registered and re.search(r'정보시스템유지관리서비스',q):proof='actual_service_qualification_and_SW_registration'
-                elif d['type']=='공고문' and re.search(r'(?:정보시스템|경영정보시스템)[^\n]{0,45}(?:구축|운영|유지보수)',q) and not re.search(r'등록|확인서|담당|부서|처\s',q):proof='software_system_work_statement'
-                elif registered and re.search(r'라이선스\s*(?:갱신|구매)',q) and d['type']=='공고문':proof='software_license_procurement_with_SW_registration'
-                elif registered and rec.get('meta',{}).get('업무구분')=='일반용역' and re.search(r'(?:소프트웨어|S/W|\bSW\b)[^\n]{0,80}설치[^\n]{0,50}(?:하여야|해야)',q,re.I):proof='mandatory_software_installation_work'
+                for kind, start, end in _sw_work_candidates(q, d['type'], registered, rec.get('meta',{}).get('업무구분')=='일반용역'):
+                    review=work_review(t,m.start()+start,m.start()+end)
+                    if review['issues']:
+                        rejected_work.append({'kind':kind,'issues':review['issues'],
+                            'action_evidence':evidence(di,d,m.start()+start,m.start()+end),
+                            'evidence':evidence(di,d,review['start'],review['end'])})
+                    else:
+                        proof=kind
+                        break
             if proof:actual.append({'kind':proof,'evidence':evidence(di,d,m.start(),m.end())})
             else:incidental.append({'reason':'scope_unresolved_or_incidental_reference','evidence':evidence(di,d,m.start(),m.end())})
         # A disclosure or exception can be in any supplied attachment. Its
         # document type alone must not turn observed wording into absence.
         if t:
-            for m in re.finditer(r'[^\n]*(?:소프트웨어\s*진흥법|소프트웨어진흥법|하한제도|사업금액의\s*하한)[^\n]*',t):
-                q=m[0]
+            for start,end in disclosure_passages(t):
+                q=t[start:end]
                 floor_anchor=re.search(r'소프트웨어\s*진흥법|하한제도|사업금액의\s*하한',q)
                 disclosure_scope=assertion_scope(q,floor_anchor.start(),floor_anchor.end(),'floor') if floor_anchor else q
                 # A preceding disclaimer governs the quoted disclosure too.
                 # Keep its source and abstain; it cannot certify normality.
-                previous_end=max(0,m.start()-1)
+                previous_end=max(0,start-1)
                 previous_start=t.rfind('\n',0,previous_end)+1
                 previous=t[previous_start:previous_end]
                 if re.search(r'예시|작성\s*예|가정|경우(?:에)?만|경우에\s*한|적용하지|적용\s*제외',previous):
-                    unresolved_disclosures.append(evidence(di,d,previous_start,m.end()))
+                    unresolved_disclosures.append(evidence(di,d,previous_start,end))
                     continue
                 basis=bool(re.search(r'제\s*48\s*조|중소\s*소프트웨어사업자의\s*사업\s*참여\s*지원',q))
-                applied=bool(re.search(r'사업금액별\s*참여\s*제한|중소\s*소프트웨어사업자[^\n]{0,120}만\s*입찰참가|대기업[^\n]{0,60}참여[^\n]{0,20}(?:제한|불가)|하한제도[^\n]{0,30}적용',q))
-                exception=bool(re.search(r'(?:제\s*48\s*조[^\n]{0,30}제?\s*3\s*항|하한제도)[^\n]{0,100}(?:예외|적용하지|적용\s*제외)',q))
-                if exception:exceptions.append(evidence(di,d,m.start(),m.end()))
-                elif unresolved_assertion(disclosure_scope) or re.search(r'제한하지|적용하지|제한\s*없|참여\s*가능|적용\s*여부[^\n]{0,20}미정|가정|예시|생략|불명|미기재',disclosure_scope):unresolved_disclosures.append(evidence(di,d,m.start(),m.end()))
-                elif re.search(r'제\s*48\s*조\s*제?\s*4\s*항|상호출자제한',q) and not re.search(r'사업금액별|중소\s*소프트웨어사업자[^\n]{0,120}만\s*입찰참가|하한제도',q):unresolved_disclosures.append(evidence(di,d,m.start(),m.end()))
-                elif basis and applied:disclosures.append(evidence(di,d,m.start(),m.end()))
+                applied=bool(re.search(r'사업금액별\s*참여\s*제한|중소\s*소프트웨어사업자.{0,120}만\s*입찰참가|대기업.{0,60}참여.{0,20}(?:제한|불가)|하한제도.{0,30}적용',q,re.S))
+                exception=bool(re.search(r'(?:제\s*48\s*조.{0,30}제?\s*3\s*항|하한제도).{0,100}(?:예외|적용하지|적용\s*제외)',q,re.S))
+                if exception:exceptions.append(evidence(di,d,start,end))
+                elif unresolved_assertion(disclosure_scope) or re.search(r'제한하지|적용하지|제한\s*없|참여\s*가능|적용\s*여부[^\n]{0,20}미정|가정|예시|생략|불명|미기재',disclosure_scope):unresolved_disclosures.append(evidence(di,d,start,end))
+                elif re.search(r'제\s*48\s*조\s*제?\s*4\s*항|상호출자제한',q) and not re.search(r'사업금액별|중소\s*소프트웨어사업자.{0,120}만\s*입찰참가|하한제도',q,re.S):unresolved_disclosures.append(evidence(di,d,start,end))
+                elif basis and applied:disclosures.append(evidence(di,d,start,end))
     amount=budget_facts(rec)
     authority=rec.get('meta',{}).get('소관구분')
     public_scope=authority in {'국가기관','지방정부','공기업','준정부기관','기타공공기관','지방공기업'}
-    facts={'actual_work':actual,'explicit_non_SW':explicit_non_sw,'other_mentions':incidental,'registration':registration,'floor_disclosure':disclosures,'exception_disclosure':exceptions,'unresolved_disclosures':unresolved_disclosures,'budget':amount,'public_authority_supported':public_scope,'authority_meta':authority,'complete':complete(rec),'dropped_docs':rec.get('dropped_doc_counts',{})}
+    facts={'actual_work':actual,'rejected_work':rejected_work,'explicit_non_SW':explicit_non_sw,'other_mentions':incidental,'registration':registration,'floor_disclosure':disclosures,'exception_disclosure':exceptions,'unresolved_disclosures':unresolved_disclosures,'budget':amount,'public_authority_supported':public_scope,'authority_meta':authority,'complete':complete(rec),'dropped_docs':rec.get('dropped_doc_counts',{})}
     if explicit_non_sw:
         if actual:return result(None,'conflicting_SW_scope_declarations',facts)
         if complete(rec):return result(0,'explicit_non_SW_scope_in_complete_source',facts)
@@ -265,8 +294,9 @@ def briefing_check(rec):
     return result(None,'no_proven_attendance_restriction',facts)
 
 
-def predict(rec):
-    return {'v19':pledge_check(rec),'v20':sw_check(rec),'v22':briefing_check(rec)}
+def predict(rec, items=(19, 20, 22)):
+    return {f'v{k}': check(rec) for k, check in
+            ((19, pledge_check), (20, sw_check), (22, briefing_check)) if k in items}
 
 
 def overlay(rec,row,allow_negatives=True):

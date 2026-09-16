@@ -13,7 +13,7 @@ COLUMNS = ["id", *ITEMS, *(f"e{i}" for i in range(1, 25))]
 
 
 def records(path, limit=None):
-    if limit is not None and limit < 1:
+    if limit is not None and (type(limit) is not int or limit < 1):
         raise ValueError("limit must be a positive integer")
     opener = gzip.open if str(path).endswith(".gz") else open
     seen = set()
@@ -21,18 +21,24 @@ def records(path, limit=None):
         for n, line in enumerate(f, 1):
             if not line.strip():
                 continue
-            rec = json.loads(line)
+            from .input_contract import load_record_json, management_errors
+            rec = load_record_json(line)
+            if not isinstance(rec, dict):
+                raise ValueError(f"Record must be an object at line {n}")
             if not isinstance(rec.get("id"), str) or not rec["id"] or rec["id"] in seen:
                 raise ValueError(f"Invalid or duplicate record id at line {n}")
             seen.add(rec["id"])
             if not isinstance(rec.get("meta"), dict) or not isinstance(rec.get("docs"), list):
                 raise ValueError(f"Invalid record shape: {rec['id']}")
             for doc in rec["docs"]:
-                if not all(isinstance(doc.get(k), str) for k in ("doc_id", "type", "text")):
+                if not isinstance(doc, dict) or not all(isinstance(doc.get(k), str) for k in ("doc_id", "type", "text")):
                     raise ValueError(f"Invalid document in {rec['id']}")
                 doc["text"] = unicodedata.normalize("NFC", doc["text"])
             if not any(d["type"] == "공고문" for d in rec["docs"]):
                 raise ValueError(f"Missing notice in {rec['id']}")
+            errors = management_errors(rec)
+            if errors:
+                raise ValueError(f"Invalid input management fields in {rec['id']}: " + ', '.join(errors))
             yield rec
             if limit is not None and len(seen) >= limit:
                 break

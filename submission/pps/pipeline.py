@@ -15,6 +15,8 @@ from .knowledge import Knowledge
 from .prompts import Config, build_prompt, build_shared_prompts, output_schema, fact_fields
 from .rules import apply_rules
 from .checkpoint import Checkpoint
+from .response_contract import loads as response_json, validate_items
+from .generation_contract import generation_schema
 
 
 def log(text):
@@ -22,7 +24,8 @@ def log(text):
 
 
 def parse_output(text, spans, items=tuple(range(1, 25)), *, rec=None):
-    obj = json.loads(text)
+    validate_items(items)
+    obj = response_json(text)
     if isinstance(obj, dict) and set(obj) == {"facts", "judgments"}:
         facts = obj["facts"]
         if (not isinstance(facts, dict) or set(facts) != set(fact_fields(items))
@@ -64,7 +67,21 @@ def _response_row(rec, response, prompt, items, config, knowledge, final_items):
         knowledge = knowledge.for_response(rec, response)
         rule_details.append({"source": "automatic_service_identity", "details": knowledge.provider_log})
     if config.rule_checks:
-        row, applied_rules = apply_rules(rec, row, knowledge, comparison=prompt.get('comparison_facts'))
+        comparison = prompt.get('comparison_facts')
+        if config.cross_source_facts and 24 in items:
+            # A stored prompt preserves what the model read. Rule execution
+            # must use the current extractor on the supplied source record.
+            from .comparison import compare
+            comparison = compare(rec)
+            rule_details.append({'source': 'cross_source_facts', 'computed_from_current_record': True,
+                                 'packet_facts_equal_current': prompt.get('comparison_facts') == comparison})
+        if comparison is not None and 24 in items:
+            from .comparison import reject_unsupported_comparison_claim
+            guard = reject_unsupported_comparison_claim(rec, row, response, comparison)
+            if guard is not None:
+                row['v24'], row['e24'] = guard['value'], guard['evidence']
+                rule_details.append(guard)
+        row, applied_rules = apply_rules(rec, row, knowledge, comparison=comparison, items=items)
         rule_details.extend(applied_rules)
     qualification_items = set(items).intersection(range(10, 19))
     if config.qualification_checks and qualification_items:
@@ -76,6 +93,21 @@ def _response_row(rec, response, prompt, items, config, knowledge, final_items):
         from .model_fact_overlay import overlay
         row, joined = overlay(rec, row, response, facts, qualification_items)
         rule_details.append({"source": "fallible_model_fact_source_predicate_join", "details": joined})
+        from .fact_consistency import apply as apply_consistency
+        row, consistency = apply_consistency(row, response,
+            {k: values[k-1] for k in qualification_items}, product=facts.get('product'),
+            qualification=facts.get('qualification'))
+        if consistency:
+            rule_details.append({'source': 'model_applicability_consistency', 'details': consistency})
+    if config.rule_checks and 9 in items:
+        from .model_citation import repair_v9
+        row, citation = repair_v9(rec, row, response, prompt['spans'], items=items)
+        if citation is not None:
+            rule_details.append(citation)
+        from .specification_table_fields import apply_v9 as apply_flattened_model_table
+        row, table_field = apply_flattened_model_table(rec, row, items=items)
+        if table_field is not None:
+            rule_details.append(table_field)
     # Only this pass's items are final here; other grouped items may be unset.
     if config.require_positive_evidence:
         require_evidence(row, final_items)
@@ -110,8 +142,13 @@ class VLLMRunner:
             p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in model_path.glob('*.json')
             if p.stat().st_size < 10_000_000}}
         self.version = vllm.__version__
-        extra = ({"structured_outputs_config": {"reasoning_parser": "gemma4", "enable_in_reasoning": False}}
-                 if config.enable_thinking else {})
+        from .generation_contract import engine_options
+        extra = {'structured_outputs_config': engine_options(config.enable_thinking)}
+        if config.text_only:
+            # This submission supplies only text tokens. Do not profile or
+            # reserve encoder input capacity for unused audio/images/video.
+            # vLLM0.26 documented multi-modal input limits; recorded in engine.json.
+            extra['limit_mm_per_prompt'] = {'image': 0, 'audio': 0, 'video': 0}
         if config.thinking_token_budget is not None:
             # vLLM 0.26 only enforces this budget in its V1 GPU model runner.
             # Use native delimiters from the fixed Gemma4 tokenizer/parser.
@@ -140,7 +177,11 @@ class VLLMRunner:
                              skip_special_tokens=not self.config.enable_thinking,
                              thinking_token_budget=p.get('generation', {}).get('thinking_budget', self.config.thinking_budget_for(p["items"])),
                              structured_outputs=StructuredOutputsParams(
-                                 json=output_schema(p.get('generation', {}).get('response_format', self.config.response_format), len(p["spans"]), p["items"]),
+                                 json=generation_schema(p.get('generation', {}).get('response_format', self.config.response_format),
+                                     len(p["spans"]), p["items"], schema_order=p.get('generation', {}).get('schema_order'),
+                                     catalog_roles=p.get('generation', {}).get('catalog_roles'),
+                                     catalog_fields=p.get('generation', {}).get('catalog_fields'),
+                                     specification_inventory=p.get('generation', {}).get('specification_inventory')),
                                  disable_any_whitespace=True)) for p in prompts]
         output = self.llm.generate([{"prompt_token_ids": p["token_ids"]} for p in prompts],
                                    sampling_params=sp, use_tqdm=False)
@@ -152,7 +193,11 @@ class VLLMRunner:
                 raise RuntimeError("vLLM returned no normal response")
             response = row.outputs[0]
             final_text = response.text
-            diagnostics = {}
+            from .generation_contract import json_whitespace_stall
+            answer_raw = response.text.split('<channel|>', 1)[-1] if self.config.enable_thinking else response.text
+            diagnostics = {'raw_output_sha256': hashlib.sha256(response.text.encode()).hexdigest(),
+                           'generation_stall': json_whitespace_stall(answer_raw)
+                               if response.finish_reason == 'length' else None}
             if self.config.enable_thinking:
                 from vllm.reasoning.gemma4_utils import parse_thinking_output
                 split = parse_thinking_output(response.text)
@@ -164,13 +209,13 @@ class VLLMRunner:
                 end_id = self.tokenizer.convert_tokens_to_ids("<channel|>")
                 start_at = token_list.index(start_id) if start_id in token_list else -1
                 end_at = token_list.index(end_id) if end_id in token_list else len(token_list)
-                diagnostics = {"thinking_detected": bool(split.get("thinking")),
+                diagnostics.update({"thinking_detected": bool(split.get("thinking")),
                                "thinking_characters": len(split.get("thinking") or ""),
                                "thinking_close_marker": closed,
                                "thinking_tokens": max(0, end_at-start_at-1) if start_at >= 0 else 0,
                                "thinking_budget": prompt.get('generation', {}).get('thinking_budget', self.config.thinking_budget_for(prompt["items"])),
                                "answer_tokens": len(self.tokenizer.encode(final_text, add_special_tokens=False)),
-                               "raw_output_sha256": hashlib.sha256(response.text.encode()).hexdigest()}
+                               "raw_output_sha256": hashlib.sha256(response.text.encode()).hexdigest()})
             result.append({"text": final_text, "finish_reason": response.finish_reason,
                            "output_tokens": len(response.token_ids),
                            "cached_input_tokens": getattr(row, "num_cached_tokens", None), **diagnostics})

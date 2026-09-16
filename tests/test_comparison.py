@@ -151,6 +151,32 @@ def test_region_flag_is_not_an_explicit_value_mismatch():
     assert positive_decision(rec, compare(rec)) is None
 
 
+def test_prompt_keeps_registration_flags_separate_and_checks_every_axis():
+    text = ('주된 영업소 소재지가 경기도에 있는 업체\n'
+            '학술연구용역(업종코드: 1169)으로 등록한 자')
+    rec = record(text, 지역제한여부='N', 제한지역코드목록=None,
+                 업종제한여부='N', 면허업종제한목록=None)
+    span = Span(0, '공고문', 0, len(text), text)
+    displayed = prompt_packet(compare(rec), [span], rec=rec)
+    fields = {item['field']: item for item in displayed['fields']}
+    assert fields['제한지역코드목록']['registered_value'] is None
+    assert fields['제한지역코드목록']['registered_flag'] == 'N'
+    assert fields['제한지역코드목록']['flag_relation'] == 'source_restriction_vs_registered_N_candidate'
+    assert fields['면허업종제한목록']['registered_value'] is None
+    assert fields['면허업종제한목록']['registered_flag'] == 'N'
+    assert fields['면허업종제한목록']['flag_relation'] == 'source_restriction_vs_registered_N_candidate'
+    assert '네 축을 모두 확인' in displayed['instruction']
+
+
+def test_null_registration_flag_is_not_an_n_flag_candidate():
+    text = '주된 영업소 소재지가 경기도에 있는 업체'
+    rec = record(text, 지역제한여부=None, 제한지역코드목록=None)
+    displayed = prompt_packet(compare(rec), [Span(0, '공고문', 0, len(text), text)], rec=rec)
+    region = next(item for item in displayed['fields'] if item['field'] == '제한지역코드목록')
+    assert region['registered_flag'] is None
+    assert region['flag_relation'] == 'none'
+
+
 def test_district_is_not_province_equality():
     rec = record('주된 영업소 소재지가 경기도 [지역:r1|단위=기초|광역=경기도]에 있는 업체', 제한지역코드목록='경기도')
     assert comparison(rec, 'region')['status'] == 'hierarchy_unresolved'
@@ -210,10 +236,13 @@ def test_comparison_packet_is_only_in_requested_group_and_schema_is_unchanged():
     assert prompts[0]['spans'] == prompts[1]['spans']
     assert '동일 필드 대조 보조사실' not in prompts[0]['messages'][1]['content']
     assert '동일 필드 대조 보조사실' in prompts[1]['messages'][1]['content']
+    assert '예산=...;계약방법=...;지역=...;업종=...' not in prompts[0]['messages'][1]['content']
+    assert '예산=...;계약방법=...;지역=...;업종=...' in prompts[1]['messages'][1]['content']
     assert prompts[0]['comparison_facts'] is None
     assert prompts[1]['comparison_facts']['comparisons'][0]['status'] == 'different'
     single = build_prompt(rec, knowledge, dataclasses.replace(config, shared_prefix=False), items=(24,))
     assert '동일 필드 대조 보조사실' in single['messages'][1]['content']
+    assert '예산=...;계약방법=...;지역=...;업종=...' in single['messages'][0]['content']
 
 
 def test_disabled_config_preserves_existing_prompt():
@@ -230,11 +259,13 @@ def test_pipeline_stops_cross_field_vat_borrow_and_keeps_real_difference():
     rec = record('사업예산: 50,000,000원\n기초금액: 55,000,000원(부가세 포함)')
     text = rec['docs'][0]['text']
     prompt = {'spans': [Span(0, '공고문', 0, len(text), text)]}
-    before, _ = _response_row(rec, response, prompt, (24,), config, None, (24,))
+    legacy_config = Config(mode='evidence_first', rule_checks=True, cross_source_facts=False)
+    before, _ = _response_row(rec, response, prompt, (24,), legacy_config, None, (24,))
+    automatic, _ = _response_row(rec, response, prompt, (24,), config, None, (24,))
     after, _ = _response_row(rec, response, prompt | {'comparison_facts': compare(rec)},
                              (24,), config, None, (24,))
     assert before['v24'] == 1  # Reproduced erroneous legacy override of a correct model value.
-    assert after['v24'] == 0
+    assert automatic['v24'] == after['v24'] == 0
     rec = record('사업예산: 6천6백만원 (부가세 포함)')
     text = rec['docs'][0]['text']
     after, _ = _response_row(rec, response,
@@ -280,7 +311,7 @@ def test_multi_row_table_never_treats_first_row_as_complete():
 
 
 def test_unparsed_occurrence_blocks_other_notice_from_silently_winning():
-    rec = record('사업예산: 금 오천오백만원(부가세 포함)', '사업예산: 66,000,000원(부가세 포함)')
+    rec = record('사업예산: 금 [판독불가]원(부가세 포함)', '사업예산: 66,000,000원(부가세 포함)')
     rec['docs'][1]['type'] = '공고문'
     packet = compare(rec)
     assert packet['comparisons'][0]['status'] == 'extraction_unresolved'

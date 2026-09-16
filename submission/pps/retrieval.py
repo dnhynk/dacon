@@ -310,12 +310,12 @@ class NoticeIndex:
                 # silently truncating them when the character budget is small.
                 candidates.append(_Candidate(di, lo, hi, roles, units[first][0], units[last][1]))
         # Same text under another heading or in another document is not proof
-        # of the same legal scope. Deduplicate only exact same-document context.
+        # of the same legal scope. Deduplicate only the same original address,
+        # never equal text at another occurrence, even within one document.
         groups, keys = [], {}
         for candidate in candidates:
-            doc = self.rec["docs"][candidate.doc_index]
             key = (candidate.doc_index, candidate.roles,
-                   doc["text"][candidate.context_start:candidate.context_end])
+                   candidate.context_start, candidate.context_end)
             if key in keys:
                 groups[keys[key]].append(candidate)
             else:
@@ -386,7 +386,8 @@ class NoticeIndex:
 
         # Background is considered only after every candidate had an allocation
         # opportunity. Never expose a fragment of an unselected candidate bundle
-        # through background filling. Exact repeated lines share one occurrence.
+        # through background filling. Repeated lines at other addresses remain
+        # candidates: table headers and values can describe different products.
         protected = {}
         for group in groups:
             for c in group:
@@ -395,16 +396,12 @@ class NoticeIndex:
         ends = {di: [hi for lo, hi in rs] for di, rs in protected.items()}
         backgrounds = []
         for di, units in enumerate(units_by_doc):
-            text, unique, queue = self.rec["docs"][di]["text"], set(), deque()
+            queue = deque()
             for lo, hi in units:
                 j = bisect_left(ends.get(di, []), lo + 1)
                 intervals = protected.get(di, [])
                 if j < len(intervals) and intervals[j][0] < hi:
                     continue
-                value = text[lo:hi]
-                if value in unique:
-                    continue
-                unique.add(value)
                 queue.extend((di, start, min(start + _SOURCE_SIZE, hi))
                              for start in range(lo, hi, _SOURCE_SIZE))
             if queue:
@@ -441,6 +438,7 @@ class NoticeIndex:
         diagnostics = {"kind": "source_candidates_not_legal_findings", "mode": "evidence_first",
                        "detected_occurrences": sum(map(len, groups)), "unique_candidates": len(groups),
                        "exact_duplicate_occurrences": sum(len(g)-1 for g in groups),
+                       "deduplication_scope": "identical_original_address_and_roles_only",
                        "represented_candidates": represented, "unshown_candidates": len(unshown),
                        "by_role": by_role, "unshown_examples": unshown[:8],
                        "unshown_examples_truncated": len(unshown) > 8,

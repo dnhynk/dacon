@@ -4,9 +4,10 @@ No identifiers, labels, history, filesystem reads or new model calls. A model
 assertion never overrides resolved catalog scope, mixed purchases or exceptions.
 """
 import json
+from .legal_context import applicable_law
 import re
 from submission.pps.data import clean_evidence
-from submission.pps.sme import norm
+from submission.pps.sme import norm, requires_exception_review
 
 PRODUCT_FIELD='실제구매대상_경쟁제품_고시조건'
 UNCERTAIN=re.compile(r'불명|불확실|확인불가|확인되지|판단불가|가능성|여부|아닐수|아닐가능|해당하지않을|추정됨|추정된다|추정함|보임|일부|주된')
@@ -45,14 +46,13 @@ def overlay(record,row,response,source_facts,items):
         return stop('noncategorical_or_conflicting_model_fact')
     product=source_facts['product']; eligibility=source_facts['qualification']
     if record.get('meta',{}).get('업무구분')!='일반용역': return stop('outside_service_scope')
-    if record.get('meta',{}).get('적용계약법') not in ('국가계약법','지방계약법'): return stop('unknown_contract_law')
+    if applicable_law(record) not in ('국가계약법','지방계약법'): return stop('unknown_contract_law')
     if product['status']!='unknown': return stop('resolved_source_scope_preserved')
     if product['uncertainty']: return stop('source_purchase_conflict')
     if any(p.get('listed') and p.get('condition',{}).get('status') in ('met','no_stated_condition') for p in product['products']):
         return stop('supported_competition_component')
     if not eligibility['complete']: return stop('incomplete_input')
-    if eligibility['size_conflict']: return stop('source_size_conflict')
-    if any(e['kind']!='priority_exception_denied' for e in eligibility['exceptions']): return stop('exception_requires_resolution')
+    if any(requires_exception_review(e) for e in eligibility['exceptions']): return stop('exception_requires_resolution')
     from .prices import in_band
     amount=product['estimate_won']
     prices=product.get('project_prices',{}).get('estimated_price',
@@ -62,10 +62,17 @@ def overlay(record,row,response,source_facts,items):
     low=in_band(prices,lower=20_000_001,upper=100_000_000)
     if high is not True and middle is not True and low is not True:
         return stop('unresolved_estimate_band')
+    common_bound = eligibility.get('common_size_bound')
+    shared_restriction = bool(common_bound and common_bound.get('larger_commercial_enterprises_excluded') is True)
+    if eligibility['size_conflict'] and not (high is True and shared_restriction):
+        return stop('source_size_conflict')
     targets=[]
-    if high is True and eligibility['allowed']:
+    if high is True and (eligibility['allowed'] or shared_restriction):
         evidence=next((clean_evidence(e['evidence']['text'],record) for e in eligibility['active_size'] if clean_evidence(e['evidence']['text'],record)),'')
         if evidence: targets.append((14,evidence,'source_amount_and_operative_SME_restriction'))
+        if eligibility['size_conflict']:
+            log['common_size_bound'] = common_bound
+            log['exact_size_conflict_preserved'] = True
     if eligibility['no_size'] and eligibility['closed_eligibility'] and not eligibility['quote_evidence']:
         if middle is True: targets.append((16,'','complete_middle_band_without_size_requirement'))
         elif low is True: targets.append((18,'','complete_low_band_without_size_requirement'))

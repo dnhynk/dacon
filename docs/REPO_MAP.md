@@ -29,8 +29,9 @@
   → script.py → submission.main
       → submission.original_a: 원래 A 입력 생성 → A1 / A10 / A19
       → submission.v20_legacy: 원래 L19 입력 생성
+      → submission.pps: 키워드/BGE 후보 통합, 원문 문맥·표·자격 구조 보존
       → 고정 Gemma의 새 응답
-      → submission.pps: 통합 CPU 소비기
+      → submission.pps: 원문 사실·관계 검증과 결정론적 통합 CPU 소비기
       → A 결과에 L19의 v20/e20만 반영
 ```
 
@@ -38,6 +39,11 @@
 `frozen/script.py`는 현행 진입점이 아니다.
 과거 `.751807`은 두 과거 엔진의 저장 응답을 결합한 기록이다. 새 B4 실행의
 엔진 공유·호출 순서는 별도 실험 변수이며, 입력 메시지가 같다는 이유로 무시하지 않는다.
+
+`notice_search.py`와 `embeddings.py`는 읽을 후보를 찾는다. `goods_scope.py`,
+`task_scope.py`, `qualification_structure.py`, `table_structure.py` 등은 그 후보를
+원문 위치·상위 제목·표 필드와 연결하고, 판정 모듈은 확인된 관계만 소비한다.
+임베딩 유사도만으로 품목 동일성·법적 적용·부재를 확정하지 않는다.
 
 ## 자료 찾기
 

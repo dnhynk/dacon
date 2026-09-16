@@ -86,10 +86,50 @@ def verify_state(root: Path, state: dict) -> dict:
             "scope": "Read-only hashes and recorded metrics; not a CPU prediction replay, new inference or score measurement."}
 
 
+def summarized_measurements(state):
+    """Keep a fixed-input policy comparison distinct from a standalone run."""
+    records = state['records']
+    fresh = [r for r in records if r['kind'] == 'fresh_model_inference']
+    cpu = [r for r in records if 'cpu_replay' in r['kind']]
+    comparisons = [r for r in records
+                   if r['kind'] == 'fresh_whole_cohort_policy_comparison']
+    displayed = []
+    if fresh:
+        displayed.append(('Latest standalone whole fresh', fresh[-1]))
+    # A completed comparison remains useful until a newer standalone run
+    # supersedes that research round. Showing an older grid beside a newer
+    # whole-fresh result makes a cold start look as if the grid is still active.
+    latest_fresh_index = max(
+        (i for i, r in enumerate(records) if r['kind'] == 'fresh_model_inference'),
+        default=-1,
+    )
+    latest_comparison_index = max(
+        (i for i, r in enumerate(records)
+         if r['kind'] == 'fresh_whole_cohort_policy_comparison'),
+        default=-1,
+    )
+    if comparisons and latest_comparison_index > latest_fresh_index:
+        current_round = comparisons[-1]['comparison_round']
+        current = [r for r in comparisons if r['comparison_round'] == current_round]
+        # A standalone normal execution also participates in its declared grid.
+        # Excluding it can report a lower diagnostic as that round's best result.
+        current += [r for r in fresh if r.get('comparison_round') == current_round]
+        controls = [r for r in current if r.get('policy') == 'current']
+        if controls:
+            displayed.append(('Latest whole comparison control', controls[-1]))
+        displayed.append(('Best candidate in that whole comparison',
+                          max(current, key=lambda r: r['macro_f1'])))
+    if cpu:
+        displayed.append(('Best recorded CPU', max(cpu, key=lambda r: r['macro_f1'])))
+        displayed.append(('Latest CPU replay', cpu[-1]))
+    return displayed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verify", action="store_true", help="Verify locally preserved predictions, raw responses and frozen source manifests")
     parser.add_argument("--json", action="store_true", help="Print machine-readable state")
+    parser.add_argument("--history", action="store_true", help="Print every preserved score instead of the current summary")
     args = parser.parse_args()
     state = read_json(ROOT / "docs/STATE.json")
     result = {"state": state}
@@ -100,8 +140,12 @@ def main() -> int:
     else:
         print(f"DACON 236754 | state updated {state['updated_utc']}")
         print(f"Official score: {state['official_score']} | target: {state['target_official_macro_f1']}")
-        for record in state["records"]:
-            print(f"{record['id']}: {record['macro_f1']:.6f} | FP {record['fp']} / FN {record['fn']} | {record['kind']}")
+        if args.history:
+            displayed = [(record['id'], record) for record in state['records']]
+        else:
+            displayed = summarized_measurements(state)
+        for label, record in displayed:
+            print(f"{label}: {record['macro_f1']:.6f} | FP {record['fp']} / FN {record['fn']} | {record['id']} | {record['kind']}")
         print(f"Current task: {state['active_task']['status']}")
         print(f"Next: {state['active_task']['next_action']}")
         print(f"Single entry: {state['entrypoints']['current_input_b4']}")

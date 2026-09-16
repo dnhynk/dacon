@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from dataclasses import asdict, dataclass
 
 from .knowledge import Knowledge
-from .retrieval import NoticeIndex
+from .retrieval import NoticeIndex, Span
 from .rubrics import RUBRIC_V3, SYSTEM_V3, RUBRIC_V4, SYSTEM_V4, RUBRIC_V5, SYSTEM_V5, RUBRIC_V6, SYSTEM_V6
 from .sme import compact_prompt as compact_sme_prompt
 from .comparison import compare as compare_sources, priority_ranges, prompt_packet
@@ -44,8 +45,56 @@ class Config:
     max_num_batched_tokens: int = 8192
     total_runtime_seconds: int = 7200
     checkpoint_resume: bool = False
+    input_strategy: str = "preserved"
+    v20_fact_contract: bool = False
+    v20_fact_format: str = 'software_facts'
+    text_only: bool = False
+    notice_source_policy: str = 'current'
+    specification_review: str = 'current'
+    legal_source_policy: str = 'current'
+    catalog_review: str = 'current'
+    catalog_source_policy: str = 'shared'
+    catalog_task_groups: bool = False
+    software_review: str = 'current'
+    a_cohort_size: int = 32
+    a10_question_policy: str = 'current'
 
     def __post_init__(self):
+        if self.a10_question_policy not in {'current', 'source_questions'}:
+            raise ValueError('Unknown A10 question policy')
+        if self.a10_question_policy != 'current' and self.input_strategy != 'audited':
+            raise ValueError('Source questions require audited input')
+        if type(self.a_cohort_size) is not int or not 1 <= self.a_cohort_size <= 32:
+            raise ValueError('A cohort size must be an integer from1 through32')
+        if self.notice_source_policy not in {'current', 'evidence_cover', 'factual_lexical', 'purchase_context', 'purchase_context_hybrid'}:
+            raise ValueError('Unknown integrated notice source policy')
+        if self.notice_source_policy != 'current' and self.input_strategy != 'audited':
+            raise ValueError('Integrated notice search requires the audited input strategy')
+        if self.specification_review not in {'current', 'candidates', 'gated_candidates', 'gated_source_candidates'}:
+            raise ValueError('Unknown integrated specification review')
+        if self.legal_source_policy not in {'current', 'direct_production'}:
+            raise ValueError('Unknown integrated legal source policy')
+        if self.catalog_review not in {'current','control','explicit'}:
+            raise ValueError('Unknown catalog review policy')
+        if self.catalog_source_policy not in {'shared','task_lexical','task_hybrid'}:
+            raise ValueError('Unknown catalog source policy')
+        if self.catalog_source_policy != 'shared' and self.input_strategy != 'audited':
+            raise ValueError('Task-focused catalog search requires the audited input strategy')
+        if type(self.catalog_task_groups) is not bool:
+            raise ValueError('catalog_task_groups must be boolean')
+        if self.software_review not in {'current','relations'}:
+            raise ValueError('Unknown software review policy')
+        if (self.specification_review != 'current' or self.legal_source_policy != 'current'
+                or self.catalog_review != 'current' or self.software_review != 'current') and self.input_strategy != 'audited':
+            raise ValueError('Integrated specialist and legal search require audited input')
+        if type(self.text_only) is not bool:
+            raise ValueError('text_only must be boolean')
+        if type(self.v20_fact_contract) is not bool or (self.v20_fact_contract and self.input_strategy != 'audited'):
+            raise ValueError('Software fact contract requires the audited input strategy')
+        if self.v20_fact_format not in {'software_facts', 'software_refs'}:
+            raise ValueError('Unknown software fact format')
+        if self.input_strategy not in {"preserved", "audited"}:
+            raise ValueError('Unknown canonical input strategy')
         if type(self.max_response_retries) is not int or not 0 <= self.max_response_retries <= 2:
             raise ValueError('At most two bounded response retries are supported')
         if type(self.max_num_batched_tokens) is not int or self.max_num_batched_tokens <= 0:
@@ -116,6 +165,10 @@ def _legal_packet(knowledge, rec, items, config):
 
 def fact_fields(items):
     fields = ["계약유형_적용법_추정가격_예산"]
+    if tuple(items) == (20,):
+        return fields + ["계약상_SW산출물_주체_의무_원문구간",
+                         "도구_교육내용_기존장비_조건부과업과의구별",
+                         "하한제도_적용근거_안내의실제존재_미확정정보"]
     if set(items) & set(range(1, 10)):
         fields += ["필수실적_배점구별_금액비교", "지역범위_금액상한_예외", "기관시설인력제한_특정모델"]
     if set(items) & set(range(10, 19)):
@@ -127,7 +180,37 @@ def fact_fields(items):
     return fields
 
 
+V24_FACT_CONTRACT = (
+    'facts의 본문과메타의동일필드차이 값에는 '
+    '"예산=...;계약방법=...;지역=...;업종=..." 형식으로 네 축을 모두 쓰고, '
+    '각 축을 동일·상이·미확정으로 구분한다. 한 축이 일치해도 나머지 축을 생략하지 않는다.\n')
+
+
 def output_schema(response_format="compact", max_evidence=None, items=tuple(range(1, 25))):
+    if response_format == 'specification_candidates':
+        from .specification_candidate_review import schema
+        return schema(max_evidence, items)
+    if response_format == 'specification_relations':
+        from .specification_relations import schema
+        return schema(max_evidence, items)
+    if response_format == 'catalog_semantics':
+        from .catalog_semantics import schema
+        return schema(max_evidence, items)
+    if response_format == 'catalog_conditions':
+        from .catalog_condition_review import schema
+        return schema(max_evidence, items)
+    if response_format == 'specification_scope':
+        from .specification_scope import schema
+        return schema(max_evidence, items)
+    if response_format == 'catalog_scope':
+        from .catalog_scope import schema
+        return schema(max_evidence, items)
+    if response_format == 'goods_scope':
+        from .goods_scope import schema
+        return schema(max_evidence, items)
+    if response_format in {'software_facts', 'software_refs'}:
+        from .software_facts import schema
+        return schema(max_evidence, items, references_only=response_format == 'software_refs')
     evidence_schema = {"type": "integer", "minimum": 0}
     if max_evidence is not None:
         # A finite enum is enforced by the grammar, unlike an unbounded reference.
@@ -171,8 +254,44 @@ def token_ids(tokenizer, messages, enable_thinking=False):
     return list(ids)
 
 
-def build_prompt(rec, knowledge, config, tokenizer=None, items=tuple(range(1, 25))):
+def verified_search_spans(rec, selection, tokenizer):
+    """A search tool cannot forge a quote, move it, or reuse another notice."""
+    if tokenizer is None or selection.get('record_id') != rec['id']:
+        raise ValueError('Search result needs the same notice and a source tokenizer')
+    docs = selection.get('documents', [])
+    if len(docs) != len(rec['docs']):
+        raise ValueError('Search document inventory differs from current input')
+    for di, (observed, original) in enumerate(zip(docs, rec['docs'])):
+        if (observed.get('doc_index') != di or observed.get('doc_id') != original['doc_id']
+                or observed.get('doc_sha256') != hashlib.sha256(original['text'].encode()).hexdigest()):
+            raise ValueError('Search source identity mismatch')
+    spans = []
+    for value in selection['spans']:
+        span = Span(**value)
+        if (type(span.doc_index) is not int or not 0 <= span.doc_index < len(rec['docs'])
+                or type(span.start) is not int or type(span.end) is not int):
+            raise ValueError('Invalid search source coordinates')
+        doc = rec['docs'][span.doc_index]
+        if (not 0 <= span.start < span.end <= len(doc['text']) or span.doc_type != doc['type']
+                or span.text != doc['text'][span.start:span.end]):
+            raise ValueError('Search text differs from the original source')
+        if spans and (span.doc_index, span.start) < (spans[-1].doc_index, spans[-1].end):
+            raise ValueError('Search result contains overlapping or unordered source ranges')
+        spans.append(span)
+    tokens = sum(len(tokenizer.encode(s.text, add_special_tokens=False)) for s in spans)
+    budget = selection.get('source_token_budget')
+    if type(budget) is not int or budget < 1 or tokens > budget or tokens != selection.get('source_tokens'):
+        raise ValueError('Search source-token accounting mismatch')
+    return spans
+
+
+def build_prompt(rec, knowledge, config, tokenizer=None, items=tuple(range(1, 25)), *, source_selection=None):
+    if config.response_format in {'software_facts', 'software_refs'}:
+        return build_software_fact_prompt(rec, knowledge, config, tokenizer, items, source_selection)
+    selected_source = verified_search_spans(rec, source_selection, tokenizer) if source_selection is not None else None
     if config.shared_prefix:
+        if source_selection is not None:
+            raise ValueError('Explicit search results require an individual item/group prompt')
         groups = [tuple(g) for g in config.judgment_groups] or [tuple(items)]
         return build_shared_prompts(rec, knowledge, config, tokenizer, groups)[groups.index(tuple(items))]
     if config.response_format == "fact_compact":
@@ -203,6 +322,8 @@ e는 위반을 직접 보여주는 [S숫자] 원문구간 번호이다. 비위�
                        "facts의 각 값은 220자 이내이며 사실을 확인할 수 없으면 불명확하다고 쓴다. "
                        "원문 자격조건은 S번호와 함께 요약한다. 합법적 요건의 존재를 위반으로 뒤집지 않는다. "
                        "facts 필수키: " + ", ".join(fact_fields(items)) + ".\n")
+        if config.response_format in {'factored', 'fact_compact'} and 24 in items:
+            system += V24_FACT_CONTRACT
     if config.product_facts:
         system += ("\n경쟁제품 보조정보의 source 번호는 그 보조정보 sources의 내부색인이다. "
                    "제출할 e에는 보조정보 색인이 아닌 아래 공고 원문 [S숫자] 번호만 사용한다. "
@@ -213,7 +334,7 @@ e는 위반을 직접 보여주는 [S숫자] 원문구간 번호이다. 비위�
     system += "\n[항목별 판단 안내]\n" + instructions
     system += EVIDENCE_CONTRACT
     while True:
-        spans = index.select(budget, items=items, mode=config.mode,
+        spans = selected_source if selected_source is not None else index.select(budget, items=items, mode=config.mode,
                              priority_ranges=priority_ranges(comparison) if comparison is not None else ())
         coverage = index.coverage(spans)
         summary = {k: v for k, v in coverage.items() if k != "ranges"}
@@ -240,13 +361,58 @@ e는 위반을 직접 보여주는 [S숫자] 원문구간 번호이다. 비위�
         if ids is None or len(ids) + config.max_output_tokens + 32 <= config.max_model_len:
             return {"messages": messages, "token_ids": ids, "spans": spans, "coverage": coverage,
                     "document_budget": budget, "items": list(items), "legal_diagnostics": legal_diagnostics,
-                    "comparison_facts": comparison}
+                    "comparison_facts": comparison,
+                    "source_search": source_selection}
+        if source_selection is not None:
+            raise ValueError('Verified search result exceeds model context; request a new bounded search explicitly')
         if budget <= 880:
             raise ValueError("Instructions and source material exceed the model context budget")
         budget = max(880, int(budget * .8))
 
 
-def build_shared_prompts(rec, knowledge, config, tokenizer, groups):
+def build_software_fact_prompt(rec, knowledge, config, tokenizer, items, source_selection):
+    """Retain the selected original text, replacing only the output task."""
+    from dataclasses import replace
+    from .software_facts import system_prompt
+    from .source_units import unitize, render as render_units
+    if tuple(items) != (20,) or config.shared_prefix:
+        raise ValueError('Software facts require the individual item20 call')
+    # Reuse verified selection and source rendering. The model interprets source
+    # relations; legal disclosures and final necessary conditions are consumed in code.
+    base = build_prompt(rec, knowledge, replace(config, response_format='factored'), tokenizer,
+                        items, source_selection=source_selection)
+    references_only = config.response_format == 'software_refs'
+    spans = unitize(base['spans']) if references_only else base['spans']
+    # Remove the exact generated suffix from the right. Source text containing
+    # an instruction-like marker must not truncate what the model actually sees.
+    suffix = ('\n이번 호출에서 검토할 항목: v20. 이 항목들만 출력한다.'
+              '\n위의 공고에서 요청된 항목들의 적용조건과 사실을 검토하고, 지정된 JSON 형식으로만 출력한다.')
+    user = base['messages'][1]['content']
+    if not user.endswith(suffix):
+        raise ValueError('Unexpected software prompt source rendering')
+    user = user[:-len(suffix)]
+    if references_only:
+        original = ''.join(f'\n[S{n}|{s.doc_type}|문서{s.doc_index}|{s.start}:{s.end}]\n{s.text}\n'
+                           for n, s in enumerate(base['spans'], 1))
+        if not user.endswith(original):
+            raise ValueError('Unexpected software source block')
+        rendered = render_units(spans)
+        if original:
+            user = user[:-len(original)] + rendered
+    name = 'software_refs_v2' if references_only else 'software_facts_v1'
+    user += f'\n이 원문의 SW 관련 관계와 하한제도 안내를 지정한 {name} JSON으로 추출한다.'
+    messages = [{'role': 'system', 'content': system_prompt(references_only)}, {'role': 'user', 'content': user}]
+    ids = token_ids(tokenizer, messages, config.enable_thinking) if tokenizer is not None else None
+    if ids is not None and len(ids) + config.max_output_tokens + 32 > config.max_model_len:
+        raise ValueError('Software fact task exceeds context; prepare a new bounded source selection')
+    return {**base, 'messages': messages, 'token_ids': ids, 'spans': spans,
+            'response_format': config.response_format,
+            'source_unitization': {'enabled': references_only, 'original_spans': len(base['spans']),
+                                  'units': len(spans), 'original_source_characters': sum(len(s.text) for s in spans)}}
+
+
+def build_shared_prompts(rec, knowledge, config, tokenizer, groups, *, source_selection=None):
+    selected_source = verified_search_spans(rec, source_selection, tokenizer) if source_selection is not None else None
     """One source packet per notice; item instructions follow a shared prefix.
 
     Every group has the same exact evidence index and document budget, chosen
@@ -307,10 +473,12 @@ condition=not_met인 후보는 그 고시 숫자조건이 충족되지 않은 �
                            "facts 필수키: " + ", ".join(fact_fields(items)) + ".\n")
             else:
                 suffix += "최종 JSON은 요청한 v번호를 키로 하고 각 판단을 값으로 한다.\n"
+        if config.response_format in {'factored', 'fact_compact'} and 24 in items:
+            suffix += V24_FACT_CONTRACT
         suffixes.append(suffix + EVIDENCE_CONTRACT + "위 공고에 대한 지정된 JSON만 출력한다.")
     budget = config.document_chars
     while True:
-        spans = index.select(budget, items=all_items, mode=config.mode,
+        spans = selected_source if selected_source is not None else index.select(budget, items=all_items, mode=config.mode,
                              priority_ranges=priority_ranges(comparison) if comparison is not None else ())
         coverage = index.coverage(spans)
         data = {"meta": rec["meta"], "input_completeness": rec.get("input_completeness", {}),
@@ -335,6 +503,8 @@ condition=not_met인 후보는 그 고시 숫자조건이 충족되지 않은 �
             prompts.append({"messages":messages,"token_ids":ids,"spans":spans,"coverage":coverage,
                             "document_budget":budget,"items":list(items), "legal_diagnostics":legal_diagnostics,
                             "comparison_facts": comparison if 24 in items else None})
+            if source_selection is not None:
+                prompts[-1]['source_search'] = source_selection
         if tokenizer is None or max(len(p["token_ids"]) for p in prompts)+config.max_output_tokens+32 <= config.max_model_len:
             shared = None
             if tokenizer is not None:
@@ -346,6 +516,8 @@ condition=not_met인 후보는 그 고시 숫자조건이 충족되지 않은 �
             for prompt in prompts:
                 prompt["shared_prefix_tokens"] = shared
             return prompts
+        if source_selection is not None:
+            raise ValueError('Verified search result exceeds shared model context; request a new bounded search explicitly')
         if budget <= 880:
             raise ValueError("Shared source packet and instructions exceed model context budget")
         budget = max(880, int(budget * .8))

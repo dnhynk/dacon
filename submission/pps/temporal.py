@@ -6,8 +6,10 @@ explicit value-to-value mismatches. A matched field never proves all of v24=0.
 """
 from __future__ import annotations
 import datetime as dt
+from .legal_context import applicable_law
 import re
 from decimal import Decimal, InvalidOperation
+from .amounts import WON as MONEY, won_value
 
 
 def compact(s):
@@ -51,12 +53,10 @@ BRIEF = re.compile(r'제안\s*요청\s*서?\s*설명(?:회)?|사업\s*설명(?:�
 NO_BRIEF = re.compile(r'생략|없음|미개최|개최\s*하지|실시\s*하지|진행\s*하지|(?:요청서|과업지시서|문서|서면)[^\n]{0,30}갈음')
 DEADLINE = re.compile(r'(?:기술\s*)?제안서(?:\s*및\s*(?:가격\s*입찰서|가격\s*제안서))?\s*(?:등\s*)?(?:제출|접수)|입찰참가\s*등록[^\n]{0,30}제안서\s*접수|접수\s*마감')
 SCHEDULE = re.compile(r'입찰|제안|등록|접수|마감|공고|설명|평가|발표|제출|개찰')
-MONEY = re.compile(r'(?<!\d)(?P<num>\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(?P<unit>억원|억\s*원|천만원|백만원|만원|천원|원)(?![가-힣])')
-UNITS = {'원':1,'천원':1000,'만원':10000,'백만원':1000000,'천만원':10000000,'억원':100000000}
 
 
 def money_value(m):
-    return Decimal(m.group('num').replace(',', '')) * UNITS[compact(m.group('unit'))]
+    return won_value(m.group())
 
 
 def dates(text):
@@ -103,11 +103,12 @@ def extract_amounts(rec):
             # A field label must be followed by its literal value, not narrative.
             if not re.fullmatch(r'[\s:：|=금￦₩\\()]*[가-힣]{0,28}[\s(￦₩\\]*',pre):continue
             value=money_value(m)
+            if value is None:continue
             around=t[a.start():a.end()+m.end()+90]
             after=tail[m.end():m.end()+80]
             label=compact(a.group())
             basis='estimated_ex_vat' if label=='추정가격' else 'unresolved_budget_basis'
-            c=compact(after).lower()
+            c=compact(m.group()+' '+after).lower()
             if label!='추정가격' and re.search(r'(?:부가가치세|부가세|vat)[^\n]{0,14}포함',c) and not re.search(r'(?:부가가치세|부가세|vat)[^\n]{0,14}(?:미포함|불포함|별도|제외)',c):basis='budget_including_vat'
             found.append(fact(di,t,a.start(),a.end()+m.end()+min(50,len(after)),label,str(value),basis=basis))
     return found
@@ -115,16 +116,9 @@ def extract_amounts(rec):
 
 def v23(rec):
     meta=rec.get('meta',{})
-    law=meta.get('적용계약법')
+    law=applicable_law(rec)
     if law not in {'국가계약법','지방계약법'}:
         return result(23,None,'unknown_applicable_law')
-    # Strong operative declarations can conflict with registration; generic law
-    # citations (e.g. a national SME notice inside a local tender) cannot.
-    law_mentions=set()
-    for d in rec['docs']:
-        if d['type']!='공고문':continue
-        for m in re.finditer(r'(?:본|이)\s*(?:입찰|계약)[^\n]{0,40}(국가|지방)(?:계약법|를\s*당사자로|자치단체를\s*당사자로)',d['text']):law_mentions.add('국가계약법' if m[1]=='국가' else '지방계약법')
-    if len(law_mentions)>1 or law_mentions and law not in law_mentions:return result(23,None,'conflicting_applicable_law')
     if law=='국가계약법':return result(23,0,'national_contract_outside_item_scope')
     award=meta.get('낙찰방법')
     if not known(award):return result(23,None,'unknown_award_procedure')
@@ -184,14 +178,12 @@ def v23(rec):
     deadline_vals={f['value'] for f in deadlines}
     if len(deadline_vals)>1:return result(23,None,'conflicting_proposal_deadlines',briefs+deadlines)
     amount_facts=extract_amounts(rec)
-    estimates={Decimal(f['value']) for f in amount_facts if f['basis']=='estimated_ex_vat'}
-    if len(estimates)>1:return result(23,None,'conflicting_estimated_prices',amount_facts+briefs)
-    meta_est=positive_decimal(meta.get('입찰추정가격'))
-    if estimates:
-        estimate=next(iter(estimates))
-        if meta_est is not None and abs(estimate-meta_est)>1:return result(23,None,'body_meta_estimated_price_conflict',amount_facts+briefs)
-    elif meta_est is not None:estimate=meta_est
-    else:estimate=None
+    # Import locally: the shared price parser also uses temporal source facts.
+    # A registration disagreement is preserved, but does not replace the
+    # official notice amount used for applicability.
+    from .prices import project_prices
+    price = project_prices(rec)['estimated_price']
+    estimate = price['value_won']
     threshold=None if estimate is None else 10 if estimate<100000000 else 20 if estimate<1000000000 else 40
     briefing=dt.date.fromisoformat(next(iter(vals)))
     gap=None if not deadline_vals else (dt.date.fromisoformat(next(iter(deadline_vals)))-briefing).days
@@ -204,7 +196,7 @@ def v23(rec):
         if mp and pubs and mp not in pubs:return result(23,None,'body_meta_publication_date_conflict',briefs+publications)
         if mp and not pubs:pubs={mp}
     pubgap=None if not pubs else (briefing-dt.date.fromisoformat(next(iter(pubs)))).days
-    calc=dict(kind='calculation',estimated_price=str(estimate) if estimate is not None else None,required_days=threshold,briefing_to_proposal_calendar_days=gap,publication_to_briefing_calendar_days=pubgap,boundary_policy='strict_shortfall_positive; equality_abstains')
+    calc=dict(kind='calculation',estimated_price=str(estimate) if estimate is not None else None,price_resolution=price,required_days=threshold,briefing_to_proposal_calendar_days=gap,publication_to_briefing_calendar_days=pubgap,boundary_policy='strict_shortfall_positive; equality_abstains')
     facts=briefs+deadlines+publications+amount_facts+[calc]
     if gap is not None and gap<=0:return result(23,None,'briefing_not_before_proposal_or_wrong_event',facts)
     if pubgap is not None and pubgap<0:return result(23,None,'briefing_before_publication_or_wrong_event',facts)
@@ -223,13 +215,62 @@ PROVINCES={
 ALIASES={**PROVINCES,**{v:v for v in PROVINCES.values()},'강원도':'강원특별자치도','전라북도':'전북특별자치도','제주도':'제주특별자치도'}
 REGION_RE=re.compile('|'.join(sorted(map(re.escape,ALIASES),key=len,reverse=True)))
 OFFICE=re.compile(r'법인등기부\s*상\s*본점\s*소재지|본점\s*소재지|주된\s*(?:영업소|사무소)(?:\s*소재지)?|본사|사업장\s*소재지')
+# A physical list item is an ownership boundary even when PDF extraction left
+# no blank line. Do not attach the next duty's place, OR or negation to this one.
+_REGISTRATION_ITEM = re.compile(
+    r'\n[ \t]*(?:(?:\d+(?:-\d+)*|[가-하])[.)][ \t]*|[①-⑳•○●◦◾▪□■※✓]\s*|[-–—][ \t]+)')
+
+
+def registration_bounds(text, start, end):
+    """Keep a registration sentence's ordinary context within its list item."""
+    from .assertions import clause
+    lo, hi = clause(text, start, end)
+    for boundary in _REGISTRATION_ITEM.finditer(text, lo, hi):
+        if boundary.end() <= start:
+            lo = boundary.end()
+        elif boundary.start() >= end:
+            hi = boundary.start()
+            break
+    return lo, hi
+
+
+def region_observation(text, *, require_place_role=False):
+    """Project explicit province attributes without reading other token prose.
+
+    A known basic unit and an unreadable/unknown unit are different facts.
+    Neither province projection nor a local rN symbol proves district equality.
+    """
+    from .anonymized_tokens import anonymous_tokens, province_projection
+    projected=province_projection(text,allowed_provinces=ALIASES)
+    names=sorted({ALIASES[m.group()] for m in REGION_RE.finditer(projected)})
+    basic=False
+    unresolved=[]
+    for token in anonymous_tokens(text):
+        reasons=list(token.errors)
+        if token.kind=='institution':
+            if require_place_role and not re.match(
+                    r'\s*(?:관할(?:\s*(?:구역|지역))?\s*)?(?:내(?:에)?|에|안에)\s*'
+                    r'(?:소재|두고|둔|있는)',text[token.end:]):
+                continue  # The agency issuing specifications is a different subject.
+            reasons.append('institution_token_does_not_identify_a_region')
+        else:
+            unit=token.attribute('단위')
+            basic |= not token.errors and unit=='기초'
+            if not token.errors and unit not in ('기초','광역'):
+                reasons.append('region_unit_missing_or_unrecognized')
+            if not token.errors and token.attribute('광역') not in ALIASES:
+                reasons.append('province_missing_or_unrecognized')
+        if reasons:
+            unresolved.append({'start':token.start,'end':token.end,'text':token.text,'reasons':reasons})
+    return {'provinces':names,'basic_level':basic,
+        'anonymous_scope_unresolved':bool(unresolved),'unresolved_tokens':unresolved}
 
 
 def region_set(text):
-    # Values are normalized only to province level; district equality is unresolved.
-    names={ALIASES[m.group()] for m in REGION_RE.finditer(text)}
-    unresolved_basic=bool(re.search(r'단위=기초|기초자치단체',text))
-    return names,unresolved_basic
+    # Compatibility projection: the second value means hierarchy review, not
+    # certified membership in a basic municipality. Exact token facts stay above.
+    observation=region_observation(text)
+    return set(observation['provinces']),bool(observation['basic_level'] or observation['anonymous_scope_unresolved'])
 
 
 def region_clauses(rec, *, doc_types=('공고문',)):
@@ -240,21 +281,30 @@ def region_clauses(rec, *, doc_types=('공고문',)):
         for a in OFFICE.finditer(t):
             # The operative regional phrase can follow a long definition in parentheses.
             tail=t[a.start():a.start()+480]
-            nxt=re.search(r'\n\s*(?:[가-하]|\d{1,2})[.)]\s*',tail[a.end()-a.start():])
-            if nxt:tail=tail[:a.end()-a.start()+nxt.start()]
+            nxt=_REGISTRATION_ITEM.search(tail,a.end()-a.start())
+            if nxt:tail=tail[:nxt.start()]
+            tail=tail.rstrip()
             if re.search(r'다른\s*경우|변경등록|불일치|확인\s*서류',tail):continue
             compact_tail=compact(tail)
-            if not re.search(r'(?:소재|두고|둔|있는|기재).{0,60}(?:업체|사업자|자로|자이어야|자에)|업체.{0,15}(?:소재|두고|둔)',compact_tail):continue
+            if not re.search(r'(?:소재|두고|둔|있는|기재).{0,60}(?:업체|사업자|자로|자이어야|자에|갖춘자)|(?:둔|소재한|두고있는)자(?:[.。]|$)|업체.{0,15}(?:소재|두고|둔)',compact_tail):continue
             names,basic=region_set(tail)
             if not names and not basic:continue
             # Isolate through the operative bidder restriction, not contact addresses.
-            m=re.search(r'(?:있는|둔|두고|소재한|소재하고|기재되어\s*있는)[^\n]{0,40}?(?:업체|사업자|자이어야|자로)|업체',tail)
+            m=re.search(r'(?:있는|둔|두고|소재한|소재하고|기재되어\s*있는)[^\n]{0,40}?(?:업체|사업자|자이어야|자로)|갖춘\s*자|업체',tail)
             end=a.start()+(m.end() if m else len(tail))
             quote=t[a.start():end]
-            names,basic=region_set(quote)
-            if not names and not basic:continue
+            observation=region_observation(quote,require_place_role=True)
+            names,basic=observation['provinces'],observation['basic_level']
+            unresolved=observation['anonymous_scope_unresolved']
+            if not names and not basic and not unresolved:continue
             if re.search(r'제출\s*장소|접수\s*장소|납품\s*장소',quote):continue
-            facts.append(fact(di,t,a.start(),end,'bidder_region',sorted(names),basic_level=basic))
+            extra={}
+            if unresolved:
+                extra={'anonymous_region_scope_unresolved':True,
+                    'unresolved_region_tokens':[{**token,'doc_index':di,
+                        'start':a.start()+token['start'],'end':a.start()+token['end']}
+                        for token in observation['unresolved_tokens']]}
+            facts.append(fact(di,t,a.start(),end,'bidder_region',sorted(names),basic_level=basic,**extra))
     return facts
 
 
@@ -277,17 +327,42 @@ def contract_fields(rec, *, doc_types=('공고문',)):
 
 
 def industry_fields(rec, *, doc_types=('공고문',)):
+    from .assertions import assertion_scope, unresolved_assertion, has_withdrawal
     out=[]
     pat=re.compile(r'(?:업종|면허)\s*(?:코드|번호)?\s*[:：]?\s*(\d{4})(?!\d)')
+    # An original name/code pair is also a code observation. No external alias
+    # table, metadata-derived code or inferred code is inserted into the source.
+    # Requiring a registration-class suffix and a closing bracket excludes
+    # years, ten-digit purchase identities, amounts and model numbers.
+    named=re.compile(
+        r'(?P<name>[가-힣][가-힣·ㆍ. \t]{1,60}?(?:업|업자|용역|면허|서비스))'
+        r'[ \t]*(?:[(（\[]|[:：])[ \t]*(?P<code>\d{4})[ \t]*(?=[)）\]])')
+    withdrawn = has_withdrawal(rec, 'industry')
     for di,d in enumerate(rec['docs']):
         if doc_types is not None and d['type'] not in doc_types:continue
         t=d['text']
-        for a in pat.finditer(t):
-            lo=max(0,a.start()-130);hi=min(len(t),a.end()+150);context=t[lo:hi]
+        candidates = [(a.start(), a.end(), a[1], 'explicit_code_label') for a in pat.finditer(t)]
+        candidates += [(a.start(), a.end(), a['code'], 'original_name_code_pair') for a in named.finditer(t)]
+        seen = set()
+        for start, end, code, mechanism in sorted(candidates):
+            lo,hi=registration_bounds(t,start,end)
+            context=assertion_scope(t,start,end,'industry',bounds=(lo,hi))
             if not re.search(r'등록|신고|허가',context):continue
             if not re.search(r'업체|자이어야|한\s*자|된\s*자|갖춘\s*자|등록한',context):continue
             if re.search(r'경우에\s*한|해당\s*시|변경\s*등록|입찰\s*대리인',context):continue
-            out.append(fact(di,t,lo,hi,'mandatory_industry_code',a[1],alternative=bool(re.search(r'또는|중\s*하나|이거나',context))))
+            if (lo,hi,code) in seen:continue
+            seen.add((lo,hi,code))
+            # A bare parenthesized number next to a service name can be a year
+            # or reference. It needs its own registration link before it can
+            # support comparison; an unrelated later registration is insufficient.
+            named_link = mechanism != 'original_name_code_pair' or bool(re.match(
+                r'[)）\]」』’\'" \t]*(?:으로|로|에|을|를)[^\r\n]{0,45}?(?:등록|신고|허가)', t[end:hi]))
+            out.append(fact(di,t,lo,hi,'mandatory_industry_code',code,
+                extraction=mechanism,
+                alternative=bool(re.search(r'또는|중\s*하나|이거나',context)),
+                predicate_scope=context,
+                assertion_scope_unresolved=not named_link or withdrawn or unresolved_assertion(context) or bool(re.search(
+                    r'(?:등록|신고|허가).{0,8}하지\s*(?:않|아니)|등록\s*(?:면제|불필요|불요)|미등록', context))))
     return out
 
 
@@ -319,12 +394,13 @@ def v24(rec):
             bv=set(next(iter(sets)))
             # Extra body province proves a mismatch even when a district is anonymized.
             if bv-meta_names:explicit.append(dict(field='region_provinces',body=sorted(bv),metadata=sorted(meta_names),evidence=next(f['evidence'] for f in regions if set(f['value'])==bv)))
-            elif meta_names-bv and not any(f['basic_level'] for f in regions) and not meta_basic:
+            elif meta_names-bv and not any(f['basic_level'] or f.get('anonymous_region_scope_unresolved') for f in regions) and not meta_basic:
                 explicit.append(dict(field='region_provinces',body=sorted(bv),metadata=sorted(meta_names),evidence=regions[0]['evidence']))
-            elif any(f['basic_level'] for f in regions) or meta_basic:unresolved.append('district_equivalence_unresolved')
+            elif any(f['basic_level'] or f.get('anonymous_region_scope_unresolved') for f in regions) or meta_basic:unresolved.append('district_equivalence_unresolved')
         else:unresolved.append('region_sets_unresolved_or_conflicting')
     else:unresolved.append('region_value_missing')
     industries=industry_fields(rec);facts.extend(industries)
+    industries=[f for f in industries if not f['assertion_scope_unresolved']]
     if industries and meta.get('업종제한여부')=='N':flags.append(dict(field='industry_flag',body='explicit_mandatory_code',metadata='N',evidence=industries[0]['evidence']))
     ml=meta.get('면허업종제한목록');codes=set(re.findall(r'(?<!\d)\d{4}(?!\d)',str(ml))) if known(ml) else set()
     body_codes={f['value'] for f in industries}
