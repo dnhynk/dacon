@@ -49,7 +49,9 @@ python script.py --help
 python tools/build_submission.py --output artifacts/submission.zip
 ```
 
-루트 `script.py`는 `submission.main.main()`을 부른다. 원래 A 입력, 최고 기록의
+루트 `script.py`는 `submission.main.main()`을 부른다. 기본 실행기는 스트리밍이며
+시간 예산 안에서 공고별 호출을 조절한다([계약](docs/RUNTIME_STREAMING.md)).
+이전 32공고 묶음 실행은 `--executor cohort`다. 원래 A 입력, 최고 기록의
 CPU 보정, L19의 v20/e20을 같은 `submission/` 패키지에 통합한다. 검증된 개선은
 이 패키지에 계속 합치며 새 현행 source 브랜치를 만들지 않는다. ZIP과 노트북도
 이 본체를 사용한다. **현재 통합본의 CPU/GPU 검증 상태는 STATE.json을 확인한다.**

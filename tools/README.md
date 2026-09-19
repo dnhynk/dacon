@@ -8,6 +8,8 @@
 | 현재 상태와 보존 해시 확인 | `project_status.py`, 선택적으로 `--verify` |
 | 실제 공고의 새 추론 | 루트 `script.py` |
 | 동결 입력·단일 엔진 전체 실행과 회수 가능한 체크포인트 | `run_frozen_canonical.py`, `checkpoint_native_run.py` |
+| 동결 응답으로 스트리밍 실행기·병렬 준비를 무GPU 재생 | `replay_stream.py --responses 보존실행 --output 새폴더` |
+| 스트리밍 실행 결과를 동결 기준과 대조(패킷 토큰·호출 집합·셀·점수) | `verify_stream_run.py --run 새폴더 --baseline-packets ... --baseline-csv ... --output 새파일` |
 | 동일 코드 ZIP / Colab 노트북 생성 | `build_submission.py` / `create_colab_notebook.py` |
 | 완성된 예측 CSV 채점·세 기준과 비교 | `evaluate.py --labels ... --predictions ... --baseline ... --out 새파일` |
 | 보존한 .751807의 CPU 재현 | `replay_preserved_reference.py --output 새폴더` |
@@ -123,6 +125,19 @@ Chrome 다운로드를 요청한다. 다운로드 요청과 실제 로컬 회수
 `recover_audit_archive.py`에 화면에서 읽은 SHA256/바이트를 넣어 로컬 파일과 CRC를
 확인하고, 정상 실행의 최종 검증은 기존 `verify_runtime_recovery.py`로 수행한다.
 이 도구들은 모델을 재실행하거나 유효 응답을 바꿔 고르지 않는다.
+
+## Colab MCP
+
+루트 `.mcp.json`이 Claude Code 세션에 `colab-mcp`(googlecolab/colab-mcp, 커밋 고정)를
+등록한다. `uvx`가 필요하다. 서버는 세션마다 따로 뜨고, `open_colab_browser_connection`을
+호출하면 새 Colab 탭(빈 scratch 노트북)을 열어 연결한 뒤 노트북 편집 도구를 추가한다.
+서버에는 계정 옵션이 없으므로 `env.BROWSER`로 donghyun9282@gmail.com이 로그인된 Chrome
+프로필(`Profile 1`)을 지정한다. 이 값이 없으면 OS 기본 브라우저(이 PC는 Edge)로 열린다.
+프로필 폴더명은 PC마다 다르며 `Chrome/User Data/Local State`의 `info_cache`에서 확인한다.
+도구가 보인다는 것은 연결 권한이 아니다. 호출 전에 `docs/LOCAL_HANDOFF.md`의 소유자를
+확인하고, 다른 세션이 Chrome·Colab·GPU를 소유하면 호출하지 않는다(`docs/WORKFLOW.md`).
+Codex는 `.mcp.json`을 읽지 않으며, 이 서버가 요구하는 `tools/list_changed` 지원은
+Codex에서 검증하지 않았다. 업스트림 갱신은 `args`의 커밋 해시를 직접 올려 반영한다.
 
 ## 종료한 옛 실행 경로
 

@@ -56,15 +56,24 @@ def colbert_similarity(query, document):
 class BGEDenseEncoder:
     """CLS + L2 normalization, as specified by the fixed BGE-M3 checkpoint.
 
-    CPU is explicit so that calling a search tool cannot evict or compete with
-    Gemma on the GPU. All inputs must fit; silent embedding truncation is refused.
-    There is no cross-notice document or answer cache here.
+    The default CPU float32 path is the reference. A CUDA float32 encoder with
+    TF32 disabled is the same arithmetic on the GPU; it exists so that search
+    embeddings do not serialize the whole preparation behind one CPU. All inputs
+    must fit; silent embedding truncation is refused. There is no cross-notice
+    document or answer cache here.
     """
-    def __init__(self, model_dir=None, *, threads=7, batch_size=8, max_length=512, sparse=False, colbert=False):
+    def __init__(self, model_dir=None, *, threads=7, batch_size=8, max_length=512, sparse=False, colbert=False,
+                 device='cpu', dtype='float32'):
         import torch
         from transformers import AutoModel, AutoTokenizer
         if type(threads) is not int or not 1 <= threads <= 7:
             raise ValueError('CPU retrieval requires 1..7 threads')
+        if device not in {'cpu', 'cuda'} or dtype not in {'float32', 'float16', 'bfloat16'}:
+            raise ValueError('Retrieval encoder device must be cpu/cuda with a float32/float16/bfloat16 dtype')
+        if device == 'cpu' and dtype != 'float32':
+            raise ValueError('CPU retrieval keeps float32; reduced precision is a GPU-only option')
+        if device == 'cuda' and not torch.cuda.is_available():
+            raise RuntimeError('CUDA retrieval encoder requested without a usable GPU')
         if type(batch_size) is not int or batch_size <= 0:
             raise ValueError('batch_size must be positive')
         if type(max_length) is not int or not 8 <= max_length <= 8192:
@@ -78,13 +87,20 @@ class BGEDenseEncoder:
             raise FileNotFoundError(f'Offline BGE directory is unavailable: {path}')
         self.torch = torch
         torch.set_num_threads(threads)
+        self.device, self.dtype_name = device, dtype
+        weight_dtype = getattr(torch, dtype)
+        if device == 'cuda':
+            # Same IEEE float32 arithmetic as the CPU reference; TF32 would
+            # silently round matmul inputs and move dense rankings.
+            torch.backends.cuda.matmul.allow_tf32 = False
+            torch.backends.cudnn.allow_tf32 = False
         began = time.monotonic()
         self.tokenizer = AutoTokenizer.from_pretrained(path, local_files_only=True, trust_remote_code=False)
         self.model = AutoModel.from_pretrained(path, local_files_only=True, trust_remote_code=False,
-                                               dtype=torch.float32, attn_implementation='sdpa')
+                                               dtype=weight_dtype, attn_implementation='sdpa')
         if self.model.config.model_type != 'xlm-roberta' or self.model.config.hidden_size != 1024:
             raise ValueError('Expected the supplied BGE-M3 XLM-R checkpoint')
-        self.model.eval().to('cpu')
+        self.model.eval().to(device)
         self.sparse_enabled = sparse
         self.colbert_enabled = colbert
         self.sparse_linear = None
@@ -95,21 +111,22 @@ class BGEDenseEncoder:
                 raise ValueError('The fixed BGE-M3 sparse head is missing or has changed')
             self.sparse_linear = torch.nn.Linear(1024, 1)
             self.sparse_linear.load_state_dict(torch.load(head, map_location='cpu', weights_only=True), strict=True)
-            self.sparse_linear.eval().to('cpu', dtype=torch.float32)
+            self.sparse_linear.eval().to(device, dtype=weight_dtype)
         if colbert:
             head = path / 'colbert_linear.pt'
             if not head.is_file() or hashlib.sha256(head.read_bytes()).hexdigest() != COLBERT_HEAD_SHA256:
                 raise ValueError('The fixed BGE-M3 ColBERT head is missing or has changed')
             self.colbert_linear = torch.nn.Linear(1024, 1024)
             self.colbert_linear.load_state_dict(torch.load(head, map_location='cpu', weights_only=True), strict=True)
-            self.colbert_linear.eval().to('cpu', dtype=torch.float32)
+            self.colbert_linear.eval().to(device, dtype=weight_dtype)
         if self.tokenizer.padding_side != 'right':
             raise ValueError('BGE pooling requires the supplied right-padding tokenizer')
         self.ignored_tokens = {self.tokenizer.cls_token_id, self.tokenizer.eos_token_id,
                                self.tokenizer.pad_token_id, self.tokenizer.unk_token_id}
         self.batch_size, self.max_length = batch_size, max_length
         self.receipt = {'model': BGE_MODEL, 'required_revision': BGE_REVISION,
-            'device': 'cpu', 'dtype': 'float32', 'pooling': 'CLS_L2',
+            'device': device, 'dtype': dtype, 'pooling': 'CLS_L2',
+            'tf32_disabled': device == 'cuda',
             'threads': threads, 'batch_size': batch_size, 'max_length': max_length,
             'load_seconds': time.monotonic() - began, 'encoded_texts': 0,
             'encoded_tokens': 0, 'encode_seconds': 0., 'truncated_inputs': 0,
@@ -155,6 +172,8 @@ class BGEDenseEncoder:
             indices = order[start:start + self.batch_size]
             batch = self.tokenizer.pad({'input_ids': [encoded[i] for i in indices]},
                                        padding=True, return_tensors='pt')
+            if self.device != 'cpu':
+                batch = {key: value.to(self.device) for key, value in batch.items()}
             with self.torch.inference_mode():
                 states = self.model(**batch).last_hidden_state
                 vectors = self.torch.nn.functional.normalize(states[:, 0].float(), p=2, dim=1)

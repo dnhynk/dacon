@@ -1,79 +1,201 @@
 {
   "schema_version": 1,
-  "updated_utc": "2026-09-16T19:31:55.592827+00:00",
+  "updated_utc": "2026-09-19T03:00:00+00:00",
   "competition": "DACON 236754",
   "target_official_macro_f1": 0.85,
   "official_score": null,
   "production_candidate": {
-    "status": "canonical_cpu_verified_ready_for_external_validation",
+    "status": "development200_tuned_consumer_replay_complete",
     "runtime": "submission/",
     "entrypoint": "script.py",
-    "source_fingerprint": "28e4192f508d11ec1e76ab66fb45481c09cf8975dd1606cf57f2c32f482ff96b",
-    "archive": "runs/independent_audit_20260913/final_canonical_v30/build_02/submit.zip",
-    "archive_sha256": "6abd56a24b2823e8eb03e4e83cea7bc7ae1c4551118e49506f22208078cd32ec",
+    "source_fingerprint": "ac3adb3a71778fe0549e81404fd1ad3b01cb207249454d78bc00c25b029a6028",
+    "archive": "runs/dev200_unseal_20260917/build_tuned_05/submission.zip",
+    "archive_sha256": "0a3df53cf5f9ee071484825075bffd4baf10b111e43ac1722d5a753b0c639e8d",
     "official_submission": false,
-    "fresh_measurement_boundary": "V30 whole fresh measured source 10398ef1; final source adds deterministic consumers and a goods-scope producer input change.",
-    "unmeasured_boundary": "The strengthened goods-scope prompt/exact-code lookup needs new Gemma inference; official unseen and L40S runtime are also unmeasured."
+    "fresh_measurement_boundary": "Pre-unseal source 28e4192f was freshly inferred once on development200: 953 model responses plus 161 deterministic skips; prediction SHA a2a47c66 scored 0.8468570781.",
+    "unmeasured_boundary": "Post-unseal source ac3adb3a is measured only by zero-call deterministic replay on that frozen response population (source_matches_generation=false). Official unseen score and L40S runtime remain unmeasured."
   },
   "active_task": {
-    "id": "independent_audit_20260913_final_canonical_v30",
-    "status": "complete_internal_round",
-    "description": "Independent systemic audit, canonical integration, V30 whole fresh inference, deterministic frontier, residual source audit and cold-start cleanup.",
-    "evidence": "runs/independent_audit_20260913/final_canonical_v30/report.md",
-    "next_action": "No active internal queue. Only on a newly allocated GPU, run one canonical whole-cohort fresh inference including the final goods-scope input; measure L40S and official/unseen results separately. Do not reopen old Colab runs.",
-    "completion_followup": null,
-    "live_execution_evidence": null,
+    "id": "stream_executor_time_limit_20260919",
+    "status": "concluded_build_05_a100_verified_l40s_and_full_1853_unmeasured",
+    "description": "Meet the 7200s limit for 1853 private notices: record-major streaming executor (submission/stream.py) with a deadline-driven judgment tier ladder, worker-process preparation with one BGE encoder service (submission/prep.py), CSV always completed from source-only rows. Canonical prompts, schemas and consumers unchanged.",
+    "evidence": "docs/RUNTIME_STREAMING.md",
+    "measurements": {
+      "dev200_a100_extrapolation_1853": "CPU preparation ~19,200s (BGE CPU 1839s/200), engine load 389s, generation 15,270s; KV cache 7.49GiB gave 16k-request concurrency 2.18 and 11% prefix-cache reuse under 32-record cohorts.",
+      "dev200_frozen_response_tier_f1": {
+        "canonical": 0.87751,
+        "no_optional_reviews": 0.874353,
+        "source_rules_a10": 0.888562,
+        "source_rules_a10_no_catalog": 0.813629,
+        "a1_only": 0.795952
+      },
+      "tests": "4144 passed excluding tests/test_independent_cell_plant.py (concurrent Codex labeling work, unrelated to the runtime).",
+      "local_replay_dev200": "runs/stream_executor_20260919/replay_verification_summary.json: 200 records in 8 chunks, call set identical in all chunks (953/953 requests), CSV cells identical to consumed_tuned_05 in all chunks, 1106 packets with identical token IDs; the 8 differing packets (PPS-DEV-097, PPS-DEV-121, PPS-DEV-186, PPS-DEV-02) come from pre-existing working-tree changes to comparison/price extraction versus the pre-unseal frozen packets, not from the executor.",
+      "gpu_a100_dev200_20260919": {
+        "report": "runs/stream_executor_20260919/gpu_verify_01/REPORT.md",
+        "source_fingerprint": "937fed07eb1ca8a333a9aca902005c1ba27d474a79491c537c7f4cb3184e2735",
+        "canonical_fresh": "200 records, 1914.7s, 954/954 responses, no unresolved/fallback/model-free records; development macro F1 0.8627845 (FP33/FN15). Frozen-response replay 0.8775098; 8 changed value cells (1 recovery, 7 new errors). 1106/1114 packets have identical token IDs, with exactly the 8 known pre-existing source differences; S:PPS-DEV-104:9 was one additional model call.",
+        "projection_1853": "200-record run 577.9s; tier2 4, tier3 32, tier4 a1_only 164; development macro F1 0.7969666 (FP13/FN39). No model-free records. Canonical 1853 A100 time estimate 12425-14269s exceeds 7200s; observed mixed-tier arithmetic 3799s is conditional and quality below target. L40S and full 1853 remain unmeasured.",
+        "archive_sha256": "58e06b0c63f507f8adaed7a747bfdae3760a0966c56732244e8b1dc2a90d28e1",
+        "runtime_cleanup": "Colab runtime deleted after archive hash verification; session manager displayed 활성 세션 없음."
+      },
+      "gpu_verify_01_a100_40gb": "runs/stream_executor_20260919/gpu_verify_01/REPORT.md: canonical fixed 200 records 1,914.7s (load 419.9s), fresh dev F1 0.8627845 (FP33/FN15), 954/954 responses, GPU-encoder packets identical to the CPU baseline except the 8 pre-existing comparison/price-extractor differences; 1853-record projection with the single-weight cost model collapsed to a1_only for 164/200 records, F1 0.7969666.",
+      "gpu_verify_02_a100_40gb": "runs/stream_executor_20260919/gpu_verify_02/REPORT.md (build_02): projection policy 968.9s, tier3 199 + a1_only 1, fresh dev F1 0.8587445; tier2 fixed 890.8s F1 0.8809058; tier3 fixed 644.0s F1 0.8503043; canonical 1,663.7s F1 0.8587449. 1853-record linear extrapolation: tier3 5,312-5,640s (fits), tier2 7,292-7,473s (92-273s over), canonical 14,742-14,920s. --max-num-batched-tokens 16384 OOMed on A100-40GB (keep 8192). Engine idle 0s between first submission and last completion; first submission came 41s after the engine load (fixed in build_03 by pre-feeding preparation); one prior-based a1_only flap at record 32 (fixed: prior decision made once).",
+      "engine_cost_fit_a100_40gb": "Two-parameter fit on 90s windows of both runs: 157us per new prefill token, 0.35ms per decode token (6.6% rms); prefill is >85% of engine time. Per-record cost by tier: canonical 7.1s, no_optional_reviews 4.8s, source_rules_a10 3.5-3.9s, source_rules_a10_a19 2.7s, a1_only 1.8s; only tier3 fits 1853 records in 7200s on this GPU.",
+      "tier_ladder_v2_dev200_replay_f1": {
+        "canonical": 0.87751,
+        "no_optional_reviews": 0.874353,
+        "source_rules_a10": 0.888562,
+        "source_rules_a10_a19": 0.870885,
+        "a1_only": 0.795952
+      },
+      "gpu_verify_03_a100_80gb": "runs/stream_executor_20260919/gpu_verify_03/REPORT.md (build_04): projection policy 849.6s (cold load 321s), tier3 160 + tier2 40, fresh dev F1 0.8652; tier2 fixed generation window 673.4s (3.37s/record), F1 0.8740, 1853 extrapolation 6,570s (450s inside the 7,020s submit deadline); policy tier2 estimate 2.97s/record is 12% optimistic versus measured. build_04 MoE tuner failed on GPU (W8A8 quant config on a weight-only model; no file written, engine unaffected); the corrected tuner gained 12.3% on the kernel at 8192 tokens with bit-identical output but only 1.7% on the tier2 generation window (661.8s, F1 0.8760), less than its 160s cost, so --moe-tuning defaults to off from build_05. No unresolved requests, zero engine idle, first submit 6.7s after engine ready; BGE GPU encoder 9,488 texts in 156s per 200 records. Labels were never uploaded; scores computed locally. Result archives downloaded with matching SHA-256 (result_archive.json); 1106/1114 packets have identical token IDs in all three runs, the rest being the 8 known pre-existing differences."
+    },
+    "next_action": "None scheduled: the time-limit work is concluded. Submission candidate for timing is runs/stream_executor_20260919/build_05/submission.zip (fingerprint f6a565bf..., sha256 f4c48fe0...). Unmeasured and only obtainable from the organiser environment or an L40S: L40S prefill speed, a full 1853-record run, private-input length distribution, official score. The executor decides the tier at run time from measured cost, so no code change is required for those. Further speed requires fewer new prefill tokens per record, which changes judgment inputs and belongs to the accuracy work.",
     "bounded_execution_order": [
       {
-        "task": "v30_whole_fresh",
+        "task": "measure_cohort_runtime_and_call_value",
         "status": "complete",
-        "exit": "160 records;762 fresh responses+130 deterministic skips;0 format retries;development Macro F1 .8581487956."
+        "exit": "Per-profile timing, prefix structure, sw_check/A10 skip rates and dev200 ablations recorded in docs/RUNTIME_STREAMING.md."
       },
       {
-        "task": "deterministic_frontier",
+        "task": "implement_stream_executor_and_prep_pool",
         "status": "complete",
-        "exit": "Frontier12 same-response replay .9106120731;FP15/FN8;new model calls0."
+        "exit": "submission/stream.py, submission/prep.py, VLLMRunner submit/step helpers, GPU-capable BGE encoder, CLI flags; cohort executor kept behind --executor cohort."
       },
       {
-        "task": "residual_source_audit",
+        "task": "local_frozen_response_replay",
         "status": "complete",
-        "exit": "All23 residual cells source-attributed;DEV122 fixed;DEV22 producer boundary strengthened."
+        "exit": "All 200 records replayed with zero new model calls: identical call sets and identical CSV cells versus consumed_tuned_05."
       },
       {
-        "task": "final_repository_cleanup",
+        "task": "gpu_dev200_verification_and_timing",
         "status": "complete",
-        "exit": "Cold-start registry/handoff/history refreshed;final build and full tests recorded."
+        "exit": "A100-40GB canonical fresh 0.8628; projection with the single-weight model failed (a1_only 164/200, 0.7970)."
       },
       {
-        "task": "external_validation",
-        "status": "not_active_resource_boundary",
-        "exit": "Final goods producer input,official unseen score and L40S2h require a new authorized runtime."
+        "task": "cost_model_and_ladder_repair",
+        "status": "complete",
+        "exit": "Two-parameter online cost model, steady-state gating, one-step descent/ascent with dwell, ladder v2 (A19 rules before dropping Q10), A1->A19->A10 order, queue depth 8; policy tests replay the GPU logs (tests/fixtures/stream_gpu_verify_20260919.json)."
+      },
+      {
+        "task": "gpu_rerun_repaired_policy",
+        "status": "complete",
+        "exit": "A100-40GB: policy settled on tier3 (199/200), fresh F1 0.8587; fixed tier2 0.8809 but 92-273s over 7200s; tier3 fixed 0.8503."
+      },
+      {
+        "task": "build_03_observability_and_startup_fixes",
+        "status": "complete",
+        "exit": "prefeed preparation during engine load, prior decision once, live encoder receipt, timing fields; 4195 tests pass; GPU rerun of build_03 not done."
+      },
+      {
+        "task": "default_tier_ceiling_2_and_moe_self_tuning",
+        "status": "complete",
+        "exit": "User-approved 2026-09-19: --tier-ceiling default 2; submission/moe_tune.py benchmarks fused_experts tilings in a subprocess before the engine and applies a >=5% numerically consistent win via VLLM_TUNED_CONFIG_FOLDER; 10 new tests; GPU effect unmeasured."
+      },
+      {
+        "task": "gpu_verify_03_and_moe_tuning_decision",
+        "status": "complete",
+        "exit": "A100-80GB: default ceiling 2 verified, tier2 fixed fits by 450s in linear extrapolation; MoE tuner API fixed (int8_w8a16_moe_quant_config) and made opt-in because end-to-end gain (1.7%) is below its cost; build_05."
       }
     ]
+  },
+  "independent_annotation_20260918": {
+    "status": "source_only_value_pilot_ready_claude_dev40_verified_codex_weekly_98_percent_pause_not_gold",
+    "target_unlabeled_records": 20000,
+    "final_gold_pool_target": "empirical_subset_tbd; no source-only hard exclusion",
+    "high_value_triage": "runs/self_label_20000_20260918/high_value_triage_v2/REPORT.md: 20000/20000 source-hash verified, zero final exclusions, 13356 first-priority, 2116 weak-cue, 3595 family siblings, 853 source-gap, 80 no lexical cue; deterministic 994-record stratified/paired value pilot is selected, not labeled",
+    "organizer_source_preflight": "20000/20000 pass; 853 declared-incomplete notices remain source-first review",
+    "provisional_single_record_coverage": "Sol 273 raw/source-verified completed rows after quota stop; Claude 152 historical successful checkpoint rows; 324 unique IDs across both, 101 overlap. These are not gold or fully uniform provenance.",
+    "sol_partial_stop": "Four 100-record shards stopped at weekly quota 95%; read-only audit found 273 verified prefix rows, four prepared-without-receipt uncertain IDs, 123 unprepared. See runs/self_label_20000_20260918/SOL_STOP_AUDIT_20260918_1900.md.",
+    "claude_batch_dev_diagnostic": "Opus source_lean and full_shared dev5 raw replay passed; each had 117/120 binary-correct cells. Frozen source_lean dev200 first two 20-record windows passed eight-batch raw/source replay: dev1-20 473/480 binary-correct FP2/FN1/U4; dev21-40 475/480 binary-correct FP1/FN1/U3; combined first40 948/960 binary-correct FP3/FN2/U7. These sparse previews are not a 200-record teacher score or gold.",
+    "gold_records": 0,
+    "codex_weekly_used_percent_observed": 98,
+    "next_action": "After the user switches Codex account, recheck frozen source hashes and resume the verified Claude dev200 source_lean supervisor at window 40-59 using --resume --execute. Value pilot remains a source-only selection; independently annotate across all strata before deciding a lower-yield cutoff, never use Gemma/harness or model agreement as gold. Preserve U and uncertain attempts. Do not launch unlabeled batch gold before full200 teacher qualification and semantic audit."
   },
   "entrypoints": {
     "current_input_b4": "script.py",
     "runtime_package": "submission/",
     "build": "tools/build_submission.py",
     "notebook": "notebooks/dacon_colab.ipynb",
-    "b4_validation": "V30 whole fresh .8581487956 (FP31/FN13); frontier12 same-response deterministic replay .9106120731 (FP15/FN8); 3439 tests+35 subtests PASS; final 148-file build.",
+    "b4_validation": "Current build_02 fresh A100 development200: adaptive 1853 projection policy 0.8587444962 (FP16/FN24, tier3 199 + a1_only 1), fixed tier2 0.8809058449 (FP19/FN19), fixed tier3 0.8503043253 (FP15/FN26), canonical 8192 0.8587449315 (FP36/FN14). Retained post-unseal frozen-response replay is 0.8775097588 (FP29/FN13). A100 tier3 1853 extrapolation is 5312-5496s; full 1853, L40S and official unseen remain unmeasured. Full pre-GPU suite 4112 passed + 37 subtests.",
     "historical_b4_entry": "experiments/precision_joined_v1/b4_entry_candidate_20260912/source/script.py",
     "legacy_package": "pps/",
-    "validation_status": "Development target exceeded by V30 standalone whole fresh inference. Final deterministic consumer is replay-verified; final goods-scope producer input is not freshly inferred. Official/unseen score and L40S runtime remain unverified."
+    "validation_status": "Dev200 unseal and retuning steps 1-5 are complete. Best retained frozen-response replay is 0.8775098. Repaired stream source 36bf3d2e has fresh A100 development200 runs: adaptive policy 0.8587445, fixed tier2 0.8809058, fixed tier3 0.8503043, canonical 8192 0.8587449. Adaptive policy settled at tier3 rather than collapsing to a1_only. Two A100 tier3 extrapolations put 1853 records at 5312-5496s, but the full 1853 run and unseen BGE preparation were not measured. 16384 prefill OOMed; retain 8192. Official unseen score and L40S runtime remain unmeasured. Full pre-GPU suite 4112 passed + 37 subtests; no code changed during the GPU round. Stream executor (build_02, A100-40GB): projection policy settles on tier3 with fresh dev200 F1 0.8587 in 969s/200 records; tier2 fixed 0.8809 but projected 92-273s over 7200s. build_04 sets the default tier ceiling to 2 and adds startup MoE kernel self-tuning (unmeasured on GPU); L40S and the full 1853-record run remain unmeasured.",
+    "executor": "stream (default); --executor cohort keeps the fixed 32-record batches"
   },
   "canonical_build": {
-    "archive": "runs/independent_audit_20260913/final_canonical_v30/build_02/submit.zip",
-    "archive_sha256": "6abd56a24b2823e8eb03e4e83cea7bc7ae1c4551118e49506f22208078cd32ec",
-    "bytes": 663165,
+    "archive": "runs/dev200_unseal_20260917/build_tuned_05/submission.zip",
+    "archive_sha256": "0a3df53cf5f9ee071484825075bffd4baf10b111e43ac1722d5a753b0c639e8d",
+    "bytes": 665930,
     "files": 148,
-    "source_fingerprint": "28e4192f508d11ec1e76ab66fb45481c09cf8975dd1606cf57f2c32f482ff96b",
-    "fresh_run_status": "V30 measured whole-fresh source 10398ef1 scored .8581487956. Same V30 responses through deterministic frontier12 score .9106120731. Final source additionally changes future goods-scope model input, so that producer effect is not in either score.",
-    "mutable_source_status": "Internal audit round complete; full CPU suite passes and notebook/build are synchronized. Reopen only for a distinct external validation round.",
+    "source_fingerprint": "ac3adb3a71778fe0549e81404fd1ad3b01cb207249454d78bc00c25b029a6028",
+    "fresh_run_status": "Pre-unseal source 28e4192f has a complete fresh development200 run. Final source ac3adb3a reuses those 953 frozen responses and changes deterministic consumers only for this measured replay; source_matches_generation is false and new_model_calls is zero.",
+    "mutable_source_status": "Dev200 development round complete; notebook and build are synchronized and 3456 tests plus 37 subtests pass. Reopen only for a distinct external validation round.",
     "official_submission": false,
     "full_l40s_verified": false,
-    "manifest": "runs/independent_audit_20260913/final_canonical_v30/build_02/submit.manifest.json",
-    "report": "runs/independent_audit_20260913/final_canonical_v30/report.md",
-    "pytest_junit": "runs/independent_audit_20260913/final_canonical_v30/full_pytest_02.xml"
+    "manifest": "runs/dev200_unseal_20260917/build_tuned_05/submission.manifest.json",
+    "report": "runs/dev200_unseal_20260917/protocol.md",
+    "pytest_junit": null,
+    "pytest_summary": "3456 passed, 37 subtests passed in 137.58s; artifact synchronization 6 passed.",
+    "note_20260919": "Stream-executor build runs/stream_executor_20260919/build_04/submission.zip (sha256 9d437fee7f3b0ca942ed53bcf1da9cb8616d2789b1b39a5816b27a2adfb18026, source fingerprint aad6bace4524477d64769e268ba85b2ef52afacad3405b840ea8a47fab30b00a, 151 files): default tier ceiling 2 plus startup MoE kernel self-tuning, unmeasured on GPU. build_02 (f3dafc7a) is the A100-verified policy build (settles on tier3); build_03 (1ceb77dc) added prefeed/observability. canonical_build fields above still describe the last measured cohort build."
+  },
+  "dev200_unseal_20260917": {
+    "status": "complete",
+    "browser_policy": "Chrome extension only; do not use Computer Use.",
+    "split_status": "All 200 organizer examples are development data. The former 40 are development-informed and must never again be described as holdout or unseen.",
+    "pre_unseal_fresh": {
+      "source_fingerprint": "28e4192f508d11ec1e76ab66fb45481c09cf8975dd1606cf57f2c32f482ff96b",
+      "prediction_sha256": "a2a47c6644d3c73a814272fbb53b04ce76e40f1038922fef80387afc60b29ca0",
+      "records": 200,
+      "model_responses": 953,
+      "deterministic_skips": 161,
+      "unresolved": 0,
+      "retries": 0,
+      "freeze": "runs/dev200_unseal_20260917/prediction_freeze.json"
+    },
+    "post_unseal_replay": {
+      "source_fingerprint": "ac3adb3a71778fe0549e81404fd1ad3b01cb207249454d78bc00c25b029a6028",
+      "prediction_sha256": "b3d27e2f8a8722fe3b44e4410c6a0d09549dbb9cfc833bd2fd636e93875aeaa2",
+      "new_model_calls": 0,
+      "source_matches_generation": false,
+      "recoveries": 10,
+      "new_errors": 0,
+      "consumption_report": "runs/dev200_unseal_20260917/consumed_tuned_05/consumption_report.json"
+    },
+    "scores": {
+      "development160": {
+        "baseline": 0.8849974099974101,
+        "final": 0.8925731675731675,
+        "fp": 21,
+        "fn": 8
+      },
+      "former40_development": {
+        "baseline": 0.6305555555555555,
+        "final": 0.7986111111111112,
+        "fp": 8,
+        "fn": 5
+      },
+      "development200": {
+        "baseline": 0.8468570781070781,
+        "final": 0.8775097587597588,
+        "fp": 29,
+        "fn": 13
+      },
+      "summary": "runs/dev200_unseal_20260917/scores_tuned_05/summary.json"
+    },
+    "audits": {
+      "former40": "runs/dev200_unseal_20260917/former40_audit_01",
+      "development200": "runs/dev200_unseal_20260917/development200_audit_01"
+    },
+    "runtime_cleanup": {
+      "status": "complete",
+      "method": "official Chrome extension only; Computer Use was not used",
+      "result": "Colab session manager reported 활성 세션 없음 after terminating the exact dev200_preunseal.ipynb GPU session.",
+      "receipt": "runs/dev200_unseal_20260917/runtime_cleanup_receipt.json"
+    },
+    "official_submission": false,
+    "l40s_runtime_verified": false
   },
   "records": [
     {
@@ -9645,6 +9767,268 @@
       "official_score": null,
       "production_adopted": true,
       "limitation": "Same V30 model responses with deterministic consumer changes. The strengthened final goods-scope prompt/exact-code lookup changes future input and is not measured by this score."
+    },
+    {
+      "id": "dev200_preunseal_whole_fresh",
+      "label": "Pre-unseal canonical whole development200 fresh A100 inference",
+      "kind": "fresh_model_inference",
+      "macro_f1": 0.8468570781070781,
+      "fp": 36,
+      "fn": 16,
+      "notices": 200,
+      "prediction": "runs/dev200_unseal_20260917/consumed_pre_unseal_01/submission.csv",
+      "sha256": "a2a47c6644d3c73a814272fbb53b04ce76e40f1038922fef80387afc60b29ca0",
+      "metrics": "runs/dev200_unseal_20260917/scores_pre_unseal_01/development200_metrics.json",
+      "metric_key": [
+        "macro_f1"
+      ],
+      "full_fresh_inference": true,
+      "fresh_model_responses": 953,
+      "deterministic_skips": 161,
+      "format_retries": 0,
+      "quality_rerolls": 0,
+      "engine_loads": 1,
+      "source_fingerprint": "28e4192f508d11ec1e76ab66fb45481c09cf8975dd1606cf57f2c32f482ff96b",
+      "official_score": null,
+      "production_adopted": false,
+      "limitation": "All 200 records are now development data. This is the label-free pre-unseal source measurement and not an official score; the post-unseal canonical source is different."
+    },
+    {
+      "id": "dev200_tuned05_consumer_replay",
+      "label": "Post-unseal canonical consumer replay on frozen fresh development200 responses",
+      "kind": "saved_response_current_cpu_replay",
+      "macro_f1": 0.8775097587597588,
+      "fp": 29,
+      "fn": 13,
+      "notices": 200,
+      "prediction": "runs/dev200_unseal_20260917/consumed_tuned_05/submission.csv",
+      "sha256": "b3d27e2f8a8722fe3b44e4410c6a0d09549dbb9cfc833bd2fd636e93875aeaa2",
+      "metrics": "runs/dev200_unseal_20260917/scores_tuned_05/summary.json",
+      "metric_key": [
+        "splits",
+        "development200",
+        "macro_f1"
+      ],
+      "full_fresh_inference": false,
+      "fresh_model_responses_reused": 953,
+      "deterministic_skips_reused": 161,
+      "new_model_calls": 0,
+      "source_fingerprint": "ac3adb3a71778fe0549e81404fd1ad3b01cb207249454d78bc00c25b029a6028",
+      "official_score": null,
+      "production_adopted": true,
+      "recoveries": 10,
+      "new_errors": 0,
+      "limitation": "Zero-call deterministic replay, not a new whole-source model inference. All 200 records, including the former 40, are development-informed and cannot be reported as holdout or unseen."
+    },
+    {
+      "id": "stream_executor_a100_dev200_canonical_fresh_20260919",
+      "label": "Stream executor canonical whole development200 fresh A100 inference",
+      "kind": "fresh_model_inference",
+      "macro_f1": 0.8627845222659465,
+      "fp": 33,
+      "fn": 15,
+      "notices": 200,
+      "prediction": "runs/stream_executor_20260919/gpu_verify_01/recovered_01/canonical/submission.csv",
+      "sha256": "921d66daa4f42f9a786b2c73105c830991f4b7726d7af5c4029ad9693c211718",
+      "metrics": "runs/stream_executor_20260919/gpu_verify_01/canonical_verify.json",
+      "metric_key": [
+        "scores",
+        "run",
+        "macro_f1"
+      ],
+      "full_fresh_inference": true,
+      "fresh_model_responses": 954,
+      "source_matches_generation": true,
+      "source_fingerprint": "937fed07eb1ca8a333a9aca902005c1ba27d474a79491c537c7f4cb3184e2735",
+      "official_score": null,
+      "production_adopted": false,
+      "limitation": "All 200 records are development data. This fresh canonical run is 0.0147252 below the retained frozen-response replay; 8 value cells changed. The A100 1853 canonical estimate exceeds 7200s, and L40S/official unseen remain unmeasured."
+    },
+    {
+      "id": "stream_executor_v2_a100_dev200_canonical8192_fresh_20260919",
+      "label": "Repaired stream executor canonical 8192 whole development200 fresh A100 inference",
+      "kind": "fresh_model_inference",
+      "macro_f1": 0.8587449315390492,
+      "fp": 36,
+      "fn": 14,
+      "notices": 200,
+      "prediction": "runs/stream_executor_20260919/gpu_verify_02/recovered_01/canonical_8192/submission.csv",
+      "sha256": "61d403e773b407b8f0b3193d75174e0aef45e428b9d8bc1fd638ee4d97a19c2a",
+      "metrics": "runs/stream_executor_20260919/gpu_verify_02/canonical_8192_verify.json",
+      "metric_key": [
+        "scores",
+        "run",
+        "macro_f1"
+      ],
+      "full_fresh_inference": true,
+      "fresh_model_responses": 954,
+      "source_matches_generation": true,
+      "source_fingerprint": "36bf3d2e3416e6150dca83cf05834b82e751632508a65702125ffbb6c11d4bdb",
+      "comparison_round": "stream_policy_v2_a100_20260919",
+      "policy": "canonical_8192",
+      "official_score": null,
+      "production_adopted": false,
+      "limitation": "All 200 records are development data. Full 1853, L40S and official unseen remain unmeasured; canonical 8192 extrapolates far beyond 7200s."
+    },
+    {
+      "id": "stream_executor_v2_a100_dev200_adaptive_projection_20260919",
+      "label": "Repaired adaptive 1853-projection policy whole development200 fresh A100 comparison",
+      "kind": "fresh_whole_cohort_policy_comparison",
+      "macro_f1": 0.8587444962444962,
+      "fp": 16,
+      "fn": 24,
+      "notices": 200,
+      "prediction": "runs/stream_executor_20260919/gpu_verify_02/recovered_01/projection/submission.csv",
+      "sha256": "6acaaa12f71e579739942636518e075db643f26bddb297f7751a95fa21ed3b7a",
+      "metrics": "runs/stream_executor_20260919/gpu_verify_02/projection_verify.json",
+      "metric_key": [
+        "scores",
+        "run",
+        "macro_f1"
+      ],
+      "full_fresh_inference": true,
+      "fresh_model_responses": 317,
+      "source_matches_generation": true,
+      "source_fingerprint": "36bf3d2e3416e6150dca83cf05834b82e751632508a65702125ffbb6c11d4bdb",
+      "comparison_round": "stream_policy_v2_a100_20260919",
+      "policy": "current",
+      "tier_counts": {
+        "source_rules_a10_a19": 199,
+        "a1_only": 1
+      },
+      "official_score": null,
+      "production_adopted": false,
+      "limitation": "Projection mode changes only the remaining-record count used by the policy. Full 1853, unseen BGE preparation, L40S and official unseen remain unmeasured."
+    },
+    {
+      "id": "stream_executor_v2_a100_dev200_tier2_fixed_20260919",
+      "label": "Repaired stream executor fixed tier2 whole development200 fresh A100 comparison",
+      "kind": "fresh_whole_cohort_policy_comparison",
+      "macro_f1": 0.880905844886108,
+      "fp": 19,
+      "fn": 19,
+      "notices": 200,
+      "prediction": "runs/stream_executor_20260919/gpu_verify_02/recovered_01/tier2_fixed/submission.csv",
+      "sha256": "3eebf65129ebe121ae4fe2faa6adf883240d21f31a01a4133e4b1991c7ca88cb",
+      "metrics": "runs/stream_executor_20260919/gpu_verify_02/tier2_fixed_verify.json",
+      "metric_key": [
+        "scores",
+        "run",
+        "macro_f1"
+      ],
+      "full_fresh_inference": true,
+      "fresh_model_responses": 517,
+      "source_matches_generation": true,
+      "source_fingerprint": "36bf3d2e3416e6150dca83cf05834b82e751632508a65702125ffbb6c11d4bdb",
+      "comparison_round": "stream_policy_v2_a100_20260919",
+      "policy": "tier2_fixed",
+      "official_score": null,
+      "production_adopted": false,
+      "limitation": "Best development score in this comparison, but two A100 linear extrapolations put 1853 records at 7292-7473s. Full 1853, L40S and official unseen remain unmeasured."
+    },
+    {
+      "id": "stream_executor_v2_a100_dev200_tier3_fixed_20260919",
+      "label": "Repaired stream executor fixed tier3 whole development200 fresh A100 comparison",
+      "kind": "fresh_whole_cohort_policy_comparison",
+      "macro_f1": 0.8503043253043253,
+      "fp": 15,
+      "fn": 26,
+      "notices": 200,
+      "prediction": "runs/stream_executor_20260919/gpu_verify_02/recovered_01/tier3_fixed/submission.csv",
+      "sha256": "3f9489f6b58861e3947a6df52a0bcdb0f6f1166397265da35121514f0f9d6f2b",
+      "metrics": "runs/stream_executor_20260919/gpu_verify_02/tier3_fixed_verify.json",
+      "metric_key": [
+        "scores",
+        "run",
+        "macro_f1"
+      ],
+      "full_fresh_inference": true,
+      "fresh_model_responses": 317,
+      "source_matches_generation": true,
+      "source_fingerprint": "36bf3d2e3416e6150dca83cf05834b82e751632508a65702125ffbb6c11d4bdb",
+      "comparison_round": "stream_policy_v2_a100_20260919",
+      "policy": "tier3_fixed",
+      "official_score": null,
+      "production_adopted": false,
+      "limitation": "Development200 score is only 0.0003043 above the 0.85 target. Full 1853, unseen BGE preparation, L40S and official unseen remain unmeasured."
+    },
+    {
+      "id": "stream_executor_v3_a100_80gb_dev200_adaptive_projection_20260919",
+      "label": "Default ceiling 2 adaptive 1853 projection policy (tier3 160 + tier2 40) - whole development200 fresh A100-80GB",
+      "kind": "fresh_whole_cohort_policy_comparison",
+      "macro_f1": 0.8651547526547527,
+      "fp": 16,
+      "fn": 22,
+      "notices": 200,
+      "prediction": "runs/stream_executor_20260919/gpu_verify_03/recovered_01/projection/submission.csv",
+      "sha256": "c7aad986d2f0601aa55f14c74afdd8f69bd47d43cc21ea8d1a2f4abcaf1c11d7",
+      "metrics": "runs/stream_executor_20260919/gpu_verify_03/projection_verify.json",
+      "metric_key": [
+        "scores",
+        "run",
+        "macro_f1"
+      ],
+      "full_fresh_inference": true,
+      "fresh_model_responses": 357,
+      "source_matches_generation": true,
+      "source_fingerprint": "aad6bace4524477d64769e268ba85b2ef52afacad3405b840ea8a47fab30b00a",
+      "comparison_round": "stream_policy_v3_a100_80gb_20260919",
+      "policy": "current",
+      "official_score": null,
+      "production_adopted": false,
+      "limitation": "Policy oscillated at the tier2/tier3 border; its tier2 estimate is 12% optimistic versus the fixed tier2 measurement. Full 1853, L40S and official unseen remain unmeasured."
+    },
+    {
+      "id": "stream_executor_v3_a100_80gb_dev200_tier2_fixed_20260919",
+      "label": "Fixed tier2, default MoE tiling (build_04 tuner failed and wrote nothing) - whole development200 fresh A100-80GB",
+      "kind": "fresh_whole_cohort_policy_comparison",
+      "macro_f1": 0.8739747725041842,
+      "fp": 23,
+      "fn": 17,
+      "notices": 200,
+      "prediction": "runs/stream_executor_20260919/gpu_verify_03/recovered_01/tier2_tuned/submission.csv",
+      "sha256": "b40de76ce168d3a68d3bf1eb48206c46d373eed3c51fc356c0b6c606a4405315",
+      "metrics": "runs/stream_executor_20260919/gpu_verify_03/tier2_tuned_verify.json",
+      "metric_key": [
+        "scores",
+        "run",
+        "macro_f1"
+      ],
+      "full_fresh_inference": true,
+      "fresh_model_responses": 517,
+      "source_matches_generation": true,
+      "source_fingerprint": "aad6bace4524477d64769e268ba85b2ef52afacad3405b840ea8a47fab30b00a",
+      "comparison_round": "stream_policy_v3_a100_80gb_20260919",
+      "policy": "tier2_fixed",
+      "official_score": null,
+      "production_adopted": false,
+      "limitation": "1853 linear extrapolation 6,570s on A100-80GB (cold load 328s); not a full run. Full 1853, L40S and official unseen remain unmeasured."
+    },
+    {
+      "id": "stream_executor_v3_a100_80gb_dev200_tier2_fixed_moe_tuned_config_20260919",
+      "label": "Fixed tier2 with the corrected tuner MoE config applied through VLLM_TUNED_CONFIG_FOLDER - whole development200 fresh A100-80GB",
+      "kind": "fresh_whole_cohort_policy_comparison",
+      "macro_f1": 0.8760420135420136,
+      "fp": 23,
+      "fn": 17,
+      "notices": 200,
+      "prediction": "runs/stream_executor_20260919/gpu_verify_03/recovered_01/tier2_tunedcfg/submission.csv",
+      "sha256": "5fc98b251928e8ca39159a425bbd528dedb266bf2dd646384ee883a0f2323251",
+      "metrics": "runs/stream_executor_20260919/gpu_verify_03/tier2_tunedcfg_verify.json",
+      "metric_key": [
+        "scores",
+        "run",
+        "macro_f1"
+      ],
+      "full_fresh_inference": true,
+      "fresh_model_responses": 517,
+      "source_matches_generation": true,
+      "source_fingerprint": "aad6bace4524477d64769e268ba85b2ef52afacad3405b840ea8a47fab30b00a",
+      "comparison_round": "stream_policy_v3_a100_80gb_20260919",
+      "policy": "tier2_fixed_moe_tuned_config",
+      "official_score": null,
+      "production_adopted": false,
+      "limitation": "Generation window 661.8s vs 673.4s untuned; 8 of 4800 cells differ from the untuned run; single pair, noise unmeasured. Full 1853, L40S and official unseen remain unmeasured."
     }
   ],
   "protected_files": [

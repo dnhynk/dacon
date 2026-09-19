@@ -219,12 +219,21 @@ def test_supported_default_cli_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(transformers.AutoTokenizer, 'from_pretrained', lambda *args, **kwargs: object())
     observed = {}
     def execute(input_path, data_dir, output_dir, **kwargs):
-        observed.update(input=str(input_path), data=str(data_dir), output=str(output_dir))
+        observed.update(input=str(input_path), data=str(data_dir), output=str(output_dir), executor='cohort')
+        return {'test_only': True}
+    def execute_stream(input_path, data_dir, output_dir, **kwargs):
+        observed.update(input=str(input_path), data=str(data_dir), output=str(output_dir), executor='stream',
+                        options=kwargs['options'])
+        kwargs['pool'].close()
         return {'test_only': True}
     monkeypatch.setattr(main, 'execute', execute)
+    monkeypatch.setattr(main, 'execute_stream', execute_stream)
     main.main([])
+    assert observed['executor'] == 'stream' and observed['options'].tier_ceiling == 2
     assert Path(observed['input']) == Path('data/test.jsonl.gz')
     assert Path(observed['data']) == Path('data') and Path(observed['output']) == Path('output')
+    main.main(['--executor', 'cohort'])
+    assert observed['executor'] == 'cohort'
 
 
 def test_budget_observer_can_stop_after_saved_prefix_without_rerunning_or_filling(tmp_path, monkeypatch):

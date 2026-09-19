@@ -167,59 +167,80 @@ class VLLMRunner:
         self.load_seconds = time.monotonic() - start
         log(f"Loaded vLLM {self.version} in {self.load_seconds:.1f}s")
 
+    def sampling_params(self, p, max_tokens=None):
+        """One request's exact sampling/grammar contract; shared by both executors."""
+        from vllm import SamplingParams
+        from vllm.sampling_params import StructuredOutputsParams
+        return SamplingParams(temperature=0., seed=self.config.seed,
+                              max_tokens=p.get('generation', {}).get('max_output_tokens', max_tokens or self.config.max_output_tokens),
+                              skip_special_tokens=not self.config.enable_thinking,
+                              thinking_token_budget=p.get('generation', {}).get('thinking_budget', self.config.thinking_budget_for(p["items"])),
+                              structured_outputs=StructuredOutputsParams(
+                                  json=generation_schema(p.get('generation', {}).get('response_format', self.config.response_format),
+                                      len(p["spans"]), p["items"], schema_order=p.get('generation', {}).get('schema_order'),
+                                      catalog_roles=p.get('generation', {}).get('catalog_roles'),
+                                      catalog_fields=p.get('generation', {}).get('catalog_fields'),
+                                      specification_inventory=p.get('generation', {}).get('specification_inventory')),
+                                  disable_any_whitespace=True))
+
+    def response_from_native(self, row, prompt):
+        """Parse one native vLLM result exactly as the cohort executor does."""
+        if not row.outputs:
+            raise RuntimeError("vLLM returned no normal response")
+        response = row.outputs[0]
+        final_text = response.text
+        from .generation_contract import json_whitespace_stall
+        answer_raw = response.text.split('<channel|>', 1)[-1] if self.config.enable_thinking else response.text
+        diagnostics = {'raw_output_sha256': hashlib.sha256(response.text.encode()).hexdigest(),
+                       'generation_stall': json_whitespace_stall(answer_raw)
+                           if response.finish_reason == 'length' else None}
+        if self.config.enable_thinking:
+            from vllm.reasoning.gemma4_utils import parse_thinking_output
+            split = parse_thinking_output(response.text)
+            closed = "<channel|>" in response.text
+            # An unterminated thought is never a final answer or saved text.
+            final_text = (split.get("answer") or "") if closed else ""
+            token_list = list(response.token_ids)
+            start_id = self.tokenizer.convert_tokens_to_ids("<|channel>")
+            end_id = self.tokenizer.convert_tokens_to_ids("<channel|>")
+            start_at = token_list.index(start_id) if start_id in token_list else -1
+            end_at = token_list.index(end_id) if end_id in token_list else len(token_list)
+            diagnostics.update({"thinking_detected": bool(split.get("thinking")),
+                           "thinking_characters": len(split.get("thinking") or ""),
+                           "thinking_close_marker": closed,
+                           "thinking_tokens": max(0, end_at-start_at-1) if start_at >= 0 else 0,
+                           "thinking_budget": prompt.get('generation', {}).get('thinking_budget', self.config.thinking_budget_for(prompt["items"])),
+                           "answer_tokens": len(self.tokenizer.encode(final_text, add_special_tokens=False)),
+                           "raw_output_sha256": hashlib.sha256(response.text.encode()).hexdigest()})
+        return {"text": final_text, "finish_reason": response.finish_reason,
+                "output_tokens": len(response.token_ids),
+                "cached_input_tokens": getattr(row, "num_cached_tokens", None), **diagnostics}
+
     def generate(self, prompts, max_tokens=None):
         if getattr(self, "deadline", float("inf")) <= time.monotonic():
             raise TimeoutError("Experiment time budget reached; completed results have been saved")
-        from vllm import SamplingParams
-        from vllm.sampling_params import StructuredOutputsParams
-        sp = [SamplingParams(temperature=0., seed=self.config.seed,
-                             max_tokens=p.get('generation', {}).get('max_output_tokens', max_tokens or self.config.max_output_tokens),
-                             skip_special_tokens=not self.config.enable_thinking,
-                             thinking_token_budget=p.get('generation', {}).get('thinking_budget', self.config.thinking_budget_for(p["items"])),
-                             structured_outputs=StructuredOutputsParams(
-                                 json=generation_schema(p.get('generation', {}).get('response_format', self.config.response_format),
-                                     len(p["spans"]), p["items"], schema_order=p.get('generation', {}).get('schema_order'),
-                                     catalog_roles=p.get('generation', {}).get('catalog_roles'),
-                                     catalog_fields=p.get('generation', {}).get('catalog_fields'),
-                                     specification_inventory=p.get('generation', {}).get('specification_inventory')),
-                                 disable_any_whitespace=True)) for p in prompts]
+        sp = [self.sampling_params(p, max_tokens) for p in prompts]
         output = self.llm.generate([{"prompt_token_ids": p["token_ids"]} for p in prompts],
                                    sampling_params=sp, use_tqdm=False)
         if len(output) != len(prompts):
             raise RuntimeError("vLLM returned an unexpected number of responses")
-        result = []
-        for row, prompt in zip(output, prompts):
-            if not row.outputs:
-                raise RuntimeError("vLLM returned no normal response")
-            response = row.outputs[0]
-            final_text = response.text
-            from .generation_contract import json_whitespace_stall
-            answer_raw = response.text.split('<channel|>', 1)[-1] if self.config.enable_thinking else response.text
-            diagnostics = {'raw_output_sha256': hashlib.sha256(response.text.encode()).hexdigest(),
-                           'generation_stall': json_whitespace_stall(answer_raw)
-                               if response.finish_reason == 'length' else None}
-            if self.config.enable_thinking:
-                from vllm.reasoning.gemma4_utils import parse_thinking_output
-                split = parse_thinking_output(response.text)
-                closed = "<channel|>" in response.text
-                # An unterminated thought is never a final answer or saved text.
-                final_text = (split.get("answer") or "") if closed else ""
-                token_list = list(response.token_ids)
-                start_id = self.tokenizer.convert_tokens_to_ids("<|channel>")
-                end_id = self.tokenizer.convert_tokens_to_ids("<channel|>")
-                start_at = token_list.index(start_id) if start_id in token_list else -1
-                end_at = token_list.index(end_id) if end_id in token_list else len(token_list)
-                diagnostics.update({"thinking_detected": bool(split.get("thinking")),
-                               "thinking_characters": len(split.get("thinking") or ""),
-                               "thinking_close_marker": closed,
-                               "thinking_tokens": max(0, end_at-start_at-1) if start_at >= 0 else 0,
-                               "thinking_budget": prompt.get('generation', {}).get('thinking_budget', self.config.thinking_budget_for(prompt["items"])),
-                               "answer_tokens": len(self.tokenizer.encode(final_text, add_special_tokens=False)),
-                               "raw_output_sha256": hashlib.sha256(response.text.encode()).hexdigest()})
-            result.append({"text": final_text, "finish_reason": response.finish_reason,
-                           "output_tokens": len(response.token_ids),
-                           "cached_input_tokens": getattr(row, "num_cached_tokens", None), **diagnostics})
-        return result
+        return [self.response_from_native(row, prompt) for row, prompt in zip(output, prompts)]
+
+    # Streaming executor contract: the same engine, fed one request at a time.
+    def submit(self, request_id, packet):
+        from vllm.sampling_params import RequestOutputKind
+        params = self.sampling_params(packet)
+        params.output_kind = RequestOutputKind.FINAL_ONLY
+        self.llm.llm_engine.add_request(request_id, {"prompt_token_ids": packet["token_ids"]}, params)
+
+    def step(self):
+        return [row for row in self.llm.llm_engine.step() if getattr(row, 'finished', False)]
+
+    def unfinished(self):
+        return self.llm.llm_engine.has_unfinished_requests()
+
+    def abort(self, request_ids):
+        self.llm.llm_engine.abort_request(list(request_ids))
 
 
 class MockRunner:

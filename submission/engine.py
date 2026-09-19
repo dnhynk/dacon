@@ -27,7 +27,8 @@ POLICY = {
     'recovery_inputs': 'full original tokens, spans and schema; thinking budget zero; no document shrinking',
     'quality_retries': 0,
     'structured_output': 'Fixed guidance backend; engine-level compact JSON whitespace; CPU actual-token progress check before weights. Long JSON whitespace stalls abort after native evidence is saved.',
-    'runtime_deadline': 'checked between batches; config.total_runtime_seconds including preparation/load minus 15s; no claim of preempting an in-flight native call',
+    'runtime_deadline': 'cohort executor: checked between batches, config.total_runtime_seconds minus 15s. stream executor: submissions stop at deadline minus margin, in-flight requests are aborted after a grace period, and the CSV is always written from source-only rows for whatever the engine did not answer',
+    'stream_executor': 'default entry: record-major streaming; A1, A10, A19 of one record enter the engine adjacently for prefix reuse; optional/expensive profiles are dropped per record by a deadline projection; the cohort executor remains available with --executor cohort',
     'batch_invariance': 'not enabled',
     'reproducibility_scope': 'Fixed offline scheduler, inputs and call history; no claim of equality across hardware or vLLM versions.',
     'official_source': REPRODUCIBILITY_SOURCE,
@@ -57,6 +58,10 @@ def configure_environment():
         raise RuntimeError('Batch invariance is outside this fixed execution contract')
     os.environ['VLLM_ENABLE_V1_MULTIPROCESSING'] = '0'
     os.environ['VLLM_USE_V2_MODEL_RUNNER'] = '0'
+    # The CUDA-graph memory estimate is a documented vLLM knob that only moves
+    # about 0.2GiB between the activation reserve and the KV cache; skipping it
+    # removes one profiling pass from the engine load.
+    os.environ.setdefault('VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS', '0')
     os.environ['HF_HUB_OFFLINE'] = '1'
     os.environ['TRANSFORMERS_OFFLINE'] = '1'
     os.environ['VLLM_NO_USAGE_STATS'] = '1'
@@ -101,6 +106,8 @@ def environment(model_dir):
         gpu = {'observation_error': str(exc)}
     names = ('VLLM_ENABLE_V1_MULTIPROCESSING', 'VLLM_USE_V2_MODEL_RUNNER',
              'VLLM_BATCH_INVARIANT', 'VLLM_WORKER_MULTIPROC_METHOD', 'VLLM_NO_USAGE_STATS',
+             'VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS', 'VLLM_TUNED_CONFIG_FOLDER', 'PPS_MOE_TUNING',
+             'PPS_EMBED_DIR', 'PPS_EMBED_DEVICE', 'PPS_PREP_WORKERS',
              'HF_HUB_OFFLINE', 'TRANSFORMERS_OFFLINE', 'CUDA_VISIBLE_DEVICES',
              'CUBLAS_WORKSPACE_CONFIG', 'PYTHONHASHSEED', 'OMP_NUM_THREADS')
     return {'epoch': time.time(), 'python': sys.version, 'model_dir': str(model.resolve()),

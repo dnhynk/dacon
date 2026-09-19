@@ -27,6 +27,9 @@
 ```text
 현재 공고 + 제공 지식
   → script.py → submission.main
+      → submission.stream: 기본 실행기. 레코드 단위 연속 투입, 마감 예측 tier 사다리, CSV 무조건 완성 (docs/RUNTIME_STREAMING.md)
+      → submission.prep: 준비 워커 프로세스 + BGE 인코더 서비스(GPU 우선), 원문규칙 행
+      → submission.runtime: 이전 32공고 묶음 실행기 (--executor cohort; 재생·비교 도구가 사용)
       → submission.original_a: 원래 A 입력 생성 → A1 / A10 / A19
       → submission.v20_legacy: 원래 L19 입력 생성
       → submission.pps: 키워드/BGE 후보 통합, 원문 문맥·표·자격 구조 보존
