@@ -68,6 +68,19 @@ def test_equal_or_one_won_rounded_amounts_do_not_prove_a_difference(claim):
     assert result['reason'] == 'model_asserted_difference_between_equal_amounts'
 
 
+def test_tax_exempt_source_price_is_not_compared_to_portal_gross_budget():
+    rec=record('사업소요예산: 83,100,000원(부가세 면세)',
+               배정예산금액=91_410_000,입찰추정가격=83_100_000)
+    result=guard(rec,'예산=상이(메타 91,410,000원 vs 본문 83,100,000원)')
+    assert result['reason']=='model_compared_tax_exempt_price_to_portal_gross_budget'
+
+
+def test_unrelated_tax_exempt_amount_does_not_hide_a_claimed_difference():
+    rec=record('사업소요예산: 80,000,000원(부가세 면세)',
+               배정예산금액=91_410_000,입찰추정가격=83_100_000)
+    assert guard(rec,'예산=상이(메타 91,410,000원 vs 본문 80,000,000원)') is None
+
+
 def test_contract_method_is_not_the_award_method():
     rec = record('계약방법: 일반경쟁\n낙찰방법: 협상에 의한 계약', 계약방법='일반경쟁')
     result = guard(rec, '계약방법=상이(일반경쟁 vs 협상에 의한 계약)')

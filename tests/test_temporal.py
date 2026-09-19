@@ -34,6 +34,14 @@ class Dates(unittest.TestCase):
     def test_both_intervals_clearly_sufficient(self):
         r=rec('사업설명회 : 2026. 1. 15.\n\n제안서 제출 마감 : 2026. 1. 31.')
         self.assertEqual(v23(r)['value'],0)
+    def test_urgent_exact_seven_day_briefing_interval_is_sufficient(self):
+        r=rec('사업설명회 : 2026. 1. 8.\n\n제안서 제출 마감 : 2026. 1. 15.',
+              공고게시일자='20260101',긴급공고여부='Y',입찰추정가격=200000000)
+        self.assertEqual(v23(r)['value'],0)
+    def test_urgent_six_day_briefing_interval_is_short(self):
+        r=rec('사업설명회 : 2026. 1. 8.\n\n제안서 제출 마감 : 2026. 1. 14.',
+              공고게시일자='20260101',긴급공고여부='Y',입찰추정가격=200000000)
+        self.assertEqual(v23(r)['value'],1)
     def test_estimated_amount_boundary_changes_band(self):
         text='사업설명회 : 2026. 1. 15.\n\n제안서 제출 마감 : 2026. 1. 31.'
         self.assertEqual(v23(rec(text,입찰추정가격=100000000))['value'],1)

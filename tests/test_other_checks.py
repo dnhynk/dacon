@@ -111,6 +111,28 @@ class SoftwareControls(unittest.TestCase):
         self.assertIsNone(sw_check(notice('본 사업은 소프트웨어사업이다.',authority=None))['value'])
     def test_registration_alone_is_not_actual_work(self):
         self.assertIsNone(sw_check(notice('소프트웨어사업자(컴퓨터관련서비스사업) 등록 업체'))['value'])
+    def test_buyer_furnished_OS_install_is_ancillary_to_complete_PC_refurbishment(self):
+        text=('불용PC를 수집하여 정비 및 양품화한 뒤 취약계층에 보급한다.\n'
+              '소프트웨어사업자(컴퓨터관련서비스사업) 등록 업체\n'
+              '계약대상자는 발주처가 제공하는 O/S 및 응용S/W를 설치해야 한다.\n'
+              '소프트웨어 사업의 경우 기술능력 평가점수 기준을 적용한다.')
+        decision=sw_check(notice(text))
+        self.assertEqual(decision['value'],0)
+        self.assertEqual(decision['reason'],'buyer_furnished_software_is_ancillary_to_complete_hardware_refurbishment')
+        self.assertTrue(decision['facts']['hardware_refurbishment_ancillary_only'])
+    def test_incomplete_PC_refurbishment_cannot_certify_ancillary_only(self):
+        text=('중고PC를 회수하여 정비 후 보급한다.\n'
+              '소프트웨어사업자(컴퓨터관련서비스사업) 등록 업체\n'
+              '계약업체는 수요기관이 제공하는 소프트웨어를 설치하여야 한다.')
+        self.assertIsNone(sw_check(notice(text,complete=False))['value'])
+    def test_contractor_software_or_license_work_is_not_hardware_ancillary(self):
+        for duty in ['계약업체는 소프트웨어를 설치하여야 한다.', '라이선스 갱신 구매']:
+            with self.subTest(duty=duty):
+                text=('불용PC를 수집하여 정비한 뒤 보급한다.\n'
+                      '소프트웨어사업자(컴퓨터관련서비스사업) 등록 업체\n'+duty)
+                decision=sw_check(notice(text))
+                self.assertEqual(decision['value'],1)
+                self.assertFalse(decision['facts']['hardware_refurbishment_ancillary_only'])
     def test_incidental_AI_and_software_price_formula(self):
         self.assertIsNone(sw_check(notice('AI 교육 연구용역\n소프트웨어사업인 경우 평가점수 산정공식 적용'))['value'])
     def test_explicit_not_software(self):
@@ -147,6 +169,11 @@ class SoftwareControls(unittest.TestCase):
 class BriefingControls(unittest.TestCase):
     def test_attendees_only_eligibility(self):
         self.assertEqual(briefing_check(notice('사업설명회 참석업체에 한하여 제안서 제출 자격을 부여한다.'))['value'],1)
+    def test_explicit_nonattendance_bar_and_briefing_substitution(self):
+        text=('제안요청서 설명 : 사업설명회로 갈음(제안요청서 참조)\n'
+              '사업설명회 : 개최함. 사업설명회에 참석하지 아니한 업체의 '
+              '입찰 참가는 허용되지 않습니다.')
+        self.assertEqual(briefing_check(notice(text))['value'],1)
     def test_proposal_nonreceipt_is_eligibility(self):
         self.assertEqual(briefing_check(notice('사업설명회 미참석 업체의 제안서는 접수하지 않음'))['value'],1)
     def test_undated_qualification(self):

@@ -11,6 +11,13 @@ def ev(rec,di,start,end):
 REF=re.compile(r'[\[【<〈(]?(?:첨부|붙임|별첨|서식)\s*(\d{1,3})\s*[\]】>〉)]?')
 FORM_HEADER=re.compile(r'^\s*[\[【<〈(]?(?:첨부|붙임|별첨|서식)\s*\d{1,3}\s*[\]】>〉)]?\s*$')
 ISSUER=re.compile(r'제조\s*(?:\(\s*수입\s*\))?\s*사|제조\s*업체|원\s*제조사|기술\s*지원사|공급사')
+ISSUER_RELATION=re.compile(
+    r'(?:제조\s*(?:\(\s*수입\s*\))?\s*사|제조\s*업체|원\s*제조사|'
+    r'기술\s*지원사|공급사|수입사)\s*와의')
+ISSUER_ACTION=re.compile(
+    r'(?:제조\s*(?:\(\s*수입\s*\))?\s*사|제조\s*업체|원\s*제조사|'
+    r'기술\s*지원사|공급사|수입사)[^\n]{0,35}'
+    r'(?:발급한|작성한|제출한|제공한)')
 EARLY_LIST=re.compile(
     r'입찰\s*(?:참가\s*)?(?:제출\s*서류|관련\s*서류|참가\s*제안\s*서류|시\s*제출)|'
     r'입찰\s*참가\s*제안\s*서류')
@@ -154,10 +161,20 @@ def pledge_check(rec):
         p['structural_links']=[]
         e=p['evidence'];q=e['quote']
         p['clause_evidence']=copy.deepcopy(e)
+        # ``제조사와의 공급확약서`` can name an agreement or relationship
+        # between seller and manufacturer.  It does not itself say that the
+        # manufacturer issued the undertaking.  An explicit issuance verb
+        # remains authoritative.
+        source_subject=p.get('source_subject_text',q)
+        relation_only=bool(ISSUER_RELATION.search(source_subject)
+                           and not ISSUER_ACTION.search(source_subject))
+        if relation_only:
+            p['issuer']='unresolved'
+            p['issuer_relation_only']=True
         # This is an explicit issuer expression in the very same pledge clause,
         # not a signature, company-name blank, or an adjacent manufacturer field.
         if (p['issuer']=='unresolved' and not p['bidder_written'] and not p['uncertain_context']
-                and ISSUER.search(p.get('source_subject_text',q))):
+                and not relation_only and ISSUER.search(source_subject)):
             p['issuer']='manufacturer_or_support_provider'
             p['issuer_evidence']=copy.deepcopy(e)
         containing=[g for g in governors if g['doc_index']==e['doc_index'] and g['start']<e['start']<g['end']]

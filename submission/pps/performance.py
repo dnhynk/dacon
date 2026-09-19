@@ -142,7 +142,14 @@ def purchaser(n):
     # An institution reference must modify prior commissioning/delivery, not
     # merely certify documents or identify the current purchaser/address.
     relation = re.search(r'(?:국가기관|국가|지방자치단체|정부투자기관|공공기관|대학병원|\[수요기관\([^]]+\])[^。\n]{0,75}(?:발주|시행한|납품한|통근버스운행실적)', n)
-    if relation or (excludes and public):
+    # A mandatory past-performance class can also be narrowed to one specific
+    # institutional beneficiary even when the clause says "students of..."
+    # rather than "ordered by...".  This is a restriction on acceptable prior
+    # work, not a current delivery-location mention.
+    institutional_beneficiary = re.search(
+        r'(?:유치원|초등학교|중학교|고등학교|중고등학교|초·중·고등학교)'
+        r'[^\n]{0,35}(?:학생|원생)\s*대상', n)
+    if relation or institutional_beneficiary or (excludes and public):
         return 'specific_purchaser_required'
     return 'unspecified'
 
@@ -345,22 +352,50 @@ def validate_model_witness(record, row, item, facts):
     emitted as0 and never recorded as a full-document absence certificate.
     """
     quote = row.get(f'e{item}', '')
-    if row.get(f'v{item}') not in (1, '1') or not isinstance(quote, str) or not quote.strip():
+    if row.get(f'v{item}') not in (1, '1') or not isinstance(quote, str):
+        return None
+    if not quote.strip():
+        # Missing public evidence cannot normally disprove a model judgment.
+        # One bounded exception is source-complete: the extractor found a
+        # scored/form-only monetary condition, no operative qualification
+        # candidate at all, and the model supplied no witness.
+        operative={'mandatory','qualitative_mandatory','ambiguous_eligibility',
+                   'qualification_note','unresolved_modality'}
+        evaluative=[c for c in facts['candidates'] if c['status'] in ('scoring','forms_or_submission')
+                    and (c['required_money'] is not None or c['purchaser']!='unspecified')]
+        if (evaluative and not any(c['status'] in operative for c in facts['candidates'])
+                and facts['overlays'][f'v{item}']['value'] is None):
+            return {'item': item, 'value': 0, 'evidence': '', 'semantic_value': None,
+                    'reason': 'unsupported_model_positive_with_only_scoring_or_form_performance',
+                    'source': 'performance_witness_validation', 'absence_verified': False,
+                    'rejected_witness': '',
+                    'occurrences': [{'purposes':[{'status':c['status'],
+                        'evidence':c['evidence'],'governing_heading':c['governing_heading']}]
+                        for c in evaluative}]}
         return None
     # A form can restate a substantive eligibility condition. Do not reject it
     # merely because a section heading or another line describes a form.
-    if MANDATORY_END.search(compact(quote)):
+    if any(MANDATORY_END.search(compact(line)) for line in quote.splitlines() if line.strip()):
         return None
     occurrences = []
     for di, doc in enumerate(record['docs']):
         for match in re.finditer(re.escape(quote), doc['text']):
             candidates = [c for c in facts['candidates'] if c['evidence']['doc_index'] == di
                 and c['evidence']['start'] < match.end() and c['evidence']['end'] > match.start()]
-            if not candidates or any(c['status'] not in ('scoring', 'forms_or_submission') for c in candidates):
+            purposes = [c for c in candidates if c['status'] in ('scoring','forms_or_submission')]
+            unsafe = [c for c in candidates if c['status'] not in ('scoring','forms_or_submission')
+                      and (c['required_money'] is not None or c['purchaser']!='unspecified'
+                           or MANDATORY_END.search(compact(c['evidence']['text'])))]
+            # A long model excerpt may also overlap a bare form field such as
+            # "주요 사업실적 1부" that the extractor leaves unresolved.
+            # Such a title cannot turn an otherwise scored/form-only excerpt
+            # into an eligibility condition.  A substantive unresolved clause
+            # (money, purchaser or bidder predicate) still blocks rejection.
+            if not purposes or unsafe:
                 return None
             occurrences.append({'evidence': span(doc, di, match.start(), match.end()),
                 'purposes': [{'status': c['status'], 'evidence': c['evidence'],
-                              'governing_heading': c['governing_heading']} for c in candidates]})
+                              'governing_heading': c['governing_heading']} for c in purposes]})
     if not occurrences:
         return None
     return {'item': item, 'value': 0, 'evidence': '', 'semantic_value': None,

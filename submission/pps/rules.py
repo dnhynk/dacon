@@ -60,9 +60,19 @@ def narrow_region_check(rec):
             right = min(end if end >= 0 else len(text), token.end+160)
             context = text[left:right]
             prefix, suffix = text[left:token.start], text[token.end:right]
-            if not re.search(r"본점|주된\s*영업소|본사", prefix):
+            office_bound = bool(re.search(r"본점|주된\s*영업소|본사", prefix))
+            # A notice may state the restriction directly as
+            # ``[basic-municipality token] 지역 업체`` under bidder
+            # qualifications without repeating "head office".  The typed token
+            # supplies the administrative level; qualification language keeps
+            # delivery/place mentions out.
+            direct_local_bidder = bool(
+                re.match(r'\s*(?:지역\s*)?(?:소재한\s*)?(?:업체|사업자)', suffix)
+                and re.search(r'입찰|참가|자격|부정당\s*업체|제재를\s*받지\s*않은', context)
+            )
+            if not office_bound and not direct_local_bidder:
                 continue
-            if not (re.search(r"소재|둔|두고|있는", suffix) and re.search(r"업체|갖춘\s*자", suffix)):
+            if office_bound and not (re.search(r"소재|둔|두고|있는", suffix) and re.search(r"업체|갖춘\s*자", suffix)):
                 continue
             if re.search(r"견적|수의계약|해제|지역제한\s*없", context):
                 continue
@@ -185,7 +195,10 @@ def apply_rules(rec, row, knowledge=None, *, comparison=None, items=tuple(range(
     # explicit negatives or abstentions cannot certify a whole legal item.
     if wanted & {23, 24}:
         checks.extend(check for key, check in temporal_checks(rec).items()
-                      if int(key[1:]) in wanted and check["value"] == 1 and (key != 'v24' or comparison is None))
+                      if int(key[1:]) in wanted
+                      and (check["value"] == 1
+                           or key == 'v23' and check.get('reason') == 'urgent_intervals_sufficient')
+                      and (key != 'v24' or comparison is None))
     if comparison is not None and 24 in wanted:
         from .comparison import positive_decision
         checks.append(positive_decision(rec, comparison))

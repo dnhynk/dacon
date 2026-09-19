@@ -57,6 +57,27 @@ def test_typed_price_bases_are_not_interchangeable():
     assert positive_decision(rec, compare(rec)) is None
 
 
+def test_unit_price_estimate_is_not_the_registered_whole_contract_estimate():
+    text=('기초금액: 2,046,000원(추정가격 1,860,000원, 부가가치세 186,000원)\n'
+          '용역예정금액: 94,035,000원(부가세 포함)\n'
+          '※ 단가계약 입찰이므로 기초금액을 기준으로 투찰하여야 합니다.')
+    rec=record(text,배정예산금액=94_035_000,입찰추정가격=85_486_364)
+    packet=compare(rec)
+    assert comparison(rec)['status']=='no_comparable_document_value'
+    assert comparison(rec,'estimated_price')['status']=='no_comparable_document_value'
+    price=comparison(rec,'estimated_price')
+    assert price['noncomparable_unit_price_fact_indices']==price['fact_indices']
+    estimate=next(f for f in packet['facts'] if f['field']=='estimated_price')
+    assert estimate['scope']=='whole'  # Other item families retain the original price fact.
+    assert positive_decision(rec,packet) is None
+
+
+def test_non_unit_price_estimate_remains_comparable():
+    text='기초금액: 2,046,000원(추정가격 1,860,000원, 부가가치세 186,000원)'
+    rec=record(text,입찰추정가격=85_486_364)
+    assert comparison(rec,'estimated_price')['status']=='different'
+
+
 def test_do_not_borrow_next_fields_vat():
     rec = record('사업예산: 40,000,000원\n추정가격: 50,000,000원\n기초금액: 44,000,000원 (부가세 포함)')
     assert amount_facts(rec)[0]['basis'] == 'unknown'

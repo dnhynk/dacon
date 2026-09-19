@@ -179,6 +179,31 @@ def _sw_work_candidates(q, doc_type, registered, service):
             yield kind, match.start('work'), match.end('work')
 
 
+def _hardware_refurbishment_ancillary_only(docs, actual):
+    """Recognize installation furnished by the buyer as hardware servicing.
+
+    A complete PC collection/refurbishment/distribution contract does not
+    become a procured software task merely because the contractor installs the
+    buyer's existing OS and applications.  Any separately detected software
+    declaration, licence purchase, system work, or other software action keeps
+    this guard off.
+    """
+    if not actual or any(a['kind'] != 'mandatory_software_installation_work' for a in actual):
+        return False
+    furnished = re.compile(
+        r'(?:발주처|발주기관|수요기관)[\s\"\'“”‘’「」『』]*(?:가|에서)?\s*제공(?:하(?:는|여)|한)?'
+        r'[^\n.。;；]{0,80}(?:O/S|S/W|\bSW\b|소프트웨어)'
+        r'[^\n.。;；]{0,80}설치', re.I)
+    if not all(furnished.search(a['evidence']['quote']) for a in actual):
+        return False
+    text = '\n'.join(d.get('text', '') for d in docs)
+    hardware = bool(re.search(r'(?:불용|중고)\s*(?:PC|컴퓨터)', text, re.I))
+    collected = bool(re.search(r'수집|회수', text))
+    refurbished = bool(re.search(r'정비|재생|양품화', text))
+    distributed = bool(re.search(r'보급|기증|배부', text))
+    return hardware and collected and refurbished and distributed
+
+
 def sw_check(rec):
     actual=[];incidental=[];disclosures=[];exceptions=[];registration=[];unresolved_disclosures=[];explicit_non_sw=[];rejected_work=[]
     docs=rec.get('docs',[])
@@ -235,10 +260,13 @@ def sw_check(rec):
     amount=budget_facts(rec)
     authority=rec.get('meta',{}).get('소관구분')
     public_scope=authority in {'국가기관','지방정부','공기업','준정부기관','기타공공기관','지방공기업'}
-    facts={'actual_work':actual,'rejected_work':rejected_work,'explicit_non_SW':explicit_non_sw,'other_mentions':incidental,'registration':registration,'floor_disclosure':disclosures,'exception_disclosure':exceptions,'unresolved_disclosures':unresolved_disclosures,'budget':amount,'public_authority_supported':public_scope,'authority_meta':authority,'complete':complete(rec),'dropped_docs':rec.get('dropped_doc_counts',{})}
+    ancillary_only=_hardware_refurbishment_ancillary_only(docs,actual)
+    facts={'actual_work':actual,'rejected_work':rejected_work,'explicit_non_SW':explicit_non_sw,'hardware_refurbishment_ancillary_only':ancillary_only,'other_mentions':incidental,'registration':registration,'floor_disclosure':disclosures,'exception_disclosure':exceptions,'unresolved_disclosures':unresolved_disclosures,'budget':amount,'public_authority_supported':public_scope,'authority_meta':authority,'complete':complete(rec),'dropped_docs':rec.get('dropped_doc_counts',{})}
     if explicit_non_sw:
         if actual:return result(None,'conflicting_SW_scope_declarations',facts)
         if complete(rec):return result(0,'explicit_non_SW_scope_in_complete_source',facts)
+    if ancillary_only and complete(rec):
+        return result(0,'buyer_furnished_software_is_ancillary_to_complete_hardware_refurbishment',facts)
     if exceptions:return result(None,'floor_exception_claim_requires_applicability_review',facts)
     if unresolved_disclosures and not disclosures:return result(None,'participation_text_requires_scope_or_negation_review',facts)
     # Presence is narrow: this is a disclosure decision, not certification that
@@ -270,9 +298,20 @@ def briefing_check(rec):
             heading_matches=list(re.finditer(r'(?:\d+[.)]\s*)?(?:입찰참가자격|참가자격|제안서\s*평가|제안서\s*발표|제안서\s*설명회\s*및\s*평가)',before))
             heading=heading_matches[-1][0] if heading_matches else None
             evaluation=bool(re.search(r'제안서\s*설명회|평가위원|제안서\s*평가|프레젠테이션',q))
-            no_event=bool(re.search(r'설명회[^\n]{0,40}(?:생략|미개최|개최하지|갈음)',q))
+            # ``제안요청서 설명: 사업설명회로 갈음`` announces that the
+            # briefing will be used; it does not cancel the briefing.  A
+            # ``갈음`` negative needs an explicit replacement object after
+            # the briefing subject.
+            no_event=bool(re.search(
+                r'설명회[^\n]{0,40}(?:생략|미개최|개최하지)|'
+                r'설명회\s*(?:는|를|은|[:：])?[^\n]{0,24}'
+                r'(?:제안요청서|과업지시서|공고서|첨부\s*자료)(?:로|으로)\s*갈음',q))
             independent=bool(re.search(r'참석\s*여부[^\n]{0,30}(?:상관없|상관없이|관계없)|불참[^\n]{0,25}불이익\s*없|참석하지\s*않아도[^\n]{0,30}(?:가능|참가)|(?:불참|미참석)[^\n]{0,45}(?:제외하지\s*않|참가를\s*제한하지\s*않)',q))
-            restrict=bool(re.search(r'참석(?:한)?\s*(?:업체|자)[^\n]{0,35}(?:한하|한하여)[^\n]{0,45}(?:제안서|입찰|자격)|(?:미참석|불참)[^\n]{0,45}(?:제안서[^\n]{0,25}접수하지\s*않|대상에서\s*제외|참가\s*불가)',q))
+            restrict=bool(re.search(
+                r'참석(?:한)?\s*(?:업체|자)[^\n]{0,35}(?:한하|한하여)[^\n]{0,45}(?:제안서|입찰|자격)|'
+                r'(?:미참석|불참)[^\n]{0,45}(?:제안서[^\n]{0,25}접수하지\s*않|대상에서\s*제외|참가\s*불가)|'
+                r'참석하지\s*(?:아니한|않은)[^\n]{0,35}업체[^\n]{0,35}'
+                r'(?:입찰\s*)?참가[^\n]{0,20}허용되지\s*않',q))
             in_qualification=bool(heading and '참가자격' in heading)
             if in_qualification and re.search(r'설명회에\s*참석한\s*자',q):restrict=True
             unclear=bool(re.search(r'않는\s*것은\s*아니|예시|가정|(?:규정|조건|요건|요구사항)[^\n]{0,20}(?:삭제|철회)' ,q))

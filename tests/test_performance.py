@@ -18,6 +18,14 @@ def test_prior_purchaser_location_is_not_current_bidder_region():
     assert performance_facts(r)["overlays"]["v8"]["value"]==1
 
 
+def test_specific_school_student_experience_is_a_specific_prior_class():
+    r = notice('가. 최근 3년 이내 중고등학교 학생 대상 숙박형 국내여행 '
+               '1억원 이상의 실적이 있는 업체이어야 한다.')
+    facts = performance_facts(r)
+    assert facts['overlays']['v4']['value'] == 1
+    assert facts['candidates'][0]['purchaser'] == 'specific_purchaser_required'
+
+
 def test_experience_scores_forms_or_permissions_are_not_qualification():
     for heading, text in [("3. 정량평가 기준", "최근 3년 실적 2억원 이상인 업체 배점 10점"),
                           ("4. 제출서류", "실적증명서 서식 1부: 단일 실적 2억원 이상 업체"),

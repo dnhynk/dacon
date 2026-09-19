@@ -70,6 +70,20 @@ def test_bid_related_documents_heading_binds_its_pledge_member():
     assert pledge['structural_links'][0]['governor']['quote'] == '1) 입찰관련서류'
 
 
+def test_relationship_with_manufacturer_does_not_prove_manufacturer_issued_pledge():
+    text = ('3. 입찰 참가 제출 서류\n'
+            '- 판매업자의 경우 제조(수입)사와의 공고물량 이상의 공급확약서 1부')
+    result = pledge_check(notice(text))
+    assert result['value'] is None
+    assert result['facts']['pledges'][0]['issuer_relation_only'] is True
+
+
+def test_explicit_manufacturer_issuance_remains_third_party_pledge():
+    text = ('1. 입찰 참가 제출 서류\n'
+            '- 제조사와의 계약에 따라 제조사가 발급한 물품공급확약서 1부')
+    assert pledge_check(notice(text))['value'] == 1
+
+
 def test_exact_attached_bidder_form_is_not_a_third_party_pledge():
     text = ('1. 입찰 참가 제출 서류\n- 물품 공급 및 기술지원 확약서[첨부3] 1부\n'
             '2. 계약조건\n[첨부 3]\n장비별 공급 및 기술지원 확약서\n'

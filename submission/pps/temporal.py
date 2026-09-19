@@ -184,7 +184,13 @@ def v23(rec):
     from .prices import project_prices
     price = project_prices(rec)['estimated_price']
     estimate = price['value_won']
-    threshold=None if estimate is None else 10 if estimate<100000000 else 20 if estimate<1000000000 else 40
+    ordinary_threshold=None if estimate is None else 10 if estimate<100000000 else 20 if estimate<1000000000 else 40
+    # The supplied local-contract snapshot has a separate urgent branch.  For
+    # a real pre-proposal briefing, seven full calendar days between briefing
+    # and proposal deadline are sufficient on that branch.  Use only the
+    # official structured Y flag; a title containing "긴급" is not enough.
+    urgent = meta.get('긴급공고여부') == 'Y'
+    threshold = 7 if urgent else ordinary_threshold
     briefing=dt.date.fromisoformat(next(iter(vals)))
     gap=None if not deadline_vals else (dt.date.fromisoformat(next(iter(deadline_vals)))-briefing).days
     pubs={f['value'] for f in publications}
@@ -196,14 +202,16 @@ def v23(rec):
         if mp and pubs and mp not in pubs:return result(23,None,'body_meta_publication_date_conflict',briefs+publications)
         if mp and not pubs:pubs={mp}
     pubgap=None if not pubs else (briefing-dt.date.fromisoformat(next(iter(pubs)))).days
-    calc=dict(kind='calculation',estimated_price=str(estimate) if estimate is not None else None,price_resolution=price,required_days=threshold,briefing_to_proposal_calendar_days=gap,publication_to_briefing_calendar_days=pubgap,boundary_policy='strict_shortfall_positive; equality_abstains')
+    calc=dict(kind='calculation',estimated_price=str(estimate) if estimate is not None else None,price_resolution=price,required_days=threshold,ordinary_required_days=ordinary_threshold,urgent_notice=urgent,briefing_to_proposal_calendar_days=gap,publication_to_briefing_calendar_days=pubgap,boundary_policy='urgent: equality sufficient; ordinary: equality abstains')
     facts=briefs+deadlines+publications+amount_facts+[calc]
     if gap is not None and gap<=0:return result(23,None,'briefing_not_before_proposal_or_wrong_event',facts)
     if pubgap is not None and pubgap<0:return result(23,None,'briefing_before_publication_or_wrong_event',facts)
     # A strict shortfall is invariant to the unresolved exact-day counting boundary.
     if (gap is not None and threshold is not None and gap<threshold) or (pubgap is not None and pubgap<7):
         return result(23,1,'definite_shortfall',facts,briefs[0]['evidence'])
-    if gap is not None and threshold is not None and gap>threshold and pubgap is not None and pubgap>7:
+    if urgent and gap is not None and gap>=threshold and pubgap is not None and pubgap>=7:
+        return result(23,0,'urgent_intervals_sufficient',facts)
+    if not urgent and gap is not None and threshold is not None and gap>threshold and pubgap is not None and pubgap>7:
         return result(23,0,'both_intervals_clearly_sufficient',facts)
     return result(23,None,'missing_interval_or_exact_boundary',facts)
 

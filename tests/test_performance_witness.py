@@ -48,6 +48,24 @@ def test_scoring_or_form_witness_is_not_an_eligibility_proof(heading, quote):
     assert guard['rejected_witness'] == quote
 
 
+def test_missing_model_witness_does_not_promote_scoring_only_experience():
+    text=('2. 입찰 참가자격\n가. 적법하게 등록한 업체\n'
+          '3. 정량적 평가기준\n최근 5년 단일 건 1억원 이상의 완료 실적만 인정\n'
+          '4. 제출서류\n민간 실적은 계약서를 첨부한다.')
+    out, trace = apply_rules(record(text), {'v2':1,'e2':''}, items=(2,))
+    assert out == {'v2':0,'e2':''}
+    assert any(x['reason']=='unsupported_model_positive_with_only_scoring_or_form_performance'
+               for x in trace)
+
+
+def test_multiline_scoring_quote_cannot_borrow_later_word_bidder():
+    quote=('최근 3년간 수학여행 수행실적을 합산 적용함\n\n'
+           '4. 업체 일반현황 1부')
+    rec=record('2. 입찰 참가자격\n가. 적법하게 등록한 업체\n3. 정량적 평가기준\n'+quote)
+    out, _ = apply_rules(rec, {'v8':1,'e8':quote}, items=(8,))
+    assert out == {'v8':0,'e8':''}
+
+
 def test_other_operative_condition_still_proves_violation():
     q = '최근 3년 단일 건 2억원 이상의 완료 실적만 인정'
     rec = record('2. 입찰 참가자격\n가. 단일 용역 실적 3억원 이상이 있는 업체\n'

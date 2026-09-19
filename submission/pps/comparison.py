@@ -52,6 +52,7 @@ _UNIT_ANNOTATION = re.compile(r'\s*(?:조|억|백만|천|만)?\s*원\s*(?=[,，/
 _VAT_EXPENSES = r'(?:\s*(?:및|[·ㆍ,])\s*(?:대행수수료|수수료|이윤|제경비|보험료|운송비|설치비))*'
 _VAT_NO = re.compile(r'(?:부가(?:가치)?세|vat)'+_VAT_EXPENSES+r'\s*(?:는\s*)?(?:미포함|불포함|별도|제외)', re.I)
 _VAT_YES = re.compile(r'(?:부가(?:가치)?세|vat)'+_VAT_EXPENSES+r'\s*(?:는\s*)?포함', re.I)
+_VAT_EXEMPT = re.compile(r'(?:부가(?:가치)?세|vat)?\s*(?:는\s*)?(?:면세|비과세)', re.I)
 # Explicit key/value typography supplies an ownership boundary even when the
 # caption was not anticipated. Restrict caption syntax so colons in document
 # tokens, prose quotations and URLs cannot invent a new field.
@@ -396,7 +397,9 @@ def amount_facts(rec):
                      'table_row_unresolved' if table == 'multi_row' else 'whole')
             vat_context = header + ' ' + (' '.join(value_tails) if value_tails else area)
             vat_no, vat_yes = bool(_VAT_NO.search(vat_context)), bool(_VAT_YES.search(vat_context))
-            basis = ('unknown' if field == 'estimated_price' and vat_yes else
+            vat_exempt = bool(_VAT_EXEMPT.search(vat_context))
+            basis = ('tax_exempt' if vat_exempt and not vat_no and not vat_yes else
+                     'unknown' if field == 'estimated_price' and vat_yes else
                      'excluding_vat' if field == 'estimated_price' else
                      'including_vat' if vat_yes and not vat_no else
                      'excluding_vat' if vat_no and not vat_yes else 'unknown')
@@ -516,6 +519,18 @@ def _explicit_province_branches(text):
     return set(branches)
 
 
+def _unit_price_estimate_fact(rec, fact):
+    """Limit a unit/total distinction to the v24 metadata comparison."""
+    if fact.get('field') != 'estimated_price' or fact.get('value') is None:
+        return False
+    text = rec['docs'][fact['doc_index']]['text']
+    if not re.search(r'단가\s*계약[^\n]{0,100}기초\s*금액[^\n]{0,80}투찰', text):
+        return False
+    source = text[fact['start']:fact['end']]
+    return bool(re.search(r'기\s*초\s*금\s*액', source)
+                and re.search(r'추\s*정\s*가\s*격', source))
+
+
 def compare(rec):
     """Return all extracted observations and only comparable field conclusions."""
     facts = _source_facts(rec)
@@ -524,12 +539,16 @@ def compare(rec):
     for field, meta_key in META_FIELDS.items():
         relevant = [i for i, f in enumerate(facts) if f['field'] == field]
         eligible = [i for i in relevant if facts[i]['scope'] == 'whole' and facts[i]['value'] is not None]
+        unit_price_indices = []
         raw_meta = meta.get(meta_key)
         outside_provinces = []
         normalized, status = None, 'unresolved'
         if field in {'budget', 'estimated_price'}:
             basis = 'including_vat' if field == 'budget' else 'excluding_vat'
             eligible = [i for i in eligible if facts[i]['basis'] == basis]
+            if field == 'estimated_price':
+                unit_price_indices = [i for i in eligible if _unit_price_estimate_fact(rec, facts[i])]
+                eligible = [i for i in eligible if i not in unit_price_indices]
             normalized = _number(raw_meta)
             values = {Decimal(facts[i]['value']) for i in eligible}
             if any(facts[i]['scope'] == 'whole' and facts[i]['basis'] == 'unknown' for i in relevant):
@@ -581,6 +600,8 @@ def compare(rec):
         comparisons.append({'field': field, 'meta_key': meta_key, 'metadata': raw_meta,
                             'status': status, 'fact_indices': relevant,
                             'comparable_fact_indices': eligible,
+                            **({'noncomparable_unit_price_fact_indices': unit_price_indices}
+                               if unit_price_indices else {}),
                             **({'outside_registered_provinces': outside_provinces} if outside_provinces else {})})
     return {'facts': facts, 'comparisons': comparisons,
             'flags': {k: meta.get(k) for k in ('지역제한여부', '업종제한여부')},
@@ -872,6 +893,32 @@ def _invalid_equal_amount_comparison(clause, packet):
     return len(amounts) >= 2 and max(amounts) - min(amounts) <= 1
 
 
+def _invalid_tax_basis_budget_comparison(clause, packet):
+    """A tax-exempt price and the portal's mechanical 10% gross are not peers."""
+    compact = _compact(clause)
+    if not (_asserts_difference(clause)
+            and re.search(r'예산|사업비|배정예산|소요예산', compact)):
+        return False
+    budget = _comparison_by_field(packet, 'budget')
+    price = _comparison_by_field(packet, 'estimated_price')
+    if budget['status'] == 'different':
+        return False
+    try:
+        registered_budget = int(Decimal(str(budget['metadata']).replace(',', '')))
+        registered_price = int(Decimal(str(price['metadata']).replace(',', '')))
+    except Exception:
+        return False
+    if registered_budget * 10 != registered_price * 11:
+        return False
+    exempt = {int(Decimal(packet['facts'][i]['value']))
+              for i in budget['fact_indices']
+              if packet['facts'][i].get('basis') == 'tax_exempt'
+              and packet['facts'][i].get('scope') == 'whole'
+              and packet['facts'][i].get('value') is not None}
+    claimed = _claim_amounts(clause)
+    return registered_price in exempt and {registered_budget, registered_price} <= claimed
+
+
 def _invalid_contract_award_or_interdocument_comparison(clause, packet):
     """Award methods and source-to-source conflicts are not metadata contract values."""
     compact = _compact(clause)
@@ -973,6 +1020,8 @@ def reject_unsupported_comparison_claim(rec, row, response, packet):
             reason = 'model_compared_statutory_bound_as_literal_price'
         elif _invalid_equal_amount_comparison(clause, packet):
             reason = 'model_asserted_difference_between_equal_amounts'
+        elif _invalid_tax_basis_budget_comparison(clause, packet):
+            reason = 'model_compared_tax_exempt_price_to_portal_gross_budget'
         elif _invalid_contract_award_or_interdocument_comparison(clause, packet):
             reason = 'model_compared_contract_method_to_nonmetadata_method'
         elif _invalid_unresolved_industry_scope(clause, packet):

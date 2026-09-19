@@ -165,3 +165,18 @@ def test_structured_basic_metadata_needs_an_observed_bidder_office_clause():
         '[등록지역:r1|단위=기초|광역=경기도], '
         '[등록지역:r2|단위=기초|광역=경기도]'))
     assert narrow_region_check(rec) is None
+
+
+def test_typed_basic_region_followed_by_region_bidder_is_an_operative_restriction():
+    rec = record('2. 입찰참가자격\n부정당업체로 제재를 받지 않은 경기도 '
+                 '[지역:r1|단위=기초|광역=경기도] 지역 업체', price=80_000_000)
+    rec['meta'].update(지역제한여부='N')
+    check = narrow_region_check(rec)
+    assert check['value'] == 1
+    assert '[지역:r1|단위=기초|광역=경기도]' in check['evidence']
+
+
+def test_typed_basic_delivery_region_is_not_a_bidder_restriction():
+    rec = record('2. 납품장소\n[지역:r1|단위=기초|광역=경기도] 지역 학교에 납품한다.',
+                 price=80_000_000)
+    assert narrow_region_check(rec) is None
