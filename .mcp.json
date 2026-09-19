@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "colab-mcp": {
+      "command": "uvx",
+      "args": ["git+https://github.com/googlecolab/colab-mcp@b9ab3899"],
+      "env": {
+        "BROWSER": "\"C:/Program Files/Google/Chrome/Application/chrome.exe\" --profile-directory=\"Profile 1\" %s"
+      },
+      "timeout": 30000
+    }
+  }
+}
