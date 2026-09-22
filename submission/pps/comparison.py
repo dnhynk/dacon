@@ -457,13 +457,16 @@ def amount_facts(rec):
     return facts
 
 
-def _source_facts(rec):
+def _source_facts(rec, *, observation_only=False):
     facts = amount_facts(rec)
     # These functions remain source extractors; using attachments does not give
     # them priority over a notice or turn a template into the active clause.
     for key, extractor in [('competition_method', contract_fields),
                            ('region', region_clauses), ('industry', industry_fields)]:
-        for item in extractor(rec, doc_types=None):
+        options = {'observation_only': observation_only} if key != 'region' else {}
+        if key == 'competition_method':
+            options['include_unresolved'] = True
+        for item in extractor(rec, doc_types=None, **options):
             di, lo, hi = item['doc_index'], item['start'], item['end']
             text = rec['docs'][di]['text']
             context_incomplete = False
@@ -531,6 +534,33 @@ def _unit_price_estimate_fact(rec, fact):
                 and re.search(r'추\s*정\s*가\s*격', source))
 
 
+def _budget_scope_witnesses(rec, facts, metadata):
+    """Locate a registered amount belonging to a different unit or project."""
+    if metadata is None:
+        return []
+    witnesses = []
+    for f in facts:
+        if (f['field'] == 'base_price' and f.get('scope') == 'partial'
+                and _number(f.get('value')) == metadata):
+            text = rec['docs'][f['doc_index']]['text'][f['start']:f['end']]
+            if re.search(r'단가|원\s*[/／]', text):
+                witnesses.append({'reason': 'registered_unit_price', **f})
+    name_pattern = r'(?:사\s*업|공\s*고|용\s*역)\s*명\s*[:：]\s*([^\n]+)'
+    names = [set(_compact(n) for n in re.findall(name_pattern, d['text'][:2000])
+                 + re.findall(r'[｢「]([^｢｣「」\n]+)[｣」]\s*(?:수행기관|사업자)\s*선정\s*입찰', d['text'][:1000]))
+             for d in rec['docs']]
+    budget_docs = {f['doc_index'] for f in facts if f['field'] == 'budget' and f['scope'] == 'whole'}
+    for di, doc in enumerate(rec['docs']):
+        if not names[di] or not any(names[j] and names[j].isdisjoint(names[di]) for j in budget_docs if j != di):
+            continue
+        for m in re.finditer(r'(?:위탁\s*규모|총\s*사업비)[^\n]{0,100}', doc['text']):
+            for amount in _WON.finditer(m[0]):
+                if won_value(amount[0]) == metadata:
+                    witnesses.append({'reason': 'registered_other_project_total', 'doc_index': di,
+                        'start': m.start(), 'end': m.end(), 'text': m[0]})
+    return witnesses
+
+
 def compare(rec):
     """Return all extracted observations and only comparable field conclusions."""
     facts = _source_facts(rec)
@@ -542,6 +572,7 @@ def compare(rec):
         unit_price_indices = []
         raw_meta = meta.get(meta_key)
         outside_provinces = []
+        scope_witnesses = []
         normalized, status = None, 'unresolved'
         if field in {'budget', 'estimated_price'}:
             basis = 'including_vat' if field == 'budget' else 'excluding_vat'
@@ -550,6 +581,8 @@ def compare(rec):
                 unit_price_indices = [i for i in eligible if _unit_price_estimate_fact(rec, facts[i])]
                 eligible = [i for i in eligible if i not in unit_price_indices]
             normalized = _number(raw_meta)
+            if field == 'budget':
+                scope_witnesses = _budget_scope_witnesses(rec, facts, normalized)
             values = {Decimal(facts[i]['value']) for i in eligible}
             if any(facts[i]['scope'] == 'whole' and facts[i]['basis'] == 'unknown' for i in relevant):
                 status = 'basis_unresolved'
@@ -557,11 +590,15 @@ def compare(rec):
                 status = 'row_scope_unresolved'
             if any(facts[i]['scope'] == 'unparsed' for i in relevant):
                 status = 'extraction_unresolved'
+            if scope_witnesses:
+                status = 'amount_scope_unresolved'
         elif field == 'competition_method':
             normalized = _compact(raw_meta)
             if normalized not in {'일반경쟁', '제한경쟁', '지명경쟁', '수의계약'}:
                 normalized = None
             values = {facts[i]['value'] for i in eligible}
+            if any(facts[i]['scope'] in {'assertion_unresolved', 'method_relation_unresolved'} for i in relevant):
+                status = 'method_relation_unresolved'
         elif field == 'region':
             names, basic = region_set(str(raw_meta))
             normalized = tuple(sorted(names)) if names else None
@@ -600,10 +637,15 @@ def compare(rec):
         comparisons.append({'field': field, 'meta_key': meta_key, 'metadata': raw_meta,
                             'status': status, 'fact_indices': relevant,
                             'comparable_fact_indices': eligible,
+                            **({'scope_witnesses': scope_witnesses} if scope_witnesses else {}),
                             **({'noncomparable_unit_price_fact_indices': unit_price_indices}
                                if unit_price_indices else {}),
                             **({'outside_registered_provinces': outside_provinces} if outside_provinces else {})})
-    return {'facts': facts, 'comparisons': comparisons,
+    # Keep the measured observation packet independent of conclusion policy.
+    # Policy facts retain expanded predicates and unresolved scope for consumers;
+    # source observations retain the original extraction coordinates and wording.
+    return {'facts': facts, 'source_observations': _source_facts(rec, observation_only=True),
+            'comparisons': comparisons,
             'flags': {k: meta.get(k) for k in ('지역제한여부', '업종제한여부')},
             'note': 'Field matches never certify v24=0; flags alone are not value-to-value differences.'}
 
@@ -611,7 +653,7 @@ def compare(rec):
 def priority_ranges(packet):
     """Round-robin fields and documents, with both sides of conflicts retained."""
     by_field = {}
-    for fact in packet['facts']:
+    for fact in packet.get('source_observations', packet['facts']):
         by_field.setdefault(fact['field'], []).append((fact['doc_index'], fact['start'], fact['end']))
     result = []
     while any(by_field.values()):
@@ -623,32 +665,41 @@ def priority_ranges(packet):
     return result
 
 
+def _fact_visibility(fact, spans, rec):
+    refs = [n for n, span in enumerate(spans, 1)
+            if span.doc_index == fact['doc_index'] and span.start < fact['end'] and span.end > fact['start']]
+    covered = sorted((max(span.start, fact['start']), min(span.end, fact['end']))
+                     for span in spans if span.doc_index == fact['doc_index']
+                     and span.start < fact['end'] and span.end > fact['start'])
+    if not covered:
+        return refs, False
+    text = rec['docs'][fact['doc_index']]['text']
+    gaps = [(fact['start'], covered[0][0]), (covered[-1][1], fact['end'])]
+    gaps += [(b, c) for (_, b), (c, _) in zip(covered, covered[1:])]
+    return refs, all(b <= a or not text[a:b].strip() for a, b in gaps)
+
+
 def prompt_packet(packet, spans, *, rec):
     """Only draw a comparison conclusion when every relevant source is visible."""
     compact = []
+    source = packet.get('source_observations', packet['facts'])
     for comparison in packet['comparisons']:
         observations, all_shown = [], True
-        for index in comparison['fact_indices']:
-            fact = packet['facts'][index]
-            refs = [n for n, span in enumerate(spans, 1)
-                    if span.doc_index == fact['doc_index'] and span.start < fact['end'] and span.end > fact['start']]
-            covered = sorted((max(span.start, fact['start']), min(span.end, fact['end']))
-                             for span in spans if span.doc_index == fact['doc_index']
-                             and span.start < fact['end'] and span.end > fact['start'])
+        field_facts = [f for f in source if f['field'] == comparison['field']]
+        for fact in field_facts:
             # Adjacent whitespace is checked by retrieval; source coordinates
             # still distinguish an absent comparison from a matched value.
-            text = rec['docs'][fact['doc_index']]['text']
-            shown = bool(covered)
-            if shown:
-                gaps = [(fact['start'], covered[0][0]), (covered[-1][1], fact['end'])]
-                gaps += [(b, c) for (_, b), (c, _) in zip(covered, covered[1:])]
-                shown = all(b <= a or not text[a:b].strip() for a, b in gaps)
+            refs, shown = _fact_visibility(fact, spans, rec)
             all_shown &= shown
             if len(observations) < 6:
                 observations.append({k: v for k, v in fact.items()
                                      if k in {'value', 'basis', 'scope', 'doc_type', 'basic_level', 'alternative'}}
                                     | {'S': refs if shown else [], 'source_shown': shown})
-        state = comparison['status'] if all_shown and len(comparison['fact_indices']) <= 6 else 'source_omitted'
+        # Expanded policy evidence must also be visible, even when it was not
+        # extracted into the measured observation list (e.g. 일반(단가)경쟁).
+        policy_shown = all(_fact_visibility(packet['facts'][i], spans, rec)[1]
+                           for i in comparison['fact_indices'])
+        state = comparison['status'] if all_shown and policy_shown and len(field_facts) <= 6 else 'source_omitted'
         field = comparison['field']
         flag_key = {'region': '지역제한여부', 'industry': '업종제한여부'}.get(field)
         registered_flag = packet.get('flags', {}).get(flag_key) if flag_key else None
@@ -656,9 +707,8 @@ def prompt_packet(packet, spans, *, rec):
         # particular, null is not N.  Surface a source-complete N-versus-duty
         # relation for the model to inspect, without turning the flag alone
         # into a deterministic positive.
-        operative_restriction = bool(comparison['fact_indices']) and all(
-            packet['facts'][index].get('scope') == 'whole'
-            for index in comparison['fact_indices'])
+        operative_restriction = bool(field_facts) and all(
+            fact.get('scope') == 'whole' for fact in field_facts)
         flag_relation = ('source_restriction_vs_registered_N_candidate'
                          if all_shown and operative_restriction
                          and _compact(str(registered_flag)).upper() == 'N'
@@ -669,7 +719,7 @@ def prompt_packet(packet, spans, *, rec):
                             'registered_flag': registered_flag,
                             'flag_relation': flag_relation} if flag_key else {}),
                         'comparison': state, 'observed': observations,
-                        'omitted_observations': max(0, len(comparison['fact_indices']) - 6)})
+                        'omitted_observations': max(0, len(field_facts) - 6)})
     return {'fields': compact, 'instruction':
             '같은 의미·범위·부가세 기준의 값만 대조한다. 기초금액≠배정예산, 추정가격≠부가세포함예산, '
             '낙찰방법≠경쟁방식이다. 지역/업종 플래그 N만으로 원문 자격과의 불일치를 확정하지 않는다. '
@@ -679,11 +729,191 @@ def prompt_packet(packet, spans, *, rec):
             '첨부와 공고가 충돌하면 양쪽 원문과 적용범위를 확인한다. e에는 직접 관련된 S번호를 쓴다.'}
 
 
+def title_tag_decision(rec):
+    """A unique anonymized title tag can independently contradict registration.
+
+    The band has no tax basis: either registered amount may satisfy it. Missing
+    operands and conflicting/unparsed tags cannot establish a difference.
+    """
+    methods = {'일반경쟁', '제한경쟁', '지명경쟁', '수의계약'}
+    tags, sources = set(), []
+    for di, doc in enumerate(rec['docs']):
+        if doc['type'] != '공고문':
+            continue
+        text = doc['text']
+        for match in re.finditer(r'[(（]([^()（）\r\n]*)[)）]', text):
+            content = _compact(match[1])
+            parts = re.split(r'[·ㆍ・･.]', content, maxsplit=1)
+            if len(parts) != 2:
+                continue
+            method, band = parts
+            if not (method.endswith(('경쟁', '계약')) or re.search(r'원(?:미만|이하|이상|초과)', band)):
+                continue
+            parsed = re.fullmatch(r'(\d[\d,.조억만천백십]*원)(미만|이하|이상|초과)', band)
+            amount = won_value(parsed[1]) if parsed else None
+            if method not in methods or amount is None or amount <= 0:
+                return None
+            tags.add((method, amount, parsed[2]))
+            lo = text.rfind('\n', 0, match.start()) + 1
+            hi = text.find('\n', match.end())
+            hi = len(text) if hi < 0 else hi
+            sources.append((di, lo, hi))
+    if len(tags) != 1:
+        return None
+    method, amount, relation = next(iter(tags))
+    meta = rec.get('meta', {})
+    registered_method = _compact(meta.get('계약방법'))
+    method_diff = registered_method in methods and registered_method != method
+    prices = [_number(meta.get(key)) for key in ('입찰추정가격', '배정예산금액')]
+    def contradicts(price):
+        if price is None:
+            return False
+        return {'미만': price >= amount, '이하': price > amount,
+                '이상': price < amount, '초과': price <= amount}[relation]
+    band_diff = all(contradicts(price) for price in prices)
+    if not (method_diff or band_diff):
+        return None
+    for di, lo, hi in sources:
+        evidence = rec['docs'][di]['text'][lo:hi]
+        if len(evidence) <= 500:
+            return {'item': 24, 'value': 1, 'evidence': evidence,
+                    'reason': 'title_tag_metadata_difference',
+                    'comparison': {'field': 'title_tag', 'method': method,
+                                   'amount': str(amount), 'relation': relation,
+                                   'method_difference': method_diff, 'band_difference': band_diff,
+                                   'source': (di, lo, hi)}}
+    return None
+
+
+_PRICE_CRITERION = re.compile(r'추정가격(?:이|은|는|을|의)?(?:고시금액|규모)')
+
+
+def _criterion_reference(rec, fact):
+    """An estimated-price name bound to a named statutory threshold.
+
+    ``추정가격이 고시금액 미만인 입찰`` and ``해당 추정가격 규모에 적용되는``
+    select which evaluation rule applies. That is the category the extractor
+    already sets aside as ``bounded`` whenever the threshold carries a number;
+    only the named threshold leaves nothing for the numeric parser. Such a
+    sentence assigns no price to this notice.
+    """
+    text = rec['docs'][fact['doc_index']]['text'][fact['anchor_start']:fact['end']]
+    return bool(_PRICE_CRITERION.match(_compact(text)))
+
+
+def _criterion_only_estimate(rec, packet, comparison):
+    """Read an estimate blocked only by criterion sentences, without moving the packet.
+
+    The measured packet keeps its conservative observation for the model. Here
+    the consumer removes exactly the occurrences that assign no price and asks
+    whether one assigned, VAT-excluded whole value still differs from the
+    registered estimate. A genuinely unreadable assignment keeps the abstention.
+    """
+    if comparison['field'] != 'estimated_price' or comparison['status'] != 'extraction_unresolved':
+        return None
+    facts = [(i, packet['facts'][i]) for i in comparison['fact_indices']]
+    if any(f['scope'] == 'table_row_unresolved'
+           or f['scope'] == 'whole' and f['basis'] == 'unknown'
+           or f['scope'] == 'unparsed' and not _criterion_reference(rec, f) for _, f in facts):
+        return None
+    eligible = [i for i, f in facts
+                if f['scope'] == 'whole' and f['value'] is not None and f['basis'] == 'excluding_vat'
+                and not _unit_price_estimate_fact(rec, f)]
+    values = {Decimal(packet['facts'][i]['value']) for i in eligible}
+    registered = _number(comparison['metadata'])
+    if registered is None or len(values) != 1 or abs(next(iter(values)) - registered) <= 1:
+        return None
+    return dict(comparison, status='different', comparable_fact_indices=eligible,
+                criterion_reference_only=True)
+
+
+_VAT_PAIR = re.compile(
+    r'추\s*정\s*가\s*격\s*[:：]?\s*(?:금\s*)?(?P<value>\d{1,3}(?:,\d{3})+)(?!\s*(?:\d|,|원|천|백|만|억))'
+    r'[^\n\d]{0,40}?부\s*가\s*(?:가\s*치\s*)?세\s*[:：]?\s*(?:금\s*)?(?P<tax>\d{1,3}(?:,\d{3})+)'
+    r'(?!\s*[)）]?\s*(?:\d|,|천|백|만|억))')
+_BASIS_GLOSS = re.compile(r'기준\s*\([^()\n]{0,30}추정가격\s*기준\s*\)')
+
+
+def _vat_paired_estimate(rec, packet, comparison):
+    """Read an estimate written without a currency unit when its VAT fixes the unit.
+
+    ``추정가격106,195,000 / 부가가치세10,619,500`` states the estimate beside its
+    10% VAT; that exact accounting relation makes both won amounts. A basis
+    gloss of an evaluation criterion (``평가기준(부가가치세 제외 추정가격 기준)``)
+    assigns no price. Any other unreadable occurrence keeps the abstention, and
+    the measured packet is not moved.
+    """
+    if comparison['field'] != 'estimated_price' or comparison['status'] != 'extraction_unresolved':
+        return None
+    values, indices = set(), []
+    for i in comparison['fact_indices']:
+        fact = packet['facts'][i]
+        text = rec['docs'][fact['doc_index']]['text']
+        if fact['scope'] == 'bounded':
+            continue
+        if (fact['scope'] == 'whole' and fact['value'] is not None and fact['basis'] == 'excluding_vat'
+                and not _unit_price_estimate_fact(rec, fact)):
+            values.add(Decimal(fact['value']))
+            indices.append(i)
+            continue
+        if fact['scope'] != 'unparsed':
+            return None
+        line_start = text.rfind('\n', 0, fact['anchor_start']) + 1
+        if _criterion_reference(rec, fact) or _BASIS_GLOSS.search(text[line_start:fact['end']]):
+            continue
+        pair = _VAT_PAIR.match(text, fact['anchor_start'])
+        if pair is None or pair.end() > fact['end']:
+            return None
+        value, tax = (Decimal(pair[g].replace(',', '')) for g in ('value', 'tax'))
+        if abs(tax - value / 10) > 1:
+            return None
+        values.add(value)
+        indices.append(i)
+    registered = _number(comparison['metadata'])
+    if registered is None or len(values) != 1 or abs(next(iter(values)) - registered) <= 1:
+        return None
+    return dict(comparison, status='different', comparable_fact_indices=indices,
+                vat_paired_estimate=True)
+
+
+_UNIT_PRICED_NOTICE = re.compile(
+    r'단가\s*(?:계약|견적|입찰)|[가-힣A-Za-z]{1,4}\s*당\s*단가|원\s*[/／]\s*[가-힣A-Za-z]{1,4}|'
+    r'\d+\s*(?:일|개월|명|톤)\s*단가|단가로\s*(?:입찰|견적)|단가\s*투찰')
+
+
+def _whole_contract_estimate(rec, packet, comparison):
+    """Both operands must be the whole-contract estimate of the same notice.
+
+    The registered 입찰추정가격 is always the whole-contract estimate. A notice
+    that prices per unit (단가계약·단가견적, ``원/톤``, ``1일 단가``) states a
+    per-unit amount beside its 기초금액, which is a different quantity rather
+    than a conflicting value. And when the registered amount is itself written
+    in the notice, the notice agrees with the registration; a differing figure
+    read elsewhere is another column or role, not a source conflict.
+    """
+    notice = '\n'.join(d['text'] for d in rec['docs'] if d['type'] == '공고문')
+    if _UNIT_PRICED_NOTICE.search(notice):
+        return False
+    registered = _number(comparison['metadata'])
+    return not any(registered in _claim_amounts(d['text']) for d in rec['docs'])
+
+
 def positive_decision(rec, packet):
     for comparison in packet['comparisons']:
+        comparison = (_criterion_only_estimate(rec, packet, comparison)
+                      or _vat_paired_estimate(rec, packet, comparison) or comparison)
+        if comparison['status'] != 'different':
+            continue
+        # 입찰추정가격 is the registered form of the notice's 추정가격, the same
+        # semantic field. The comparison above already restricts it to a single
+        # whole-scope, VAT-excluded, uniquely parsed value, so a difference there
+        # is the same kind of proof as a budget difference once both operands are
+        # confirmed to be this notice's whole-contract estimate.
         allowed = comparison['field'] in {'budget', 'competition_method', 'industry'}
+        allowed |= (comparison['field'] == 'estimated_price'
+                    and _whole_contract_estimate(rec, packet, comparison))
         allowed |= comparison['field'] == 'region' and bool(comparison.get('outside_registered_provinces'))
-        if comparison['status'] != 'different' or not allowed:
+        if not allowed:
             continue
         for index in comparison['comparable_fact_indices']:
             fact = packet['facts'][index]
@@ -697,6 +927,40 @@ def positive_decision(rec, packet):
             if evidence:
                 return {'item': 24, 'value': 1, 'evidence': evidence,
                         'reason': 'same_semantic_field_difference', 'comparison': comparison}
+    title = title_tag_decision(rec)
+    if (title and not title['comparison']['band_difference']
+            and any(c['field'] == 'competition_method' and c['status'] == 'method_relation_unresolved'
+                    for c in packet['comparisons'])):
+        return None
+    return title
+
+
+def missing_evidence(rec, packet, claim):
+    """Locate an already confirmed difference in the model's asserted field."""
+    if not isinstance(claim, str):
+        return None
+    aliases = {'budget': r'예산|기초금액', 'estimated_price': r'추정가격',
+               'competition_method': r'계약방법|경쟁방법',
+               'region': r'지역', 'industry': r'업종'}
+    clauses = [c for c in _comparison_claim_clauses(claim) if _asserts_difference(c)]
+    for comparison in packet['comparisons']:
+        field = comparison['field']
+        if (comparison['status'] != 'different' or field not in aliases
+                or not any(re.search(aliases[field], c) for c in clauses)):
+            continue
+        for index in comparison['comparable_fact_indices']:
+            fact = packet['facts'][index]
+            di, lo, hi = fact['doc_index'], fact['start'], fact['end']
+            quote = rec['docs'][di]['text'][lo:hi]
+            if quote and len(quote) <= 500 and not quote.startswith(('=', '+', '@')):
+                return {'evidence': quote, 'source_range': (di, lo, hi),
+                        'field': field, 'comparison': comparison}
+    if any(re.search(r'제목|표제', c) for c in clauses):
+        title = title_tag_decision(rec)
+        if title:
+            return {'evidence': title['evidence'], 'field': 'title_tag',
+                    'source_range': title['comparison']['source'],
+                    'comparison': title['comparison']}
     return None
 
 
@@ -798,7 +1062,7 @@ def _claim_amounts(text):
     return values
 
 
-_SHORT_WON = re.compile(r'(?<![\d,])(?P<number>\d+(?:\.\d+)?)\s*(?P<unit>조|억|만)(?:\s*원)?')
+_SHORT_WON = re.compile(r'(?<![\d,])\d[\d,.조억만천백십\s]*[조억만천백십](?:\s*원)?')
 
 
 def _claim_amount_sequence(text):
@@ -809,12 +1073,11 @@ def _claim_amount_sequence(text):
         if value is not None and value == value.to_integral_value():
             values.append(int(value))
             occupied.append((match.start(), match.end()))
-    multipliers = {'조': 10**12, '억': 10**8, '만': 10**4}
     for match in _SHORT_WON.finditer(text):
         if any(start < match.end() and match.start() < end for start, end in occupied):
             continue
-        value = Decimal(match['number']) * multipliers[match['unit']]
-        if value == value.to_integral_value():
+        value = won_value(match[0] if match[0].rstrip().endswith('원') else match[0]+'원')
+        if value is not None and value == value.to_integral_value():
             values.append(int(value))
     return values
 
@@ -890,7 +1153,47 @@ def _invalid_equal_amount_comparison(clause, packet):
     if any(_comparison_by_field(packet, field)['status'] == 'different' for field in fields):
         return False
     amounts = _claim_amount_sequence(clause)
-    return len(amounts) >= 2 and max(amounts) - min(amounts) <= 1
+    if len(amounts) >= 2 and max(amounts) - min(amounts) <= 1:
+        return True
+    price = _comparison_by_field(packet, 'estimated_price')
+    budget = _comparison_by_field(packet, 'budget')
+    registered = [_number(x['metadata']) for x in (price, budget)]
+    registered = [x for x in registered if x is not None]
+    return (price['status'] == 'rounding_unresolved' and budget['status'] != 'different'
+            and '추정가격' in compact and len(amounts) >= 2
+            and all(any(abs(Decimal(a)-m) <= 1 for m in registered) for a in amounts))
+
+
+def _invalid_price_basis_comparison(clause, packet):
+    """The registered net and gross, confirmed by the source gross, are not peers."""
+    text = _compact(clause)
+    if not (_asserts_difference(clause) and '추정가격' in text and '예산' in text):
+        return False
+    budget = _comparison_by_field(packet, 'budget')
+    price = _comparison_by_field(packet, 'estimated_price')
+    gross, net = _number(budget['metadata']), _number(price['metadata'])
+    if (gross is None or net is None or abs(gross-net*Decimal('1.1')) > 1
+            or budget['status'] == 'different' or price['status'] == 'different'):
+        return False
+    amounts = _claim_amount_sequence(clause)
+    return ({gross, net} == set(amounts) and any(
+        f['field'] in {'budget', 'base_price'} and f.get('scope') == 'whole'
+        and f.get('basis') == 'including_vat' and _number(f.get('value')) == gross
+        for f in packet['facts']))
+
+
+def _invalid_method_scope_or_modifier(clause, packet):
+    text = _compact(clause)
+    method = _comparison_by_field(packet, 'competition_method')
+    if not (_asserts_difference(clause) and re.search(r'계약방법|경쟁방식', text)):
+        return False
+    if method['status'] == 'method_relation_unresolved':
+        return True
+    normalized = re.sub(r'[(（](?:단가|총액)[)）]', '', text)
+    methods = re.findall(r'일반경쟁|제한경쟁|지명경쟁|수의계약', normalized)
+    return (normalized != text and len(methods) >= 2
+            and set(methods) == {_compact(method['metadata'])}
+            and method['status'] == 'same')
 
 
 def _invalid_tax_basis_budget_comparison(clause, packet):
@@ -939,9 +1242,17 @@ def _invalid_unresolved_industry_scope(clause, packet):
     compact = _compact(clause)
     industry = _comparison_by_field(packet, 'industry')
     codes = set(re.findall(r'(?<!\d)\d{4}(?!\d)', compact))
+    source_codes = {str(packet['facts'][i]['value']) for i in industry['fact_indices']
+                    if packet['facts'][i].get('value') is not None}
+    meta_codes = set(re.findall(r'(?<!\d)\d{4}(?!\d)', str(industry['metadata'])))
+    # An unresolved source combination does not refute a model's comparison
+    # with an entirely different registered license, even if it names no codes.
+    if meta_codes and source_codes and meta_codes.isdisjoint(source_codes):
+        return False
     return (industry['status'] == 'and_or_scope_unresolved'
             and _asserts_difference(clause) and bool(re.search(r'업종|면허', compact))
-            and len(codes) < 2)
+            and (len(codes) < 2 or meta_codes and meta_codes <= source_codes
+                 and codes <= source_codes))
 
 
 def _invalid_project_total_comparison(clause, packet):
@@ -986,6 +1297,11 @@ def reject_unsupported_comparison_claim(rec, row, response, packet):
     Otherwise every asserted difference clause must be demonstrably one of the
     three relations above; unknown or additional mismatch claims abstain.
     """
+    # The CPU fallback does not promote estimated price by itself. Preserve
+    # that independent model ground before withdrawing a bounded-price claim.
+    if any(x['field'] == 'estimated_price' and x['status'] == 'different'
+           for x in packet['comparisons']):
+        return None
     legacy = reject_bounded_amount_witness(rec, row, response, packet)
     if legacy is not None:
         return legacy
@@ -1020,6 +1336,13 @@ def reject_unsupported_comparison_claim(rec, row, response, packet):
             reason = 'model_compared_statutory_bound_as_literal_price'
         elif _invalid_equal_amount_comparison(clause, packet):
             reason = 'model_asserted_difference_between_equal_amounts'
+        elif _invalid_price_basis_comparison(clause, packet):
+            reason = 'model_compared_net_price_to_gross_budget'
+        elif _invalid_method_scope_or_modifier(clause, packet):
+            reason = 'model_compared_unresolved_or_equivalent_methods'
+        elif (_asserts_difference(clause) and re.search(r'예산|사업비|기초금액', clause)
+              and _comparison_by_field(packet, 'budget')['status'] == 'amount_scope_unresolved'):
+            reason = 'model_compared_different_amount_scopes'
         elif _invalid_tax_basis_budget_comparison(clause, packet):
             reason = 'model_compared_tax_exempt_price_to_portal_gross_budget'
         elif _invalid_contract_award_or_interdocument_comparison(clause, packet):

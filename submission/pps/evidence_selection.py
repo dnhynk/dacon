@@ -8,6 +8,80 @@ from bisect import bisect_left, bisect_right
 from decimal import Context, Decimal, ROUND_HALF_EVEN
 from functools import lru_cache
 import math
+import re
+
+
+def _sentence_ranges(text):
+    """Source offsets, preserving wrapped lines, dates and decimal numbers."""
+    boundary = re.compile(r'\n\s*\n|(?<=[다함임음요])[.!?](?=\s|$)|'
+                          r'\n(?=\s*(?:[가-하][.)]|\d+[.)]|[○❍※]))')
+    start = 0
+    for match in boundary.finditer(text):
+        end = match.start() if match.group().startswith('\n') else match.end()
+        if text[start:end].strip():
+            yield start, end
+        start = match.end()
+    if text[start:].strip():
+        yield start, len(text)
+
+
+def _complete_witness(rec, quote):
+    """Complete the selected fact's sentence; never search for another fact.
+
+    An extractor's clipped date or line is an anchor, not a sentence boundary.
+    Multiple source occurrences are safe only if they yield the identical quote.
+    """
+    from .data import clean_evidence
+    if not isinstance(quote, str) or not quote.strip():
+        return ''
+    candidates = set()
+    for doc in rec['docs']:
+        text = doc['text']
+        start = text.find(quote)
+        while start >= 0:
+            end = start + len(quote)
+            units = [(lo, hi) for lo, hi in _sentence_ranges(text)
+                     if lo < end and hi > start]
+            if units:
+                lo, hi = units[0][0], units[-1][1]
+                # Recover the full anchored sentence, including its predicate.
+                candidate = text[lo:hi].strip()
+                if len(candidate) <= 500:
+                    cleaned = clean_evidence(candidate, rec)
+                    if cleaned:
+                        candidates.add(cleaned)
+            start = text.find(quote, start + 1)
+    return next(iter(candidates)) if len(candidates) == 1 else quote
+
+
+def select_verdict_evidence(rec, row, details, items=range(1, 25)):
+    """Finalize e cells after decisions; never write or reevaluate a v cell.
+
+    The last explicit CPU decision supplies the witness when available. Do not
+    mine arbitrary nested facts: those also contain rejected/scored candidates.
+    Keep clean_evidence's decision-time behavior unchanged because validators
+    use citations as inputs before the verdict is final.
+    """
+    from .data import ABSENCE, clean_evidence
+    latest = {d['item']: d for d in details if isinstance(d, dict)
+              and type(d.get('item')) is int and d.get('value') in (0, 1)}
+    repairs = []
+    for k in items:
+        previous = row.get(f'e{k}', '')
+        if row.get(f'v{k}') not in (1, '1') or k in ABSENCE:
+            quote, origin = '', 'blank_by_contract'
+        else:
+            check = latest.get(k, {})
+            cpu = check.get('evidence') if check.get('value') == 1 else None
+            cpu = clean_evidence(cpu, rec) if isinstance(cpu, str) else ''
+            quote, origin = (cpu, 'cpu_decision_witness') if cpu else (previous, 'existing_witness')
+            quote = _complete_witness(rec, quote)
+        if quote != previous:
+            row[f'e{k}'] = quote
+            repairs.append({'source': 'final_verdict_evidence', 'item': k,
+                            'origin': origin, 'previous_evidence': previous,
+                            'evidence': quote, 'judgment_preserved': True})
+    return repairs
 
 
 def _portable_log1p(value):

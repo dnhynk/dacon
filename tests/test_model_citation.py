@@ -54,6 +54,18 @@ def test_missing_evidence_can_be_repaired_without_creating_positive():
     assert result == row and detail is None
 
 
+@pytest.mark.parametrize('judgments', [{'v': [0], 'e': [0]}, {'v9': {'v': 0, 'e': 0}}])
+def test_negative_model_citation_cannot_replace_a_cpu_positive_witness(judgments):
+    rec, row, response, spans = fixture(
+        source='구매 규격서\n모델명: Zenith Z400\n\n기존 장비 Atlas GX900은 점검 대상이다.',
+        summary='규격서(S2)에 기존 장비 Atlas GX900을 표시하여 위반이 아니다.')
+    row['e9'] = '모델명: Zenith Z400'
+    obj = json.loads(response['text'])
+    obj['judgments'] = judgments
+    response['text'] = json.dumps(obj, ensure_ascii=False)
+    assert repair_v9(rec, row, response, spans, items=(9,)) == (row, None)
+
+
 def test_existing_named_quote_and_unrequested_item_are_preserved():
     rec, row, response, spans = fixture()
     row['e9'] = 'Chipset: Atlas GX900'

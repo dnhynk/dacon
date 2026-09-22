@@ -29,6 +29,49 @@ LOCAL_TECHNICAL_SERVICE = 330_000_000
 LOCAL_SAFETY_SERVICE = 150_000_000
 
 
+def _stated_project_amounts(price):
+    """Whole-project amounts a notice states, before the tax-basis filter.
+
+    ``project_prices`` keeps only amounts whose tax basis matches the field, so
+    a single stated amount with an unresolved basis leaves no candidate at all.
+    The same observations still exist; this returns them with the notice
+    priority the shared policy already uses.
+    """
+    notice, other = [], []
+    for body in price['body']:
+        if body['scope'] != 'whole' or body['won'] is None or body['literal_error']:
+            continue
+        (notice if body['evidence']['document_role'] == '공고문' else other).append(body['won'])
+    if notice:
+        return notice
+    meta = price['meta']['won']
+    return other + ([meta] if meta is not None else [])
+
+
+def below_ceiling(price, ceiling):
+    """One-directional applicability: is the project amount under ``ceiling``?
+
+    부가가치세 is an additive component of a price (국가 시행규칙 제11조), so a
+    stated amount whose basis the notice leaves unresolved is still an upper
+    bound of the tax-excluded 추정가격. That proves the below-ceiling side of
+    the band without resolving the exact price. The at-or-above side needs a
+    lower bound, which an unresolved basis does not supply, so it is reported
+    only when the shared band predicate already resolves it.
+    """
+    from .prices import in_band
+    if ceiling is None:
+        return None
+    decided = in_band(price, lower=1, upper=ceiling)
+    if decided is not None:
+        return decided
+    if price.get('unresolved_literal'):
+        return None
+    amounts = _stated_project_amounts(price)
+    if not amounts:
+        return None
+    return True if all(0 < won < ceiling for won in amounts) else None
+
+
 def _publication_year(record):
     raw = record.get('meta', {}).get('공고게시일자')
     digits = re.sub(r'\D', '', str(raw or ''))

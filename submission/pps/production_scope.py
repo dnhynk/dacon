@@ -119,7 +119,9 @@ def quote_requirement(record, product, *, actual_quote):
         report['reason'] = 'actual_private_quote_not_observed'
         return report
     from .temporal import contract_fields
-    conflicting = [f for f in contract_fields(record) if f['value'] != '수의계약']
+    # A method stated inside a quotation notice is unresolved for comparison, but it
+    # is exactly the contradiction this gate must keep seeing.
+    conflicting = [f for f in contract_fields(record, include_unresolved=True) if f['value'] != '수의계약']
     if conflicting:
         report.update(reason='contradictory_original_contract_method', contract_method_conflicts=conflicting)
         return report

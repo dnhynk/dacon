@@ -7,8 +7,36 @@ from dataclasses import asdict, dataclass
 from .knowledge import Knowledge
 from .retrieval import NoticeIndex, Span
 from .rubrics import RUBRIC_V3, SYSTEM_V3, RUBRIC_V4, SYSTEM_V4, RUBRIC_V5, SYSTEM_V5, RUBRIC_V6, SYSTEM_V6
+from .rubrics import FACT_JUDGMENT_CONSISTENCY, FACT_JUDGMENT_RUBRIC
 from .sme import compact_prompt as compact_sme_prompt
 from .comparison import compare as compare_sources, priority_ranges, prompt_packet
+from .precision_gates import GATES as PRECISION_GATES
+
+
+# Keep opt-in suffix assembly here so the Colab patch needs only this file.
+RUBRIC_PART_REVISIONS = {
+    'v1b': (1, "[위반] 참가자격에서 허용 기관 유형·설립 형태, 직접 보유 시설·서비스센터의 수와 지역 범위, 상시 고용 인원 규모를 각각 확인한다. 특정 기관 유형만 허용하거나 과업 수행에 필요한 정도를 넘는 시설·인력·전국망을 입찰 시 갖추도록 요구하면 1이다. 각 요구의 원문 S번호와 과업상 필요 근거를 연결한다."),
+    'v19b': (19, "[위반] 입찰자가 제조사·공급사의 물품공급·기술지원 확약서를 확보해야 하는 시점을 확인한다. 입찰 전·입찰 마감까지 발급·보유·제출하도록 참가자격을 정하면 1이다. '제출 가능한 업체'도 문장에 정한 제출 기한과 함께 읽는다. 발급자, 입찰자의 확보 기한, 제출 기한을 각각 원문 S번호로 적는다."),
+}
+
+
+def rubric_parts(variant):
+    """Validate the opt-in set; item order, not selector order, renders text."""
+    if variant == 'current':
+        return frozenset()
+    if variant == 'fact_judgment':
+        return frozenset(('consistency', 'v1', 'v2', 'v9', 'v19'))
+    if not isinstance(variant, str) or not variant.startswith('parts:'):
+        raise ValueError('Unknown rubric variant')
+    names = variant[6:].split('+')
+    allowed = {'consistency', 'v1', 'v2', 'v9', 'v19', *RUBRIC_PART_REVISIONS}
+    if any(name not in allowed for name in names):
+        raise ValueError('Unknown rubric variant part')
+    if len(names) != len(set(names)):
+        raise ValueError('Duplicate rubric variant part')
+    if any({name, name + 'b'} <= set(names) for name in ('v1', 'v19')):
+        raise ValueError('Conflicting rubric variant parts')
+    return frozenset(names)
 
 
 @dataclass(frozen=True)
@@ -58,8 +86,52 @@ class Config:
     software_review: str = 'current'
     a_cohort_size: int = 32
     a10_question_policy: str = 'current'
+    eligibility_atomic_selection: bool = False
+    briefing_region_anchor_selection: bool = False
+    rule_anchor_selection: bool = False
+    rubric_variant: str = 'current'
+    q10_variant: str = 'current'
+    focused_verify: bool = False
+    focused_verify_top_k: int = 1
+    focused_verify_neighbors: int = 2
+    focused_verify_eligibility: bool = False
+    focused_verify_max_input_tokens: int = 3200
+    focused_verify_seconds_per_record: float = .1619
+    corpus_seen_filter: bool = False
+    source_rule_items: tuple = ()
+    precision_gates: tuple = ()
+    q10_excluded_items: tuple = ()
 
     def __post_init__(self):
+        if type(self.focused_verify) is not bool or type(self.focused_verify_eligibility) is not bool:
+            raise ValueError('Focused verification switches must be boolean')
+        if type(self.focused_verify_top_k) is not int or self.focused_verify_top_k not in (1, 2):
+            raise ValueError('Focused verification supports top 1 or 2')
+        if type(self.focused_verify_neighbors) is not int or self.focused_verify_neighbors not in (1, 2):
+            raise ValueError('Focused verification needs 1 or 2 neighboring spans')
+        if not 1 <= self.focused_verify_max_input_tokens <= 4096:
+            raise ValueError('Focused verification input cap must be within 4096 tokens')
+        if not 0 <= self.focused_verify_seconds_per_record <= .162:
+            raise ValueError('Focused verification allowance must be at most .162 seconds per record')
+        rubric_parts(self.rubric_variant)
+        if self.q10_variant not in {'current', 'purchase_roles'}:
+            raise ValueError('Unknown Q10 variant')
+        if type(self.briefing_region_anchor_selection) is not bool:
+            raise ValueError('briefing_region_anchor_selection must be boolean')
+        if type(self.rule_anchor_selection) is not bool:
+            raise ValueError('rule_anchor_selection must be boolean')
+        if type(self.corpus_seen_filter) is not bool:
+            raise ValueError('corpus_seen_filter must be boolean')
+        if (not isinstance(self.source_rule_items, (tuple, list)) or len(set(self.source_rule_items)) != len(self.source_rule_items)
+                or any(type(k) is not int or not 1 <= k <= 24 for k in self.source_rule_items)):
+            raise ValueError('source_rule_items must list distinct item numbers from 1 to 24')
+        if (not isinstance(self.precision_gates, (tuple, list))
+                or any(type(name) is not str or name not in PRECISION_GATES for name in self.precision_gates)
+                or len(set(self.precision_gates)) != len(self.precision_gates)):
+            raise ValueError('precision_gates must list distinct gate names from precision_gates.GATES')
+        if (not isinstance(self.q10_excluded_items, (tuple, list)) or len(set(self.q10_excluded_items)) != len(self.q10_excluded_items)
+                or any(type(k) is not int or not 10 <= k <= 18 for k in self.q10_excluded_items)):
+            raise ValueError('q10_excluded_items must list distinct Q10 item numbers from 10 to 18')
         if self.a10_question_policy not in {'current', 'source_questions'}:
             raise ValueError('Unknown A10 question policy')
         if self.a10_question_policy != 'current' and self.input_strategy != 'audited':
@@ -335,7 +407,9 @@ e는 위반을 직접 보여주는 [S숫자] 원문구간 번호이다. 비위�
     system += EVIDENCE_CONTRACT
     while True:
         spans = selected_source if selected_source is not None else index.select(budget, items=items, mode=config.mode,
-                             priority_ranges=priority_ranges(comparison) if comparison is not None else ())
+                             priority_ranges=priority_ranges(comparison) if comparison is not None else (),
+                             eligibility_atomic_selection=config.eligibility_atomic_selection,
+                             rule_anchor_selection=config.rule_anchor_selection)
         coverage = index.coverage(spans)
         summary = {k: v for k, v in coverage.items() if k != "ranges"}
         data = {"meta": rec["meta"], "input_completeness": rec.get("input_completeness", {}),
@@ -437,7 +511,7 @@ condition=not_met인 후보는 그 고시 숫자조건이 충족되지 않은 �
     legal = knowledge.legal_context(rec, all_items, config.legal_chars) if config.legal_context_version == "v1" else ""
     product = knowledge.detailed_product_facts(rec) if config.product_facts else knowledge.product_matches(rec)
     sme = compact_sme_prompt(knowledge.sme_record_facts(rec)) if config.sme_facts else None
-    suffixes, group_legal_diagnostics = [], []
+    suffixes, variant_suffixes, group_legal_diagnostics = [], [], []
     for items in groups:
         suffix = "\n\n[이번 호출의 항목별 판단 안내]\n"
         if config.legal_context_version == "v2":
@@ -476,10 +550,28 @@ condition=not_met인 후보는 그 고시 숫자조건이 충족되지 않은 �
         if config.response_format in {'factored', 'fact_compact'} and 24 in items:
             suffix += V24_FACT_CONTRACT
         suffixes.append(suffix + EVIDENCE_CONTRACT + "위 공고에 대한 지정된 JSON만 출력한다.")
+        variant = suffixes[-1]
+        parts = rubric_parts(config.rubric_variant)
+        if parts and tuple(items) in (tuple(range(1, 10)), tuple(range(19, 25))):
+            replacements = {k: text for k, text in FACT_JUDGMENT_RUBRIC.items() if f'v{k}' in parts}
+            replacements.update(value for name, value in RUBRIC_PART_REVISIONS.items() if name in parts)
+            current_instructions = "\n".join(f"v{k} {knowledge.table[f'v{k}']['항목명']}: {rubric[k]}" for k in items)
+            variant_instructions = "\n".join(
+                f"v{k} {knowledge.table[f'v{k}']['항목명']}: {replacements.get(k, rubric[k])}" for k in items)
+            if 'consistency' in parts:
+                variant_instructions += "\n" + FACT_JUDGMENT_CONSISTENCY
+            variant = variant.replace(current_instructions, variant_instructions, 1)
+        variant_suffixes.append(variant)
     budget = config.document_chars
     while True:
         spans = selected_source if selected_source is not None else index.select(budget, items=all_items, mode=config.mode,
-                             priority_ranges=priority_ranges(comparison) if comparison is not None else ())
+                             priority_ranges=priority_ranges(comparison) if comparison is not None else (),
+                             eligibility_atomic_selection=config.eligibility_atomic_selection,
+                             rule_anchor_selection=config.rule_anchor_selection)
+        selected_search = source_selection
+        if config.briefing_region_anchor_selection:
+            from .briefing_region_selection import reserve_anchors
+            spans, selected_search = reserve_anchors(rec, spans, tokenizer, all_items, source_selection)
         coverage = index.coverage(spans)
         data = {"meta": rec["meta"], "input_completeness": rec.get("input_completeness", {}),
                 "dropped_doc_counts": rec.get("dropped_doc_counts", {}),
@@ -504,8 +596,18 @@ condition=not_met인 후보는 그 고시 숫자조건이 충족되지 않은 �
                             "document_budget":budget,"items":list(items), "legal_diagnostics":legal_diagnostics,
                             "comparison_facts": comparison if 24 in items else None})
             if source_selection is not None:
-                prompts[-1]['source_search'] = source_selection
+                prompts[-1]['source_search'] = selected_search
         if tokenizer is None or max(len(p["token_ids"]) for p in prompts)+config.max_output_tokens+32 <= config.max_model_len:
+            # Size/select the source using today's suffix even for the variant.
+            # A rubric experiment must never expand or shrink the document block.
+            for prompt, suffix, variant in zip(prompts, suffixes, variant_suffixes):
+                if suffix != variant:
+                    user = prompt['messages'][1]['content']
+                    prompt['messages'][1]['content'] = user[:-len(suffix)] + variant
+                    if tokenizer is not None:
+                        prompt['token_ids'] = token_ids(tokenizer, prompt['messages'], config.enable_thinking)
+                        if len(prompt['token_ids']) + config.max_output_tokens + 32 > config.max_model_len:
+                            raise ValueError('Rubric variant exceeds model context without changing the shared source')
             shared = None
             if tokenizer is not None:
                 shared = 0

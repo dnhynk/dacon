@@ -43,12 +43,18 @@ def main(argv=None):
                         help='A-only input cohort size; L and optional reviews retain32')
     parser.add_argument('--a10-question-policy',choices=('current','source_questions'),
                         help='Optional A10 source-fixed judgments and unresolved condition questions')
+    parser.add_argument('--focused-verify', action=argparse.BooleanOptionalAction, default=None,
+                        help='Optional gated region, size and briefing verification (stream only, default off)')
     parser.add_argument('--executor', choices=('stream', 'cohort'), default=os.environ.get('PPS_EXECUTOR', 'stream'),
                         help='stream: record-major deadline-aware execution (default); cohort: the fixed 32-record batches')
     parser.add_argument('--tier-ceiling', type=int, default=2, choices=range(len(TIERS)),
                         help='Richest judgment tier the stream executor may run (default 2: A1+A19+Q10; 0 = canonical)')
     parser.add_argument('--tier-floor', type=int, default=len(TIERS) - 1, choices=range(len(TIERS)),
                         help='Cheapest judgment tier the stream executor may fall to')
+    parser.add_argument('--tier-plan', choices=('fixed', 'adaptive'), default='fixed',
+                        help='fixed (default): per-record tiers planned from the record count and fixed L40S priors, '
+                             'so the same input gets the same requests; measured tiers only if the run falls behind '
+                             'the plan. adaptive: measured engine costs choose the tier of every record')
     parser.add_argument('--projection-records', type=int,
                         help='Project the deadline as if this many records had to be processed (development timing runs)')
     parser.add_argument('--runtime-seconds', type=int,
@@ -79,11 +85,13 @@ def main(argv=None):
         parser.error('--limit must be positive')
     if args.tier_ceiling > args.tier_floor:
         parser.error('--tier-ceiling must not exceed --tier-floor')
+    if args.executor == 'cohort' and args.focused_verify:
+        parser.error('Focused verification requires the stream executor')
     input_path = args.input or args.data_dir / 'test.jsonl.gz'
     if not input_path.is_file() or not args.data_dir.is_dir() or not args.model_dir.is_dir():
         parser.error('Input file, data directory and local model directory must exist')
-    if args.output_dir.exists() and (not args.output_dir.is_dir() or any(args.output_dir.iterdir())):
-        parser.error('Output directory must be empty; prior attempts are preserved')
+    if args.output_dir.exists() and (not args.output_dir.is_dir() or (args.output_dir / 'started.json').exists()):
+        parser.error('Output directory holds a prior run; prior attempts are preserved')
     configure_environment()
     source_options = {'source_policy':args.source_policy} if args.source_policy is not None else {}
     if args.specification_review is not None:
@@ -91,7 +99,7 @@ def main(argv=None):
     if args.legal_policy is not None:
         source_options['legal_policy'] = args.legal_policy
     for name in ('catalog_review','catalog_source_policy','catalog_task_groups','software_review',
-                 'a10_thinking_budget','a_cohort_size','a10_question_policy'):
+                 'a10_thinking_budget','a_cohort_size','a10_question_policy','focused_verify'):
         if getattr(args,name) is not None:
             source_options[name]=getattr(args,name)
     runner_factory = lambda config, journal: CanonicalRunner(args.model_dir, config, journal)
@@ -105,7 +113,8 @@ def main(argv=None):
         from .pps.prompts import Config
         budget = Config.load(HERE / 'model/config.json').total_runtime_seconds
         stream = {'total_runtime_seconds': args.runtime_seconds or budget, 'tier_ceiling': args.tier_ceiling,
-                  'tier_floor': args.tier_floor, 'projection_records': args.projection_records}
+                  'tier_floor': args.tier_floor, 'projection_records': args.projection_records,
+                  'tier_plan': args.tier_plan}
         if args.prior_prefill_us is not None:
             stream['prior_prefill_seconds_per_token'] = args.prior_prefill_us * 1e-6
         if args.prior_decode_ms is not None:

@@ -45,9 +45,10 @@ python script.py --help
 python tools/build_submission.py --output artifacts/submission.zip
 ```
 
-개발 실행은 `--input`, `--data-dir`, `--model-dir`, `--output-dir`을 명시한다.
+개발 실행은 `--input`, `--data-dir`, `--model-dir`, `--output-dir`과 `PPS_STREAM_JOURNAL=1`을 명시한다.
+이 변수가 없으면 패킷·원응답 저널이 남지 않는다(`docs/RUNTIME_STREAMING.md` 기록 절).
 평가 기본 실행은 `python script.py`이며 공식 `PPS_*` 경로 환경변수를 따른다.
-출력은 새 빈 디렉터리여야 한다. 빌드는 `script.py`, `requirements.txt`, `submission/`의
+출력 디렉터리에 이전 실행(`started.json`)이 있으면 거부한다. 개발 실행은 새 디렉터리를 쓴다. 빌드는 `script.py`, `requirements.txt`, `submission/`의
 Python·고정 설정만 포함한다. 과거 ZIP은 덮어쓰지 말고 새 결과 경로에 보존한다.
 이는 구현 브랜치를 늘리는 것이 아니라 같은 본체의 측정 스냅샷을 남기는 것이다.
 빌드 성공 자체를 새 점수나 L40S 2시간 검증으로 표현하지 않는다.

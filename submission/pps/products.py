@@ -454,5 +454,36 @@ class ProductFacts:
         return result
 
 
+def software_delivery_conflicts(record, codes, products):
+    """Keep a catalog software candidate open when metadata names another item.
+
+    A software-law citation or an electronic bidding system is not a delivery.
+    Require an actual software supply duty and the applicable catalog condition
+    in the same task document. This consumer check does not alter retrieval.
+    """
+    if not codes or any(code in products and '소프트웨어' in products[code]['세부품명']
+                        for code in codes):
+        return []
+    if not any('소프트웨어' in p['세부품명'] and '제48조' in compact(p['특이사항'])
+               for p in products.values()):
+        return []
+    result = []
+    for di, doc in enumerate(record.get('docs', [])):
+        if doc.get('type') not in {'과업지시서', '규격서'}:
+            continue
+        text = doc['text']
+        n, positions = normalized_map(text)
+        if not re.search(r'소프트웨어[「」『』]*진흥법[「」『』]*제48조', n):
+            continue
+        delivery = re.search(r'(?:소프트웨어|s/?w)(?:만|를|을|로).{0,45}'
+                             r'(?:제공|납품|공급)(?:하여야|해야)', n)
+        if not delivery or re.search(r'입찰|전자조달|제외|아니|않', delivery[0]):
+            continue
+        a, b = positions[delivery.start()], positions[delivery.end()-1]+1
+        result.append(dict(doc_index=di, doc_id=doc.get('doc_id'), document_role=doc['type'],
+                           start=a, end=b, text=text[a:b]))
+    return result
+
+
 def compact_json(facts):
     return json.dumps(facts,ensure_ascii=False,separators=(',',':'))

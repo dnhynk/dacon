@@ -46,6 +46,70 @@ class Span:
     text: str
 
 
+def q10_purchase_candidates(record):
+    """Complete literal purchase fields to read, never certified identities.
+
+    Keep table headers with the first value row and wrapped field values. A
+    document pointer, masked name or certificate field is not a purchase name.
+    This opt-in retrieval helper does not change the consumer's scope gates.
+    """
+    from .task_scope import candidate_fields, _HEADER_CELLS
+    from .products import document_reading_instruction, non_task_scope_role
+    names = ('공고명', '입찰명', '입찰건명', '용역명', '사업명', '과업명', '계약명',
+             '품명', '세부품명', '사업개요', '용역개요', '과업개요', '과업내용', '용역내용')
+    label = '(?:' + '|'.join(r'[ \t]*'.join(n) for n in names) + ')'
+    field = re.compile(r'^\s*(?:[○◯❍□■ㆍ·ㅇ-]|\d+[.)]|[가-하][.)])?\s*'
+                       + label + r'\s*(?:[:：|]\s*|$)')
+    strong = {'title_or_scope_field', 'intro_title_candidate', 'explicit_whole_contract_body',
+              'explicit_task_extent_field', 'anchored_columnar_task_field'}
+    result = [c for c in candidate_fields(record) if c['candidate_role'] in strong]
+    for di, doc in enumerate(record['docs']):
+        lines = list(re.finditer(r'[^\r\n]+', doc['text']))
+        for i, line in enumerate(lines):
+            # A named notice heading can survive even when its repeated field
+            # value was masked. Generic '용역 입찰 공고' is still excluded.
+            if (line.start() < 1000 and len(line[0]) <= 160
+                    and re.fullmatch(r'.{2,120}(?:용역|구매|임차)'
+                        r'(?:전자|입찰|견적|제출|안내|긴급|재|소액|수의)*공고(?:\[긴급\])?', _compact(line[0]))
+                    and not non_task_scope_role(line[0])):
+                result.append(dict(doc_index=di, start=line.start(), end=line.end(),
+                    text=line[0], document_role=doc['type'], candidate_role='literal_purchase_heading'))
+            match = field.match(line[0])
+            if not match:
+                continue
+            end = line.end()
+            value = line[0][match.end():]
+            # A flattened table needs its first original row, without joining
+            # separate cells or assigning a column meaning on the CPU.
+            table = '|' in line[0] and len(line[0].split('|')) > 2
+            if (not value.strip() or table) and i + 1 < len(lines):
+                following = lines[i+1]
+                if following.start() - end <= 4 and not field.match(following[0]):
+                    end = following.end()
+                    value = doc['text'][line.start()+match.end():end]
+                    if table:
+                        first_value = _compact(following[0].split('|')[0])
+                        if first_value in _HEADER_CELLS | {'개시일시', '마감일시', '개찰일시'}:
+                            continue
+            if table and end == line.end():
+                continue
+            visible = re.sub(r'\[[^\]]*\]', '', value)
+            if (not re.search(r'[가-힣A-Za-z]{2,}', visible)
+                    or document_reading_instruction(value)):
+                continue
+            result.append(dict(doc_index=di, start=line.start(), end=end,
+                               text=doc['text'][line.start():end],
+                               document_role=doc['type'], candidate_role='literal_purchase_field'))
+    seen, clean = set(), []
+    for c in sorted(result, key=lambda c: (c['doc_index'], c['start'], c['end'])):
+        key = (c['doc_index'], c['start'], c['end'])
+        if key in seen or document_reading_instruction(c['text']):
+            continue
+        seen.add(key)
+        clean.append(c)
+    return clean
+
+
 def split_spans(rec, size=440, overlap=100):
     spans = []
     for index, doc in enumerate(rec["docs"]):
@@ -117,6 +181,87 @@ _HEADING = re.compile(
 _ROLES = ("field", "qualification", "submission", "specification")
 _SOURCE_SIZE = 440
 _SOURCE_OVERHEAD = 40
+
+# Structural markers only: these select source context, not legal findings.
+_ITEM_MARK = re.compile(
+    r"^\s*(?:(?P<number>\d+(?:[.-]\d+)*)(?P<end>[.)])|"
+    r"(?P<letter>[가-하])[.)]|(?P<paren>\([가-하0-9]+\))|"
+    r"(?P<bullet>[①-⑳㉠-㉻○●◦•ㆍ·ㅇ□■◇◆◎◐❍※*\-]))\s*")
+_ELIGIBILITY_TITLE = re.compile(
+    r"^(?:(?:입찰및)?(?:입찰|견적(?:서)?(?:제출)?|경쟁입찰)?(?:참가|참여)자격|"
+    r"(?:입찰)?자격요건|입찰참가조건)"
+    r"(?:(?:및|과)[^.!?]{1,35}|[（(][^()（）]{1,60}[)）]|[:：].{0,70})?$")
+_SENTENCE_END = re.compile(r"(?:[.!?。]|니다[.]?|(?:업체|기관|법인|한\s*자|있는\s*자|한함|없음|불가|가능|불허))[)）\]」』]*$")
+# Opt-in anchors (rule_anchor_selection): the wording CPU rules read for a
+# bidder's prior performance, office location and joint-contract member share.
+# Retrieval candidates only; they never state a legal finding.
+_ANCHOR_EXPERIENCE = re.compile(r"(?<!현)실적|수행\s*경험|납품\s*경험")
+_ANCHOR_HOLDER = re.compile(
+    r"(?:있는|보유한|갖춘|수행한|완료한|납품한|이행한|마친)\s*(?:자|업체|사업자|법인|단체|기관)|"
+    r"있어야|(?:보유|수행|이행)\s*(?:하여야|해야)")
+_ANCHOR_SCORE = re.compile(r"배점|\d+(?:\.\d+)?\s*점(?:\s|$|[,)])|평가(?:한다|하며|합니다|기준|항목)")
+_ANCHOR_OFFICE = re.compile(r"본점|본사|영업소|영업장|주된\s*사무소|사업장\s*(?:의\s*)?소재지")
+_ANCHOR_LOCATION = re.compile(r"소재|위치|두고|두어|둔\s|관할|관내")
+_ANCHOR_SHARE = re.compile(r"(?:지분\s*[율률]?|출자\s*비율)[^\n]{0,35}?\d+(?:\.\d+)?\s*(?:[%％]|퍼센트)")
+_ANCHOR_JOINT = re.compile(r"공동|구성원|수급")
+
+
+def _item_marker(value):
+    if re.match(r'^\s*\d{4}[.-]\s*\d{1,2}[.-]\s*\d{1,2}', value):
+        return None  # A printed date is not a section number.
+    match = _ITEM_MARK.match(value)
+    if not match:
+        return None
+    if match['number']:
+        path = tuple(re.split(r'[.-]', match['number']))
+        return ('number' if match['end'] == '.' else 'number_paren', len(path)-1, path)
+    return next((name, 0, None) for name in ('letter', 'paren', 'bullet') if match[name])
+
+
+def _eligibility_units(text, units):
+    """Yield complete items within a numbered eligibility section.
+
+    A numeric child (2-1 under 2) does not terminate its parent section;
+    the next same-level number/letter does. An unnumbered title uses the
+    conventional top-level numeric boundary. Wrapped lines stay together;
+    a new bullet, heading or completed unmarked sentence starts a new item.
+    """
+    section = None
+    first = last = None
+    for i, (lo, hi) in enumerate(units):
+        value = text[lo:hi]
+        mark = _item_marker(value)
+        body = _ITEM_MARK.sub('', value, count=1).strip()
+        heading = bool(_ELIGIBILITY_TITLE.fullmatch(_compact(body)))
+        boundary = (section is not None and mark is not None and
+                    ((mark[0] == section[0] and (mark[1] <= section[1] or
+                      (section[2] and mark[2][:len(section[2])] != section[2]))) or
+                     (mark[0] == 'number' and section[0] != 'number')))
+        if heading or boundary:
+            if first is not None:
+                yield first, last
+            first = last = None
+            if not heading:
+                section = None
+            elif section is None or boundary:
+                section = mark if mark and mark[0] != 'bullet' else ('number', 0, None)
+            continue
+        if section is None:
+            continue
+        # Keep adjacent provisos with the condition they qualify, including
+        # numbered-looking annotation bullets such as ※.
+        condition = bool(_CONDITION.search(value))
+        previous = text[slice(*units[last])] if last is not None else ''
+        new_item = first is not None and not condition and (
+            mark is not None or _HEADING.fullmatch(value) or _SENTENCE_END.search(previous))
+        if new_item:
+            yield first, last
+            first = None
+        if first is None:
+            first = i
+        last = i
+    if first is not None:
+        yield first, last
 
 
 @dataclass(frozen=True)
@@ -202,6 +347,8 @@ class NoticeIndex:
         self.average_length = sum(len(s.text) for s in self.spans) / max(1, len(self.spans))
         self.ranked = {k: self.rank(k) for k in QUERIES}
         self._operative_data = None  # Lazy: old retrieval/head do no extra scanning.
+        self._atomic_operative_data = None
+        self._rule_anchor_data = None
 
     def rank(self, item):
         out = []
@@ -223,7 +370,8 @@ class NoticeIndex:
                 out.append((i, score))
         return sorted(out, key=lambda row: (-row[1], row[0]))
 
-    def select(self, char_budget, items=tuple(range(1, 25)), mode="retrieval", *, priority_ranges=()):
+    def select(self, char_budget, items=tuple(range(1, 25)), mode="retrieval", *, priority_ranges=(),
+               eligibility_atomic_selection=False, rule_anchor_selection=False):
         """Select source spans, charging their text plus 40 characters per span.
 
         evidence_first allocates shared source roles across documents before
@@ -232,7 +380,9 @@ class NoticeIndex:
         if char_budget < 440:
             raise ValueError("Document budget is too small")
         if mode == "evidence_first":
-            return self._select_evidence_first(char_budget, priority_ranges=priority_ranges)
+            return self._select_evidence_first(char_budget, priority_ranges=priority_ranges,
+                                              eligibility_atomic_selection=eligibility_atomic_selection,
+                                              rule_anchor_selection=rule_anchor_selection)
         selected, used = set(), 0
 
         def add(i):
@@ -271,7 +421,9 @@ class NoticeIndex:
         # Source order avoids decontextualizing clauses; IDs are only local span references.
         return [self.spans[i] for i in sorted(selected)]
 
-    def _operative_candidates(self):
+    def _operative_candidates(self, eligibility_atomic_selection=False):
+        if eligibility_atomic_selection:
+            return self._atomic_operative_candidates()
         if self._operative_data is not None:
             return self._operative_data
         units_by_doc, candidates = [], []
@@ -324,8 +476,82 @@ class NoticeIndex:
         self._operative_data = units_by_doc, groups
         return self._operative_data
 
-    def _select_evidence_first(self, char_budget, *, priority_ranges=()):
-        units_by_doc, groups = self._operative_candidates()
+    def _atomic_operative_candidates(self):
+        if self._atomic_operative_data is not None:
+            return self._atomic_operative_data
+        units_by_doc, legacy = self._operative_candidates()
+        atomic = []
+        for di, units in enumerate(units_by_doc):
+            text = self.rec['docs'][di]['text']
+            for first, last in _eligibility_units(text, units):
+                lo, hi = units[first][0], units[last][1]
+                roles = tuple(dict.fromkeys(('qualification', *_roles(text[lo:hi]))))
+                atomic.append(_Candidate(di, lo, hi, roles, lo, hi))
+        # Close overlapping bundles in both directions, retaining legacy
+        # exceptions too. No other role may expose a fragment of a skipped item.
+        groups = [[a] for a in atomic] + legacy
+        contexts = {}
+        for group in groups:
+            for c in group:
+                contexts.setdefault(c.doc_index, []).append((c.context_start, c.context_end))
+        contexts = {di: _merge_ranges(rs) for di, rs in contexts.items()}
+        expanded, keys = [], {}
+        for group in groups:
+            c = group[0]
+            lo, hi = next((lo, hi) for lo, hi in contexts[c.doc_index]
+                          if lo <= c.context_start and hi >= c.context_end)
+            if not any(a.doc_index == c.doc_index and lo <= a.start and a.end <= hi for a in atomic):
+                lo, hi = c.context_start, c.context_end
+            key = c.doc_index, c.roles, lo, hi
+            if key not in keys:
+                keys[key] = len(expanded)
+                expanded.append([])
+            for x in group:
+                occurrence = _Candidate(x.doc_index, x.start, x.end, x.roles, lo, hi)
+                if occurrence not in expanded[keys[key]]:
+                    expanded[keys[key]].append(occurrence)
+        groups = expanded
+        self._atomic_operative_data = units_by_doc, groups
+        return self._atomic_operative_data
+
+    def _rule_anchors(self):
+        """Complete conditions carrying rule-read wording, in source order.
+
+        An eligibility item keeps its wrapped lines; any other line keeps its
+        adjoining provisos. Office locations count only as bidder conditions.
+        """
+        if self._rule_anchor_data is not None:
+            return self._rule_anchor_data
+        anchors = []
+        for di, doc in enumerate(self.rec["docs"]):
+            text = doc["text"]
+            units = _source_units(text)
+            items = list(_eligibility_units(text, units))
+            for i, (lo, hi) in enumerate(units):
+                first, last = next(((a, b) for a, b in items if a <= i <= b), (i, i))
+                while last + 1 < len(units) and _CONDITION.search(text[slice(*units[last + 1])]):
+                    last += 1
+                line, value = text[lo:hi], text[units[first][0]:units[last][1]]
+                in_item = any(a <= i <= b for a, b in items)
+                kinds = []
+                if (_ANCHOR_EXPERIENCE.search(line) and _ANCHOR_HOLDER.search(value)
+                        and not _ANCHOR_SCORE.search(value)):
+                    kinds.append("experience")
+                if (_ANCHOR_OFFICE.search(line) and _ANCHOR_LOCATION.search(value)
+                        and (in_item or re.search(r"입찰|참가\s*자격|참여\s*자격", value))):
+                    kinds.append("office_location")
+                if _ANCHOR_SHARE.search(line) and _ANCHOR_JOINT.search(value):
+                    kinds.append("joint_share")
+                for kind in kinds:
+                    anchor = (kind, di, units[first][0], units[last][1])
+                    if anchor not in anchors:
+                        anchors.append(anchor)
+        self._rule_anchor_data = anchors
+        return anchors
+
+    def _select_evidence_first(self, char_budget, *, priority_ranges=(), eligibility_atomic_selection=False,
+                               rule_anchor_selection=False):
+        units_by_doc, groups = self._operative_candidates(eligibility_atomic_selection)
         ranges, used = {}, 0
 
         def add(di, lo, hi):
@@ -353,6 +579,27 @@ class NoticeIndex:
                         lo, hi = min(lo, c.context_start), max(hi, c.context_end)
             if used + _range_cost([(lo, hi)]) <= priority_limit:
                 add(di, lo, hi)
+
+        if rule_anchor_selection:
+            # Opt-in: a second bounded quarter reserves complete rule-read
+            # conditions before the round-robin, alternating anchor kinds and
+            # documents. An oversized condition is skipped, never clipped.
+            anchor_limit, anchor_used = min(2400, char_budget // 4), 0
+            queues = {}
+            for kind, di, lo, hi in self._rule_anchors():
+                for group in groups:
+                    for c in group:
+                        if c.doc_index == di and c.context_start < hi and c.context_end > lo:
+                            lo, hi = min(lo, c.context_start), max(hi, c.context_end)
+                queues.setdefault((kind, di), deque()).append((di, lo, hi))
+            while any(queues.values()):
+                for queue in queues.values():
+                    if not queue:
+                        continue
+                    di, lo, hi = queue.popleft()
+                    before = used
+                    if anchor_used + _range_cost([(lo, hi)]) <= anchor_limit and add(di, lo, hi):
+                        anchor_used += used - before
 
         # Round-robin roles and documents, with no frequency/label scoring.
         # A document's tenth candidate does not precede every other document's

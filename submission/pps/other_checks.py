@@ -54,7 +54,12 @@ def _pledge_check_basic(rec):
             mixed_issuers=bool(self_written and issuer.search(q))
             if mixed_issuers:self_written=False;who='unresolved'
             if self_written:who='bidder'
-            pre=bool(early.search(q));post=bool(late.search(q))
+            pre=bool(early.search(q))
+            # A later stage named only in a concession (``계약 시 제출하더라도``)
+            # or in a refused alternative (``낙찰 후 … 확보하는 조건부 등록은 받지
+            # 않습니다``) does not move the pledge after the bid.
+            post=any(not re.match(r'[^\n.。;]{0,40}?더라도|[^\n.。;]{0,50}?(?:은|는)\s*(?:받지|인정하지|허용하지|접수하지|승인하지)\s*않',q[m.end():])
+                     for m in late.finditer(q))
             capability=bool(re.search(r'제출(?:이)?\s*가능|제출할\s*수\s*있',q))
             possession=bool(re.search(r'보유|발급\s*(?:받|후)|발급받',q))
             negated=bool(re.search(r'(?:입찰\s*전|입찰\s*시)[^\n]{0,80}(?:요구하지\s*않|제출하지\s*않|제출할\s*필요\s*없|보유할\s*필요\s*없)|확약서[^\n]{0,20}제출\s*(?:면제|불요)',q))
@@ -104,7 +109,17 @@ def _pledge_check_basic(rec):
 
 def pledge_check(rec):
     from .pledge_reference import pledge_check as structured_check
-    return structured_check(rec)
+    output = structured_check(rec)
+    if output['value'] != 1 and output['facts']['scope']['known']:
+        from .pledge_relations import positive
+        proof = positive(rec)
+        uncertain = proof and any(p['uncertain_context'] and p['evidence']['doc_index'] == proof['doc_index']
+            and p['evidence']['start'] < proof['end'] and p['evidence']['end'] > proof['start']
+            for p in output['facts']['pledges'])
+        if proof and not uncertain:
+            output['facts']['pre_bid_relation'] = proof
+            return result(1, 'third_party_document_required_at_bid_stage', output['facts'], proof['quote'])
+    return output
 
 
 def decimal(value):
@@ -285,9 +300,30 @@ def sw_check(rec):
     return result(1,'actual_public_SW_work_with_no_floor_disclosure_in_complete_inputs',facts)
 
 
+def _governing_section(text, pos):
+    """Title of the numbered top-level section that contains ``pos``.
+
+    A list item belongs to its section however long the section is. Only a
+    short numbered title line opens a section; a numbered sentence (a pledge
+    or duty list) does not.
+    """
+    titles=list(re.finditer(r'(?m)^[ \t]*\d{1,2}[ \t]*\.[ \t]*(?P<title>[^\n]{1,30}?)[ \t]*$',text[:pos]))
+    titles=[t for t in titles if not re.search(r'(?:다|함|음|것)[.。]?$|[,，]',t['title'])]
+    return titles[-1]['title'] if titles else None
+
+
 def briefing_check(rec):
     events=[];meta=rec.get('meta',{});body_negotiated=[]
     anchor=re.compile(r'(?:현장|사업|과업|제안요청서?|입찰)\s*설명회|제안서\s*설명회')
+    # The attendee noun may carry a parenthesised gloss (``참석한 자(업체)``).
+    attendance=(r'참석(?:한)?\s*(?:경우|업체|자)(?:\s*\([^()\n]{1,12}\))?|'
+                r'참석(?:하여|하고)\s*(?:출석|참석)\s*확인(?:서)?(?:을|를)?\s*'
+                r'(?:받은|교부받은)\s*(?:업체|자)')
+    only=r'(?:에\s*)?(?:한함|한하|한하여)|만'
+    eligibility=r'입찰|응찰|제안서(?:를)?\s*(?:제출|접수|낼)|참가\s*자격'
+    absent=(r'미참석|불참|참석하지\s*(?:아니한|않은)|'
+            r'(?:출석|참석)\s*확인(?:서)?(?:을|를)?\s*(?:받지|교부받지)\s*못한')
+    denied=r'주어지지\s*않|부여하지\s*않|허용(?:되지|하지)\s*않|접수하지\s*않|대상에서\s*제외|불가|무효'
     for di,d in enumerate(rec.get('docs',[])):
         t=d['text']
         if d['type']=='공고문':
@@ -297,7 +333,7 @@ def briefing_check(rec):
             before=t[max(0,left-750):left]
             heading_matches=list(re.finditer(r'(?:\d+[.)]\s*)?(?:입찰참가자격|참가자격|제안서\s*평가|제안서\s*발표|제안서\s*설명회\s*및\s*평가)',before))
             heading=heading_matches[-1][0] if heading_matches else None
-            evaluation=bool(re.search(r'제안서\s*설명회|평가위원|제안서\s*평가|프레젠테이션',q))
+            evaluation=bool(re.search(r'제안서\s*(?:설명회|발표)|평가위원|제안서\s*평가|프레젠테이션|\bPT\b',q,re.I))
             # ``제안요청서 설명: 사업설명회로 갈음`` announces that the
             # briefing will be used; it does not cancel the briefing.  A
             # ``갈음`` negative needs an explicit replacement object after
@@ -307,15 +343,37 @@ def briefing_check(rec):
                 r'설명회\s*(?:는|를|은|[:：])?[^\n]{0,24}'
                 r'(?:제안요청서|과업지시서|공고서|첨부\s*자료)(?:로|으로)\s*갈음',q))
             independent=bool(re.search(r'참석\s*여부[^\n]{0,30}(?:상관없|상관없이|관계없)|불참[^\n]{0,25}불이익\s*없|참석하지\s*않아도[^\n]{0,30}(?:가능|참가)|(?:불참|미참석)[^\n]{0,45}(?:제외하지\s*않|참가를\s*제한하지\s*않)',q))
-            restrict=bool(re.search(
-                r'참석(?:한)?\s*(?:업체|자)[^\n]{0,35}(?:한하|한하여)[^\n]{0,45}(?:제안서|입찰|자격)|'
-                r'(?:미참석|불참)[^\n]{0,45}(?:제안서[^\n]{0,25}접수하지\s*않|대상에서\s*제외|참가\s*불가)|'
-                r'참석하지\s*(?:아니한|않은)[^\n]{0,35}업체[^\n]{0,35}'
-                r'(?:입찰\s*)?참가[^\n]{0,20}허용되지\s*않',q))
             in_qualification=bool(heading and '참가자격' in heading)
-            if in_qualification and re.search(r'설명회에\s*참석한\s*자',q):restrict=True
+            # A heading word inside a sentence (``제안서평가 세부기준`` in a
+            # citation) is not a heading; then the governing section decides.
+            line_start=before.rfind('\n',0,heading_matches[-1].start())+1 if heading_matches else 0
+            section_only=False
+            if not in_qualification and not (heading_matches and re.fullmatch(
+                    r'[\s○●□■◆◇※*·•-]*(?:[\d가-하]{1,2}\s*[.)]\s*)?',before[line_start:heading_matches[-1].start()])):
+                section=_governing_section(t,left)
+                in_qualification=section_only=bool(section and '참가자격' in re.sub(r'\s','',section))
+            # Bind the briefing subject, attendance predicate and eligibility
+            # effect within this line-item, not across unrelated clauses.
+            # A following sentence may explicitly resume the same briefing
+            # ("설명회 미참석 ..."); unrelated event sentences cannot bind.
+            relation=re.split(r'[.。;](?!\s*(?:(?:해당|동)\s*)?설명회)',q[m.start()-left:],maxsplit=1)[0]
+            limited=re.search(r'(?:'+attendance+r')\s*(?:'+only+r')',relation)
+            effect=re.split(r'[.。;]',q[:m.start()-left])[-1]+relation[m.end()-m.start():]
+            granted=bool(limited and (re.search(eligibility,effect) or in_qualification))
+            if granted and section_only and not re.search(eligibility,effect):
+                # A distant section title binds only a limitation that is the
+                # whole statement, never one limiting some other benefit.
+                granted=bool(re.fullmatch(r'\s*[.。]?\s*(?:\([^()\n]*\))?\s*[.。]?\s*',relation[limited.end():]))
+            barred=bool(re.search(r'(?:'+absent+r')[^\n.。;]{0,45}'
+                                 r'(?:'+eligibility+r'|제안서|참가)[^\n.。;]{0,25}(?:'+denied+r')',relation))
+            # "자격 없음" denies eligibility; "제한 없음" permits it.
+            barred |= bool(re.search(r'(?:'+absent+r')[^\n.。;]{0,45}'
+                                     r'참가\s*자격(?:이|은)?\s*없음',relation))
+            restrict=granted or barred
+            if in_qualification and not section_only and re.search(r'설명회에\s*참석한\s*자',q):restrict=True
             unclear=bool(re.search(r'않는\s*것은\s*아니|예시|가정|(?:규정|조건|요건|요구사항)[^\n]{0,20}(?:삭제|철회)' ,q))
-            later_event=bool(re.search(r'계약\s*(?:후|이후)|최종\s*보고|성과\s*보고|선정된\s*업체',q))
+            unclear |= bool(re.search(r'(?:무효|불가|자격\s*없음)[^\n.。;]{0,15}(?:것은|뜻은)\s*(?:아니|아닙)',q))
+            later_event=bool(re.search(r'계약\s*(?:체결\s*)?(?:후|이후)|착수\s*보고|최종\s*보고|성과\s*보고|선정된\s*업체',q))
             if unclear:restrict=False
             events.append({'event_type':'evaluation_or_presentation' if evaluation else 'post_award_event' if later_event else 'prior_briefing','restricts_eligibility':restrict,'attendance_independent':independent and not unclear,'not_held':no_event and not unclear,'qualification_heading':heading,'date_unresolved':not bool(re.search(r'20\d{2}[.년/-]',q)),'evidence':evidence(di,d,left,right)})
     mm=meta.get('낙찰방법');negotiated=bool(body_negotiated) or mm=='협상에의한계약'

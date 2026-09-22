@@ -84,6 +84,7 @@ def test_order_uses_cohorts_and_last_l_phase():
 
 
 def test_duplicate_execution_refused(tmp_path):
+    (tmp_path / 'output/lost+found').mkdir(parents=True)    # a platform entry is not a prior run
     runtime.Journal(tmp_path / 'output')
     with pytest.raises(FileExistsError):
         runtime.Journal(tmp_path / 'output')
@@ -230,10 +231,35 @@ def test_supported_default_cli_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(main, 'execute_stream', execute_stream)
     main.main([])
     assert observed['executor'] == 'stream' and observed['options'].tier_ceiling == 2
+    assert observed['options'].tier_plan == 'fixed'
+    main.main(['--tier-plan', 'adaptive'])
+    assert observed['options'].tier_plan == 'adaptive' and observed['options'].tier_ceiling == 2
     assert Path(observed['input']) == Path('data/test.jsonl.gz')
     assert Path(observed['data']) == Path('data') and Path(observed['output']) == Path('output')
     main.main(['--executor', 'cohort'])
     assert observed['executor'] == 'cohort'
+
+
+def test_cli_refuses_only_a_prior_run_in_the_output_directory(tmp_path, monkeypatch):
+    main = importlib.import_module('submission.main')
+    data, model, output = tmp_path / 'data', tmp_path / 'model', tmp_path / 'output'
+    for path in (data, model, output / 'lost+found'):
+        path.mkdir(parents=True)
+    (data / 'test.jsonl.gz').write_bytes(b'')
+    monkeypatch.setattr(main, 'configure_environment', lambda: None)
+    calls = []
+    def execute_stream(input_path, data_dir, output_dir, **kwargs):
+        calls.append(output_dir)
+        kwargs['pool'].close()
+        return {'test_only': True}
+    monkeypatch.setattr(main, 'execute_stream', execute_stream)
+    argv = ['--data-dir', str(data), '--model-dir', str(model), '--output-dir', str(output)]
+    main.main(argv)
+    assert calls == [output]
+    (output / 'started.json').write_text('{}', encoding='utf-8')
+    with pytest.raises(SystemExit):
+        main.main(argv)
+    assert calls == [output]
 
 
 def test_budget_observer_can_stop_after_saved_prefix_without_rerunning_or_filling(tmp_path, monkeypatch):

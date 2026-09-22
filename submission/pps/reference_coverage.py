@@ -260,7 +260,14 @@ def eligibility_absence_coverage(record, sections, coverage):
     delegated_predicate = re.compile(
         r'(?:입찰\s*)?참가\s*(?:자격|요건|조건)\s*(?:은|는|이|가|을|를|의|[:：|])|'
         r'(?:자격|요건|조건)\s*(?:을|를)?\s*(?:갖추|충족|따르|정한)')
-    resolved_forms, unresolved = [], []
+    # A pointer that only asks the bidder to read the bid documents, or says
+    # how to write the proposal, names no bidder property; it cannot delegate
+    # a size or direct-production qualification. A submission-list pointer
+    # keeps the labeled-form rule above.
+    instruction = re.compile(r'숙지|작성\s*요령에\s*따라\s*(?:작성|제출)|'
+                             r'(?:평가\s*기준|작성\s*요령)(?:을|를)?\s*참고하여[^.。\r\n]{0,20}작성')
+    named_property = re.compile(r'중소기업|소기업|소상공인|직접\s*생산|확인서|증명서')
+    resolved_forms, resolved_instructions, unresolved = [], [], []
     for reference in missing:
         evidence = reference.get('evidence', {})
         text = evidence.get('text', '')
@@ -275,6 +282,9 @@ def eligibility_absence_coverage(record, sections, coverage):
         if (form_field.search(text) and not delegated_predicate.search(text)
                 and (later or generic_form_after)):
             resolved_forms.append(reference)
+        elif (instruction.search(text) and not delegated_predicate.search(text)
+              and not named_property.search(text)):
+            resolved_instructions.append(reference)
         else:
             unresolved.append(reference)
     # Global completeness may be false solely because a named technical/form
@@ -308,6 +318,7 @@ def eligibility_absence_coverage(record, sections, coverage):
         'global_source_complete': declared_complete,
         'dropped_roles_scoped_outside_qualification': sorted(dropped) if domain_complete and not declared_complete else [],
         'form_references_scoped_by_later_exhaustive_notice_eligibility': resolved_forms,
+        'reading_or_writing_instructions_without_qualification_delegation': resolved_instructions,
         'unresolved_predicate_references': unresolved,
         'raw_document_coverage_unchanged': True,
         'reference_contents_inferred': False,

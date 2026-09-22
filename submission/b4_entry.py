@@ -35,6 +35,10 @@ def parse_error(packet,response):
         if response.get('finish_reason') not in ('stop','eos_token'):
             raise ValueError('Incomplete first/final answer')
         obj=response_json(response['text'])
+        if packet['generation']['response_format'] == 'focused_verify':
+            from submission.pps.focused_verify import decode
+            decode(response['text'], packet['focused_job'])
+            return None
         if packet['generation']['response_format'] == 'specification_candidates':
             from submission.pps.specification_candidate_review import decode
             if tuple(packet['items']) != (9,):
@@ -85,7 +89,7 @@ class B4Pipeline:
     def __init__(self,data_dir,tokenizer,input_strategy=None, *, source_policy=None, encoder=None,
                  specification_review=None, legal_policy=None, catalog_review=None, software_review=None,
                  a10_thinking_budget=None, a_cohort_size=None, a10_question_policy=None,
-                 catalog_source_policy=None, catalog_task_groups=None):
+                 catalog_source_policy=None, catalog_task_groups=None, focused_verify=None):
         self.config=Config.load(HERE/'model/config.json')
         # Validate the requested combination once. Intermediate replacements can
         # reject a valid preserved control before its other overrides are applied.
@@ -97,6 +101,8 @@ class B4Pipeline:
             ('a10_question_policy',a10_question_policy), ('catalog_source_policy',catalog_source_policy),
             ('catalog_task_groups',catalog_task_groups))
             if value is not None}
+        if focused_verify is not None:
+            overrides['focused_verify'] = focused_verify
         if overrides:
             self.config=dataclasses.replace(self.config,**overrides)
         self.original_config=OriginalConfig.load(HERE/'model/original_a.json')
@@ -327,6 +333,9 @@ class B4Pipeline:
                 for packet in bundle if packet['batch'] == profile]
 
     def consume(self,record,packet,response):
+        if packet['generation']['response_format'] == 'focused_verify':
+            from submission.pps.focused_verify import consume
+            return consume(record, packet, response)
         question_plan = None
         if 'source_questions' in packet:
             from .pps.source_questions import validate

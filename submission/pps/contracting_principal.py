@@ -112,4 +112,36 @@ def review(record):
             outside_public_purchase_checks=True,
         )
         return report
+    # An explicit statement about this bid's private project is stronger than
+    # a private-event topic or an institution's metadata. Keep the original
+    # sentence and reject examples/quotations; subsidy alone is insufficient.
+    from .products import normalized_map
+    from .law_declarations import _reference_reason
+    for doc_index, doc in enumerate(record.get("docs", [])):
+        if doc.get("type") != "공고문":
+            continue
+        text = doc.get("text", "")
+        n, positions = normalized_map(text)
+        private = re.search(r'(?:본|이|해당)입찰은민간사업(?:으로|입니다|임|이다)', n)
+        if private is None:
+            private = re.search(
+                r'(?:본|이|해당)입찰은[^.。]{0,100}민간자본보조사업으로서'
+                r'[^.。]{0,120}입찰을대행[^.。]{0,200}주관으로'
+                r'[^.。]{0,80}직접계약을체결', n)
+        if private is None:
+            continue
+        start, end = positions[private.start()], positions[private.end()-1]+1
+        if _reference_reason(text, start):
+            continue
+        report.update(
+            status="explicit_private_purchase",
+            reason="notice_explicitly_identifies_this_bid_as_private_project",
+            evidence=[{"doc_index": doc_index, "doc_id": doc.get("doc_id"),
+                       "document_role": doc["type"], "start": start, "end": end,
+                       "text": text[start:end]}],
+            private_contracting_principal_verified=True,
+            external_contracting_principal_verified=True,
+            outside_public_purchase_checks=True,
+        )
+        return report
     return report

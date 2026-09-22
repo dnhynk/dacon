@@ -1,104 +1,556 @@
 {
   "schema_version": 1,
-  "updated_utc": "2026-09-19T03:00:00+00:00",
+  "updated_utc": "2026-09-22T00:25:35Z",
   "competition": "DACON 236754",
   "target_official_macro_f1": 0.85,
-  "official_score": null,
+  "official_score": 0.6508801956,
   "production_candidate": {
-    "status": "development200_tuned_consumer_replay_complete",
+    "status": "official_submission_02_submitted_score_pending",
     "runtime": "submission/",
     "entrypoint": "script.py",
-    "source_fingerprint": "ac3adb3a71778fe0549e81404fd1ad3b01cb207249454d78bc00c25b029a6028",
-    "archive": "runs/dev200_unseal_20260917/build_tuned_05/submission.zip",
-    "archive_sha256": "0a3df53cf5f9ee071484825075bffd4baf10b111e43ac1722d5a753b0c639e8d",
-    "official_submission": false,
-    "fresh_measurement_boundary": "Pre-unseal source 28e4192f was freshly inferred once on development200: 953 model responses plus 161 deterministic skips; prediction SHA a2a47c66 scored 0.8468570781.",
-    "unmeasured_boundary": "Post-unseal source ac3adb3a is measured only by zero-call deterministic replay on that frozen response population (source_matches_generation=false). Official unseen score and L40S runtime remain unmeasured."
+    "source_fingerprint": "f66d4495e7dda9bcc3b514df4266f30cd54d36e9633349019c3d08baead24ce2",
+    "archive": "runs/harness_improve_20260919/build_18/submission.zip",
+    "archive_sha256": "c72520b78c5eefdad2c826dd5960d69e4af076eaba31a20e82f273397741541d",
+    "official_submission": true,
+    "official_submissions": [
+      {
+        "id": "official_submission_01",
+        "submitted_utc": "2026-09-21T09:48Z",
+        "api_result": "isSubmitted true, Success",
+        "official_score": 0.6508801956,
+        "evidence": "runs/harness_improve_20260919/official_submission_01/",
+        "official_score_source": "DACON submission list, submission id 100500",
+        "official_run_seconds": 6306
+      },
+      {
+        "id": "official_submission_02",
+        "build": "build_18",
+        "submitted_utc": "2026-09-22T00:25:35Z",
+        "api_result": "isSubmitted true, Success",
+        "official_score": null,
+        "evidence": "runs/harness_improve_20260919/official_submission_02/",
+        "preregistration": "runs/harness_improve_20260919/precision_analysis/PREREGISTRATION.md row 02'"
+      }
+    ],
+    "fresh_measurement_boundary": "build_18 differs from build_17 only in response consumption (q10_excluded_items [11]); model requests are identical. build_17 fresh on the official image / L40S: sealed S1 1,821 notices fixed plan tier2 1,278 / tier3 543 (plan_sha256 3ee3e8c1), guard not triggered (max lag -5.0 s), 0 records without a model call, finished 6,167.9 s; dev200 0.907453 (in-sample alarm). S1 replay with build_18 consumers (reference index): see runs/harness_improve_20260919/official_submission_02/REPORT.md.",
+    "unmeasured_boundary": "The official run returns only the score: its tier distribution and completion time are not observed."
   },
   "active_task": {
-    "id": "stream_executor_time_limit_20260919",
-    "status": "concluded_build_05_a100_verified_l40s_and_full_1853_unmeasured",
-    "description": "Meet the 7200s limit for 1853 private notices: record-major streaming executor (submission/stream.py) with a deadline-driven judgment tier ladder, worker-process preparation with one BGE encoder service (submission/prep.py), CSV always completed from source-only rows. Canonical prompts, schemas and consumers unchanged.",
-    "evidence": "docs/RUNTIME_STREAMING.md",
+    "id": "harness_improve_20260919",
+    "status": "official_submission_02_build18_precision_first_score_pending",
+    "description": "Decision-logic improvements to the canonical consumers, developed against the synthetic edit set (pool_edits_v8 dev split), a 20,000-notice natural firing census and the official dev200 tier2 responses as regression guard. With default config the model inputs equal the GPU-measured build (official dev200 A1/A10/S9 packets token-identical, A19 spans identical, 13 A19 packets differ only in CPU comparison conclusion text). Two input-changing candidates are config switches defaulting off: eligibility_atomic_selection, rubric_variant=fact_judgment. GPU campaigns measured fresh inference; official submission 01 was made with build_13 (rule_anchor_selection on).",
+    "evidence": "runs/harness_improve_20260919/REPORT.md",
     "measurements": {
-      "dev200_a100_extrapolation_1853": "CPU preparation ~19,200s (BGE CPU 1839s/200), engine load 389s, generation 15,270s; KV cache 7.49GiB gave 16k-request concurrency 2.18 and 11% prefix-cache reuse under 32-record cohorts.",
-      "dev200_frozen_response_tier_f1": {
-        "canonical": 0.87751,
-        "no_optional_reviews": 0.874353,
-        "source_rules_a10": 0.888562,
-        "source_rules_a10_no_catalog": 0.813629,
-        "a1_only": 0.795952
+      "official_dev200_tier2_saved_response_cpu_replay": {
+        "before": {
+          "macro_f1": 0.880908,
+          "fp": 19,
+          "fn": 19
+        },
+        "after": {
+          "macro_f1": 0.9067,
+          "fp": 14,
+          "fn": 15
+        },
+        "changed_cells": 8,
+        "changed_cells_toward_gold": 8
       },
-      "tests": "4144 passed excluding tests/test_independent_cell_plant.py (concurrent Codex labeling work, unrelated to the runtime).",
-      "local_replay_dev200": "runs/stream_executor_20260919/replay_verification_summary.json: 200 records in 8 chunks, call set identical in all chunks (953/953 requests), CSV cells identical to consumed_tuned_05 in all chunks, 1106 packets with identical token IDs; the 8 differing packets (PPS-DEV-097, PPS-DEV-121, PPS-DEV-186, PPS-DEV-02) come from pre-existing working-tree changes to comparison/price extraction versus the pre-unseal frozen packets, not from the executor.",
-      "gpu_a100_dev200_20260919": {
-        "report": "runs/stream_executor_20260919/gpu_verify_01/REPORT.md",
-        "source_fingerprint": "937fed07eb1ca8a333a9aca902005c1ba27d474a79491c537c7f4cb3184e2735",
-        "canonical_fresh": "200 records, 1914.7s, 954/954 responses, no unresolved/fallback/model-free records; development macro F1 0.8627845 (FP33/FN15). Frozen-response replay 0.8775098; 8 changed value cells (1 recovery, 7 new errors). 1106/1114 packets have identical token IDs, with exactly the 8 known pre-existing source differences; S:PPS-DEV-104:9 was one additional model call.",
-        "projection_1853": "200-record run 577.9s; tier2 4, tier3 32, tier4 a1_only 164; development macro F1 0.7969666 (FP13/FN39). No model-free records. Canonical 1853 A100 time estimate 12425-14269s exceeds 7200s; observed mixed-tier arithmetic 3799s is conditional and quality below target. L40S and full 1853 remain unmeasured.",
-        "archive_sha256": "58e06b0c63f507f8adaed7a747bfdae3760a0966c56732244e8b1dc2a90d28e1",
-        "runtime_cleanup": "Colab runtime deleted after archive hash verification; session manager displayed 활성 세션 없음."
+      "synthetic_dev_1370_saved_response_cpu_replay": {
+        "mean_item_recall_before": 0.588072607891885,
+        "mean_item_recall_after": 0.702,
+        "expected_zero_fired_before": 332,
+        "expected_zero_fired_after": 334,
+        "expected_zero_cells": 23020,
+        "after_excluding_small_quote_hosts_for_v10_v11_v13_v18": 0.7348
       },
-      "gpu_verify_01_a100_40gb": "runs/stream_executor_20260919/gpu_verify_01/REPORT.md: canonical fixed 200 records 1,914.7s (load 419.9s), fresh dev F1 0.8627845 (FP33/FN15), 954/954 responses, GPU-encoder packets identical to the CPU baseline except the 8 pre-existing comparison/price-extractor differences; 1853-record projection with the single-weight cost model collapsed to a1_only for 164/200 records, F1 0.7969666.",
-      "gpu_verify_02_a100_40gb": "runs/stream_executor_20260919/gpu_verify_02/REPORT.md (build_02): projection policy 968.9s, tier3 199 + a1_only 1, fresh dev F1 0.8587445; tier2 fixed 890.8s F1 0.8809058; tier3 fixed 644.0s F1 0.8503043; canonical 1,663.7s F1 0.8587449. 1853-record linear extrapolation: tier3 5,312-5,640s (fits), tier2 7,292-7,473s (92-273s over), canonical 14,742-14,920s. --max-num-batched-tokens 16384 OOMed on A100-40GB (keep 8192). Engine idle 0s between first submission and last completion; first submission came 41s after the engine load (fixed in build_03 by pre-feeding preparation); one prior-based a1_only flap at record 32 (fixed: prior decision made once).",
-      "engine_cost_fit_a100_40gb": "Two-parameter fit on 90s windows of both runs: 157us per new prefill token, 0.35ms per decode token (6.6% rms); prefill is >85% of engine time. Per-record cost by tier: canonical 7.1s, no_optional_reviews 4.8s, source_rules_a10 3.5-3.9s, source_rules_a10_a19 2.7s, a1_only 1.8s; only tier3 fits 1853 records in 7200s on this GPU.",
-      "tier_ladder_v2_dev200_replay_f1": {
-        "canonical": 0.87751,
-        "no_optional_reviews": 0.874353,
-        "source_rules_a10": 0.888562,
-        "source_rules_a10_a19": 0.870885,
-        "a1_only": 0.795952
+      "synthetic_holdout_1360_rules_only_aggregate": {
+        "mean_item_recall_before": 0.4237,
+        "mean_item_recall_after": 0.495,
+        "expected_zero_fired_before": 110,
+        "expected_zero_fired_after": 116,
+        "expected_zero_cells": 21977,
+        "after_excluding_small_quote_hosts_for_v10_v11_v13_v18": 0.5515,
+        "aggregate_scorings": 2,
+        "full_pipeline_score": "unmeasured (needs GPU)"
       },
-      "gpu_verify_03_a100_80gb": "runs/stream_executor_20260919/gpu_verify_03/REPORT.md (build_04): projection policy 849.6s (cold load 321s), tier3 160 + tier2 40, fresh dev F1 0.8652; tier2 fixed generation window 673.4s (3.37s/record), F1 0.8740, 1853 extrapolation 6,570s (450s inside the 7,020s submit deadline); policy tier2 estimate 2.97s/record is 12% optimistic versus measured. build_04 MoE tuner failed on GPU (W8A8 quant config on a weight-only model; no file written, engine unaffected); the corrected tuner gained 12.3% on the kernel at 8192 tokens with bit-identical output but only 1.7% on the tier2 generation window (661.8s, F1 0.8760), less than its 160s cost, so --moe-tuning defaults to off from build_05. No unresolved requests, zero engine idle, first submit 6.7s after engine ready; BGE GPU encoder 9,488 texts in 156s per 200 records. Labels were never uploaded; scores computed locally. Result archives downloaded with matching SHA-256 (result_archive.json); 1106/1114 packets have identical token IDs in all three runs, the rest being the 8 known pre-existing differences."
-    },
-    "next_action": "None scheduled: the time-limit work is concluded. Submission candidate for timing is runs/stream_executor_20260919/build_05/submission.zip (fingerprint f6a565bf..., sha256 f4c48fe0...). Unmeasured and only obtainable from the organiser environment or an L40S: L40S prefill speed, a full 1853-record run, private-input length distribution, official score. The executor decides the tier at run time from measured cost, so no code change is required for those. Further speed requires fewer new prefill tokens per record, which changes judgment inputs and belongs to the accuracy work.",
-    "bounded_execution_order": [
-      {
-        "task": "measure_cohort_runtime_and_call_value",
-        "status": "complete",
-        "exit": "Per-profile timing, prefix structure, sw_check/A10 skip rates and dev200 ablations recorded in docs/RUNTIME_STREAMING.md."
+      "natural_census_20000_pre_round_source": {
+        "fired_records": 1885,
+        "fired_cells": 2229,
+        "defect_candidate_cells": 70
       },
-      {
-        "task": "implement_stream_executor_and_prep_pool",
-        "status": "complete",
-        "exit": "submission/stream.py, submission/prep.py, VLLMRunner submit/step helpers, GPU-capable BGE encoder, CLI flags; cohort executor kept behind --executor cohort."
+      "natural_2000_rules_only_fired_cells": {
+        "before": 227,
+        "after_first_pass": 210,
+        "meta_sme_route_added": 21
       },
-      {
-        "task": "local_frozen_response_replay",
-        "status": "complete",
-        "exit": "All 200 records replayed with zero new model calls: identical call sets and identical CSV cells versus consumed_tuned_05."
+      "tests": "Integrated tree (build_06 source): full tests/ sweep 5052 passed plus 37 subtests, 0 failed/error/skipped (runs/harness_improve_20260919/TS3_test_sweep/REPORT.md).",
+      "fresh_inference_a100_tier2_build_02": {
+        "official_dev200": {
+          "macro_f1": 0.903725,
+          "fp": 16,
+          "fn": 14
+        },
+        "official_dev200_switches_on": {
+          "macro_f1": 0.878467,
+          "fp": 23,
+          "fn": 18
+        },
+        "synthetic_holdout_v8_full_pipeline_aggregate": {
+          "mean_item_recall": 0.6895,
+          "excluding_small_quote_hosts": 0.7468,
+          "expected_zero_fired": 318,
+          "expected_zero_cells": 21977
+        },
+        "dev200_generation_seconds_per_record": 3.4,
+        "evidence": "runs/harness_improve_20260919/gpu_campaign_01/recovered/"
       },
-      {
-        "task": "gpu_dev200_verification_and_timing",
-        "status": "complete",
-        "exit": "A100-40GB canonical fresh 0.8628; projection with the single-weight model failed (a1_only 164/200, 0.7970)."
+      "cleaned_benchmark_1125_saved_response_replay": {
+        "before": 0.7682,
+        "after": 0.827479,
+        "expected_zero_fired": "279 -> 278 / 19076",
+        "evidence": "runs/harness_improve_20260919/eval/r9_v2_reusable_score.json"
       },
-      {
-        "task": "cost_model_and_ladder_repair",
-        "status": "complete",
-        "exit": "Two-parameter online cost model, steady-state gating, one-step descent/ascent with dwell, ladder v2 (A19 rules before dropping Q10), A1->A19->A10 order, queue depth 8; policy tests replay the GPU logs (tests/fixtures/stream_gpu_verify_20260919.json)."
+      "switch_decision": "eligibility_atomic_selection neutral on GPU; rubric_variant=fact_judgment lowers fresh official dev200 to 0.8785; both stay default off.",
+      "synthetic_dev_v5_3034_rules_only": {
+        "mean_item_recall_pre_r7_frozen_source": 0.613498,
+        "near_miss_target_fired": "4/972 before R6/R7 fixes, 0 after",
+        "full_pipeline": "measured in gpu_campaign_02"
       },
-      {
-        "task": "gpu_rerun_repaired_policy",
-        "status": "complete",
-        "exit": "A100-40GB: policy settled on tier3 (199/200), fresh F1 0.8587; fixed tier2 0.8809 but 92-273s over 7200s; tier3 fixed 0.8503."
+      "cross_family_blind_vetting_vet_v10": {
+        "criteria_fixed_before_calls": {
+          "violation_teacher_one_rate_min": 0.7,
+          "near_miss_teacher_zero_rate_min": 0.8
+        },
+        "gpt_written_by_claude_teacher": {
+          "violation": 0.85,
+          "near_miss": 0.92
+        },
+        "claude_written_by_gpt_teacher": {
+          "violation": 0.89,
+          "near_miss": 0.99
+        },
+        "deterministic_shared_100": {
+          "both_binary": 80,
+          "binary_agree": 80
+        },
+        "failed": "retarget_procurement v10/v11/v20 (0/9 both teachers), broaden v17 (gpt), shift_price v5 near-miss",
+        "action": "8 operation strata excluded from scoring (216 dev records), rows and sealed bytes preserved",
+        "teachers": {
+          "claude": "claude-opus-5 effort high, 231 tasks",
+          "gpt": "gpt-6-astra effort high, 236 tasks"
+        },
+        "evidence": "runs/cell_label_20260919/vet_v10/score.json; runs/harness_improve_20260919/G7_vet_defects/REPORT.md"
       },
-      {
-        "task": "build_03_observability_and_startup_fixes",
-        "status": "complete",
-        "exit": "prefeed preparation during engine load, prior decision once, live encoder receipt, timing fields; 4195 tests pass; GPU rerun of build_03 not done."
+      "official_dev200_fresh_responses_build_06_consumers": {
+        "macro_f1": 0.908271,
+        "fp": 16,
+        "fn": 13,
+        "changed_cells_since_round_3": 0,
+        "evidence": "runs/harness_improve_20260919/eval/r13_official_fresh"
       },
-      {
-        "task": "default_tier_ceiling_2_and_moe_self_tuning",
-        "status": "complete",
-        "exit": "User-approved 2026-09-19: --tier-ceiling default 2; submission/moe_tune.py benchmarks fused_experts tilings in a subprocess before the engine and applies a >=5% numerically consistent win via VLLM_TUNED_CONFIG_FOLDER; 10 new tests; GPU effect unmeasured."
+      "fresh_inference_a100_tier2_build_05_set_v10": {
+        "dev_v5_part_a_1219": {
+          "mean_item_recall": 0.843696,
+          "near_miss_target_fired": "2/418",
+          "expected_zero_fired": "270/18948",
+          "build_06_consumer_replay": 0.847863
+        },
+        "dev_v5_part_b_1219": {
+          "mean_item_recall": 0.732228,
+          "near_miss_target_fired": "2/518",
+          "expected_zero_fired": "325/19175",
+          "build_06_consumer_replay": 0.753462
+        },
+        "sealed_holdout_v10_1516_aggregate": {
+          "mean_item_recall": 0.728814,
+          "micro_recall": 0.7744,
+          "near_miss_target_fired": "7/526",
+          "expected_zero_fired": "321/23384",
+          "build_06_consumer_replay": 0.730126,
+          "ledger_entries": 2
+        },
+        "recall_by_construction_and_path_a_b_holdout": {
+          "deterministic_model_judged": [
+            0.912,
+            0.856,
+            0.882
+          ],
+          "deterministic_rule_judged_v10_v18": [
+            0.783,
+            0.747,
+            0.708
+          ],
+          "written_model_judged": [
+            0.923,
+            0.657,
+            0.718
+          ],
+          "written_rule_judged": [
+            0.75,
+            0.522,
+            0.425
+          ]
+        },
+        "tier0_with_a10_model_call_on_223_written_records": {
+          "target_recall": "54/94 vs tier2 50/94",
+          "near_miss_fired": "4/129 vs 3/129",
+          "decision": "A10 model call not worth its time cost"
+        },
+        "finding": "no dev-to-holdout gap (part b 0.732 = holdout 0.729); weakness is newly written clause wording, largest on rule-judged items; cell-level consumer fixes do not transfer (R10/R11 changed 0 cells on part b; R12 mechanism-level fix +2 cells on holdout)",
+        "evidence": "runs/harness_improve_20260919/gpu_campaign_02/recovered/"
       },
-      {
-        "task": "gpu_verify_03_and_moe_tuning_decision",
-        "status": "complete",
-        "exit": "A100-80GB: default ceiling 2 verified, tier2 fixed fits by 450s in linear extrapolation; MoE tuner API fixed (int8_w8a16_moe_quant_config) and made opt-in because end-to-end gain (1.7%) is below its cost; build_05."
+      "gpu_campaign_03_build_06_switches": {
+        "q10_variant_purchase_roles": {
+          "official_dev200_fresh": 0.8557,
+          "baseline_replay": 0.908271,
+          "fp": "16 -> 29",
+          "fn": "13 -> 21",
+          "synthetic_failure_selected_cells": "2 -> 9 of 57 (selection-biased)",
+          "audit": "21 of 26 new official errors are Q10 semantic errors; 0.8590 even if integration mismatches were fixed",
+          "decision": "rejected, default off"
+        },
+        "briefing_region_anchor_selection": {
+          "official_dev200_fresh": 0.9094,
+          "targets_v6_v7_v22": "189 -> 191 of 221",
+          "near_miss_fired": "0 -> 0 of 88",
+          "decision": "neutral within fresh-run noise, default off"
+        },
+        "evidence": "runs/harness_improve_20260919/gpu_campaign_03/recovered/; runs/harness_improve_20260919/C2_q10_drop_audit/REPORT.md"
+      },
+      "model_vs_final_audit_saved_responses": {
+        "model_positive_share_on_synthetic_targets": {
+          "v6": "0/65",
+          "v23": "4/51",
+          "v7": "11/88",
+          "v21": "8/47",
+          "v22": "19/68",
+          "v9": "16/40",
+          "v8": "30/71",
+          "v5": "31/69",
+          "v1": "42/90"
+        },
+        "cpu_veto_of_model_positive_on_targets": "about 0 (v3 1, v19 2)",
+        "finding": "regex rules are the effective reader; misses on newly written wording are cells where the multi-item model judgment says 0 and the regex parse fails",
+        "evidence": "runs/harness_improve_20260919/R14_breakthrough/model_vs_final_audit.txt"
+      },
+      "capability_map_gpu_campaign_04": {
+        "long_context_multi_item_judgment_current": "finds under half of synthetic targets (v6 0/65, v23 4/51, v7 11/88)",
+        "long_context_structured_extraction_same_excerpt": {
+          "size": "61/64",
+          "direct_production": "25/25",
+          "pledge": "29/30",
+          "region": "46/54",
+          "briefing": "25/30",
+          "joint_share": "9/10",
+          "performance": "77/128",
+          "locate_only": "much worse (size 14/64, region 25/54, performance 30/128)"
+        },
+        "short_context_single_item_judge_with_cpu_premises": {
+          "written_targets": "performance 92-95%, size 100%, pledge 100%, briefing 91%, region 78%",
+          "deterministic_targets": "performance 70%, region 49%, size 37%",
+          "near_miss_judged_lawful": "96-100%"
+        },
+        "thinking_512_paired": "size 7->15 of 18, region 4->9 of 14; natural-clause false calls 27%->10% (performance), 25%->3% (size, written records)",
+        "not_for_the_model": "doc-vs-meta v24 (8%), identity-dependent v12 (36-48%)",
+        "fusion_offline": {
+          "final_or_judge": "written 151->204/206, deterministic 162->184/199, near-miss 2->21/265, same-family wrong item 0->58/252",
+          "frozen_rule_v2b_confirmation": "targets 61->72/86, near-miss 0->1/120, expected-zero 0->0/128",
+          "extraction_direct_cpu_judgment": "rejected: expected-zero +128, official dev200 0.908->0.820",
+          "replace_a1_a19_by_extraction": "rejected: loses 34 model-only true positives, extraction recovers 8",
+          "frozen_rule_on_official_dev200_all_families": "0.9083->0.8822, FP 16->29 (v19 about 9), FN unchanged; audit in C4_official_fusion_audit"
+        },
+        "evidence": "runs/harness_improve_20260919/gpu_campaign_04/recovered/; P1_extract_probe; P2_capability_battery; V2B_fusion_policy; V2C_extraction_consumer",
+        "official_new_positive_audit_c4": "13 cells: 8 judge errors on distinctions the CPU rules already make (issuer, document function, timing, event role, whose location), 2 genuine violation states labelled 0, 3 arguable; 0.8984 even with the 8 errors removed",
+        "family_call_prototype_v2a": {
+          "per_call_a100_seconds": "0.34-0.46",
+          "final_or_family_think512": "written targets 138->179/189, deterministic 147->167/175, near-miss 1->13/234 and 0->5/70, same-family wrong item 0->27/252",
+          "decision": "not adoptable as a plain OR; must be combined with the agreement rule",
+          "official_dev200_plain_or": "macro-F1 0.9083 -> 0.6963 (think 0) / 0.7164 (256) / 0.7513 (512); FP 16 -> 239 / 184 / 132; one new true positive; v17 alone 48-117 new false positives"
+        },
+        "parser_gap_mining_m1": "about 1,400 gap candidates from extraction-vs-CPU alignment, 101 samples in 36 wording clusters reviewed, only 4 true parser gaps; confirmation recall unchanged, official dev200 0 changed cells, natural-2000 firing 225 -> 225"
+      },
+      "focused_verify_v2d_gpu_campaign_05": {
+        "preregistered_criterion": "written recall gain >= 10 points and natural-300 new-positive records per family <= 1%; selected on exploration half, evaluated once on confirmation half",
+        "adopted_candidate_families": [
+          "region",
+          "size",
+          "briefing"
+        ],
+        "synthetic_all_written_targets": {
+          "region": "17->23/25",
+          "size": "22->29/40",
+          "briefing": "11->16/20"
+        },
+        "near_miss_added": "1/158",
+        "expected_zero_added": 0,
+        "natural300_new_positive_records": {
+          "region": 0,
+          "briefing": 0,
+          "size": 2
+        },
+        "official_dev200": {
+          "macro_f1": "0.9083->0.9032",
+          "fp": "16->18 (both size)",
+          "fn": "13->13"
+        },
+        "cost_as_measured": "13 s/record (all families x 4 candidates x thinking) - not deployable; gating design in V2E_gated_focused_verify",
+        "evidence": "runs/harness_improve_20260919/gpu_campaign_05/recovered/score_v2d/confirm/"
+      },
+      "untouched_notice_firing": {
+        "natural_corpus_300": {
+          "full_v1_cells_per_notice": 0.39,
+          "rules_only": 0.14,
+          "records_fired": "80/300",
+          "model_added_cells": {
+            "v20": 16,
+            "v24": 14,
+            "v2": 8,
+            "v19": 6,
+            "v18": 6,
+            "v9": 5,
+            "v16": 5
+          }
+        },
+        "official_all_zero_112": {
+          "full_v1": 0.071,
+          "rules_only": 0.036
+        },
+        "expected_macro_f1_model": {
+          "corpus_like_hosts": 0.778,
+          "clean_dev_like_hosts": 0.861,
+          "note": "model estimate from F1_firing_policy, not an official score"
+        },
+        "evidence": "runs/harness_improve_20260919/gpu_campaign_05/recovered/natural300_v1; R14_breakthrough/official_rules_only.csv; F1_firing_policy/REPORT.md"
+      },
+      "firing_policy_f1": {
+        "recommended": "empty (no gate change passed independent confirmation)",
+        "hedge_option": "G28 (v10 Q10 path), G42 (v16), G48 (v18) off: expected macro-F1 +0.0080 corpus scenario, +0.0011 clean scenario, loses 4 synthetic targets and 1 official true positive; unapplied patch firing_policy.patch"
+      },
+      "focused_verify_v2e": {
+        "switch": "focused_verify (default false)",
+        "offline_replay": "16 of 18 written recoveries retained, no new near-miss/official/natural positives, about 150-226 extra A100 seconds per 1853 records",
+        "limitation": "262 of 270 admitted calls on the full dev v5 part b input have no saved answer; GPU campaign 06 measures accuracy and time",
+        "official_size_cells": "both classified as errors"
+      },
+      "atomic_tuning_round_build_08": {
+        "acceptance_rule": "specs/A0_ATOMIC.md: trade-offs adoptable with a structural argument plus an expected-F1 calculation in both host scenarios; rejected candidates stay in the report; added firing on synthetic near-miss cells is the one strict veto",
+        "official_dev200_replay": {
+          "before": 0.908271,
+          "after": 0.908271,
+          "changed_cells": 0
+        },
+        "synthetic_dev_v5_a": {
+          "before": 0.847863,
+          "after": 0.859866
+        },
+        "synthetic_dev_v5_b": {
+          "before": 0.753462,
+          "after": 0.773813
+        },
+        "unsealed_former_holdout": {
+          "before_build_06": 0.730126,
+          "after": 0.742881
+        },
+        "near_miss_firing": {
+          "a": "1/418",
+          "b": "2/518",
+          "unsealed": "7/526 -> 6/526"
+        },
+        "expected_zero_unsealed": "321 -> 314 of 23384",
+        "natural300_rules_path": "42 cells / 34 notices -> 41 / 33",
+        "evidence_official_gold_span_full_coverage": "40/54 -> 48/54, zero verdict cells changed across 4454 notices",
+        "tests": "5193 passed plus 37 subtests, 0 failed",
+        "evidence_dirs": "runs/harness_improve_20260919/{A1_performance_family,A2_size_product_family,A3_other_family,H1_holdout_unseal,E1_evidence_column,TS4_test_sweep}"
+      },
+      "focused_verify_gpu_campaign_06": {
+        "admitted_calls": {
+          "official_dev200": "42 of 265",
+          "natural300": "61 of 302",
+          "dev_v5_b": "239 of 1631"
+        },
+        "decision_changes": "official 0, natural 0, synthetic 0 (same responses replayed with the consumer off and on give identical cells)",
+        "cost": "+0.19 to 0.28 s per record, 350-520 s over 1853 records against about 450 s of tier2 headroom",
+        "verdict": "stays default off"
+      },
+      "measurement_noise_floor": "Two fresh inferences from identical packets differ in 290 of 517 official response texts but only 5 of 4800 decision cells; two fresh runs of synthetic dev v5 part b re-consumed by the same consumers give mean item recall 0.7738 versus 0.7775. Differences within about 5 cells or 0.004 recall are noise.",
+      "atomic_tuning_round2_build_09": {
+        "workers": "B1 identity and size, B2 performance region joint share, B3 pledge software document-versus-meta (opus max)",
+        "official_dev200_replay": {
+          "before": 0.908271,
+          "after": 0.908271,
+          "changed_cells": 0
+        },
+        "synthetic_dev_v5_a": {
+          "before": 0.859866,
+          "after": 0.864653
+        },
+        "synthetic_dev_v5_b": {
+          "before": 0.773813,
+          "after": 0.784265
+        },
+        "unsealed_former_holdout": {
+          "before": 0.742881,
+          "after": 0.774307
+        },
+        "near_miss_expected_zero_natural": "unchanged on every set (near-miss 1/418, 2/518, 6/526; expected-zero 314; natural300 rules 41 cells)",
+        "tests": "5223 passed plus 37 subtests, 0 failed",
+        "closed_questions": {
+          "cpu_product_identity": "already implemented and firing: qualification.purchase_scope resolves 1512 of 1743 code-bearing records (86.7%); only 17 of 243 v10-v18 misses are code-bearing abstentions while 168 are general-service notices with no product code at all, which no code lookup can reach",
+          "v8_goods_extension": "rejected: official PPS-DEV-057 labels that combination 0 and the decree limits goods experience restrictions to manufacturing contracts (0 of 78 goods records in dev200 have gold v8=1)",
+          "v16_v18_20m_floor": "rejected: +7 targets but negative expected macro-F1 in both host scenarios, +23 expected-zero firings, 1 official false positive, 1 clear misread",
+          "v21_misses": "6 of 8 are construction defects where the document still states the lawful 10% minimum"
+        },
+        "evidence_dirs": "runs/harness_improve_20260919/{B1_identity_and_size,B2_performance_region,B3_pledge_sw_comparison,TS5_test_sweep}"
+      },
+      "atomic_tuning_round3_build_10": {
+        "workers": "C1 code-less service identity, C2 CPU recovery where the model said zero, C3 excerpt and residual CPU misses (opus max)",
+        "official_dev200_replay": {
+          "before": 0.908271,
+          "after": 0.908271,
+          "changed_cells": 0
+        },
+        "synthetic_dev_v5_a": {
+          "before": 0.864653,
+          "after": 0.881202
+        },
+        "synthetic_dev_v5_b": {
+          "before": 0.784265,
+          "after": 0.819133
+        },
+        "unsealed_former_holdout": {
+          "before": 0.774307,
+          "after": 0.804975
+        },
+        "natural300_full_pipeline": "116 -> 118 cells, both new cells judged genuine violation states",
+        "natural300_rules_path": "41 cells unchanged",
+        "near_miss_expected_zero": "unchanged",
+        "tests": "5288 passed plus 37 subtests, 0 failed",
+        "new_default_off_switch": "rule_anchor_selection (retrieval.py): off token-identical on all profiles; on, CPU full target-span inclusion unsealed 383->441, a 312->324, b 203->222 within 16384 tokens; GPU effect measured by gpu_campaign_07",
+        "rejected_again": "same-code whole plus certificate_only merge (official PPS-DEV-193 v13 false positive), third rejection",
+        "evidence_dirs": "runs/harness_improve_20260919/{C1_service_identity,C2_model_zero_recovery,C3_excerpt_and_residual,TS6_test_sweep}"
+      },
+      "cumulative_atomic_tuning": {
+        "synthetic_dev_v5_a": "0.8479 -> 0.8934",
+        "synthetic_dev_v5_b": "0.7535 -> 0.8266",
+        "unsealed_former_holdout": "0.7301 -> 0.8250",
+        "official_dev200": "0.9083 unchanged through four rounds (fresh inference with build_10 also 0.9083)",
+        "natural300_rules": "42 -> 40 cells",
+        "natural300_full_pipeline": "117 -> 113 cells",
+        "near_miss_unsealed": "7/526 -> 5/526"
+      },
+      "atomic_tuning_round4_build_11": {
+        "workers": "D1 v10-v18 predicate chain, D2 Q10 consumer gates, D3 residual outside v10-v18 (opus max)",
+        "official_dev200_replay": {
+          "before": 0.908271,
+          "after": 0.908271,
+          "changed_cells": 0
+        },
+        "synthetic_dev_v5_a": {
+          "before": 0.881202,
+          "after": 0.893393
+        },
+        "synthetic_dev_v5_b": {
+          "before": 0.819133,
+          "after": 0.826622
+        },
+        "unsealed_former_holdout": {
+          "before": 0.804975,
+          "after": 0.825026
+        },
+        "near_miss_unsealed": "6/526 -> 5/526",
+        "expected_zero_unsealed": "314 -> 315",
+        "natural300_rules": "41 cells / 33 notices -> 40 / 31",
+        "natural300_full_pipeline": "118 -> 113 cells (76 notices)",
+        "tests": "5340 passed plus 37 subtests, 0 failed",
+        "narrow_q10_variant": "not viable: the 17 genuine wrong/unknown cells need opposite corrections; CPU scopes reach at most 6 of 9 event cells while pulling 61-62 new records into scope",
+        "rejected_again": "same-code whole plus certificate_only merge, fourth rejection"
+      },
+      "gpu_campaign_07_build_10": {
+        "official_dev200_fresh": {
+          "macro_f1": 0.908271,
+          "changed_cells_vs_replay": 0
+        },
+        "timing": "3.363 s/record generation, engine idle 0; 1853-record projection 6232 s plus load, inside the 7020 s submit deadline",
+        "rule_anchor_selection": {
+          "records": "300 whose packets differ (122 unsealed, 68 dev a, 89 dev b, 21 official)",
+          "on_vs_off_changed_cells": 62,
+          "fresh_noise_changed_cells": 26,
+          "scored_effect": "targets +4 (official v9 +1), expected-zero -5, near-miss 0",
+          "favourable_vs_unfavourable": "17 vs 9, two-sided binomial p about 0.17",
+          "generation_time": "+0.036 s/record",
+          "verdict": "kept default off: direction positive but not distinguishable from fresh-run noise under the pre-stated criterion"
+        },
+        "evidence": "runs/harness_improve_20260919/gpu_campaign_07/recovered/"
+      },
+      "official_submission_01": {
+        "submitted_utc": "2026-09-21T09:48Z",
+        "api_result": "isSubmitted true, Success",
+        "official_score": 0.6508801956,
+        "rules_audit": "runs/harness_improve_20260919/RULES_AUDIT/REPORT.md (build_12): 0 confirmed violations; J-1, E, F fixed in build_13; D-3 tier scheduling kept and to be stated in the solution description",
+        "rule_text_per_notice": "Every evaluation notice needs at least one normal fixed-LLM call; all tiers include A1, but deadline/prepare-failure/emergency fallback rows break it for those notices (policy left to the user)",
+        "server": "vllm/vllm-openai:v0.26.0, torch 2.11.0+cu130, transformers 5.14.1, xgrammar 0.2.3, L40S 44.7 GiB, 7 vCPU, 60 GiB RAM, 2 h inference, 1 submission/day, install errors not counted",
+        "tests": "5343 passed plus 37 subtests, 0 failed",
+        "evidence": "runs/harness_improve_20260919/official_submission_01/",
+        "diagnosis": {
+          "evidence": "runs/harness_improve_20260919/official_submission_01/REPORT.md (section on the 0.65 diagnosis) and diagnosis/",
+          "leaderboard_20260921": {
+            "rank1": 0.77634,
+            "rank15_stage2_cutoff": 0.74501,
+            "rank50": 0.72531,
+            "rank100": 0.68973,
+            "leaderboard_submission_deadline": "2026-09-29",
+            "submissions_per_day": 1
+          },
+          "main_cause": "generalization to the official distribution; dev200 0.908 is in-sample. The only honest holdout (former 40, pre-unseal) was macro-F1 0.6306 with recall 0.742 and 0.325 erroneous firings per notice; natural-300 full-pipeline firing is 0.377 per notice against 0.071 on the tuned dev negatives.",
+          "honest_rate_model_tier2": 0.685,
+          "unresolved": "tier distribution on the L40S (tier3 -0.03, a1_only -0.09 on dev in-sample) cannot be observed from the score",
+          "rejected": [
+            "corpus holds pre-edit base notices (nearest-notice line coverage p50 0.21 positives vs 0.20 negatives)",
+            "evaluation input schema differs (sample test records match dev and corpus)",
+            "build_13 audit fixes changed predictions",
+            "corpus n-gram novelty separates injected from natural clauses (8-gram novelty >= 0.1: gold evidence 81%, official hits 68%, natural firing 44%, all clean-dev lines 41%)"
+          ],
+          "measured_candidate": "suppress body-item firing when every overlapped evidence line occurs in another corpus notice: natural-300 firing -19/55, official dev hits -4/105, expected +0.012",
+          "runtime_reading": "6,306 s < 7,020 s submit deadline: no deadline fallback rows; all-tier2 would have ended earlier, so tiers were mixed; the mix depends on the unmeasured L40S/A100 speed ratio (1.0 -> 80% tier2, 1.27 -> all tier3, 1.7 -> all a1_only at 400 s load)"
+        },
+        "official_run_seconds": 6306
+      },
+      "l40s_measure_01": {
+        "evidence": "runs/harness_improve_20260919/l40s_measure_01/REPORT.md",
+        "tier2_dev200": {
+          "prefill_us_per_token": 162.8,
+          "decode_ms_per_token": 0.352,
+          "seconds_per_record": 3.54,
+          "engine_cold_load_seconds": 258.5,
+          "engine_ready_seconds": 303.6,
+          "engine_idle_seconds": 0.0
+        },
+        "conclusion": "L40S equals A100 for this workload (prefill 1.04x); the official 6,306 s run was mostly tier2, so runtime did not cause the 0.651 score"
       }
-    ]
+    },
+    "build": {
+      "archive": "runs/harness_improve_20260919/build_14/submission.zip",
+      "archive_sha256": "fc309fcfbd2a24638ebe5a49d2468bcf21e9047c3ef7786847108d4e9810647a",
+      "source_fingerprint": "232f7c00f7cd6d6f",
+      "officially_submitted": false,
+      "note": "build_13 + corpus_seen_filter on (runs/harness_improve_20260919/E2_corpus_seen_filter/REPORT.md): official dev200 0.908271 -> 0.909737, natural-300 firing 113 -> 94, synthetic written/edited targets lost 0; honest-rate expected +0.013. Ships the 20 MB corpus line index. Tests 5355 plus 37 subtests passed. Submission scheduled for 2026-09-22 00:00:30 KST."
+    },
+    "next_action": "Finish synthetic set v10 (written clauses intake, premise-matched writer tasks, precision-aware dev measurement), optional blind teacher vetting, then one GPU measurement of v10 dev and the newly sealed holdout (input upload needed). User decides official submission timing.",
+    "next": "Per-item role table (CPU-only / model-as-reader / model verdict kept) from honest signals, then one pre-registered submission per day; build_14 (corpus-seen filter) not yet submitted.",
+    "acceptance_principle_20260920": "Zero official dev200 regression is no longer a hard gate (the harness is tuned in-sample on it). A drop is audited cell by cell: overfit release / integration mismatch / model or rule error / violation state labelled 0 on an untouched notice / improvement / fresh-run noise; adopt when overfit release or integration explains it. Re-audit of earlier rejections (C3_reopen_rejected) found none to adopt as they were.",
+    "holdout_status": "UNSEALED on 2026-09-21 by user decision after ledger entry 3 (0.7413). The v10 holdout split is now ordinary tuning material; never call it holdout or unseen again. Every scoring is still logged in runs/cell_label_20260919/pool_edits_v10/HOLDOUT_LEDGER.md. There is no unseen synthetic evaluation set left.",
+    "direction": {
+      "decided": "2026-09-22 by the user",
+      "acknowledged": "Weeks of refinement against dev200, synthetic dev a/b and the unsealed holdout produced no evidence of benefit on the private set: official 0.6509 equals the only honest pre-tuning measurement (former-40 holdout 0.631) and the honest-rate model built from untouched-notice firing (0.65-0.70). In-sample panels must never again be quoted as expectations.",
+      "principles": [
+        "Decisions use honest signals only: the official leaderboard (1/day), firing on untouched natural notices from a freshly sealed sample that is never tuned on, and dev/synthetic panels only as regression alarms.",
+        "The fixed model reads and extracts; CPU rules judge with legal premises. A model verdict stays only for items where removing it collapses recall, measured, without added natural firing.",
+        "Precision first: untouched-notice firing (0.377 per notice, 65% from model verdict paths) is two thirds of the error mass. Add injection-awareness signals (corpus-seen lines, deletion traces for absence items, meta-tampering cues for v24).",
+        "Do not cling to past attempts or the current code: keep only components that survive these measurements; remove unproven consumer rules and gates when the honest signals allow.",
+        "Each remaining submission tests one pre-registered hypothesis with a stated expected change; the leaderboard decides keep or revert."
+      ],
+      "in_flight": "rules-only path on synthetic sets (per-item recall parity) and attribution of the 73 model-path natural firings to A1/A19/Q10/L19"
+    }
   },
   "independent_annotation_20260918": {
     "status": "source_only_value_pilot_ready_claude_dev40_verified_codex_weekly_98_percent_pause_not_gold",
@@ -10029,6 +10481,96 @@
       "official_score": null,
       "production_adopted": false,
       "limitation": "Generation window 661.8s vs 673.4s untuned; 8 of 4800 cells differ from the untuned run; single pair, noise unmeasured. Full 1853, L40S and official unseen remain unmeasured."
+    },
+    {
+      "id": "harness_improve_20260919_dev200_tier2_consumer_replay",
+      "label": "Harness-improvement round consumers replayed on the frozen fresh tier2 development200 responses (gpu_verify_02 tier2_fixed)",
+      "kind": "saved_response_current_cpu_replay",
+      "macro_f1": 0.8924339549339549,
+      "fp": 14,
+      "fn": 18,
+      "notices": 200,
+      "prediction": "runs/harness_improve_20260919/eval/final_official/submission.csv",
+      "sha256": "6ae992d249d46507dc158b40c640dd889713a2fe4afec2d0dd568a1e37ba7f93",
+      "metrics": "runs/harness_improve_20260919/eval/final_official/score.json",
+      "metric_key": [
+        "macro_f1"
+      ],
+      "full_fresh_inference": false,
+      "new_model_calls": 0,
+      "source_fingerprint": "71ed9033e09b8363443ae2cede1f4692c65cab6fb175ebfdc979303326ebee83",
+      "official_score": null,
+      "production_adopted": true,
+      "recoveries": 6,
+      "new_errors": 0,
+      "limitation": "Zero-call deterministic replay of 517 saved tier2 responses; development200 is in-sample for the rule base. Not a fresh inference and not an official score."
+    },
+    {
+      "id": "harness_improve_20260919_round2_dev200_tier2_consumer_replay",
+      "label": "Harness-improvement round 2 consumers (meta SME route, input stability restored) replayed on the frozen fresh tier2 development200 responses",
+      "kind": "saved_response_current_cpu_replay",
+      "macro_f1": 0.9021561771561771,
+      "fp": 14,
+      "fn": 16,
+      "notices": 200,
+      "prediction": "runs/harness_improve_20260919/eval/r2_official/submission.csv",
+      "sha256": "7869dbcf74208af4b1a02bada8cb41c86e26f7b376ee6383f2eac1bba8b01c04",
+      "metrics": "runs/harness_improve_20260919/eval/r2_official/score.json",
+      "metric_key": [
+        "macro_f1"
+      ],
+      "full_fresh_inference": false,
+      "new_model_calls": 0,
+      "source_fingerprint": "803487289ff952d8284b570c4dd969d3274f14d230a1e3d1a824a34cc3561804",
+      "official_score": null,
+      "production_adopted": true,
+      "recoveries": 8,
+      "new_errors": 0,
+      "limitation": "Zero-call deterministic replay of 517 saved tier2 responses; 13 A19 packets now carry different CPU comparison conclusion text than the responses were generated from; development200 is in-sample. Not a fresh inference and not an official score."
+    },
+    {
+      "id": "harness_improve_gpu_campaign_01_dev200_tier2_fresh_build_02",
+      "label": "build_02 default config, fixed tier2, whole development200 fresh A100-80GB",
+      "kind": "fresh_model_inference",
+      "macro_f1": 0.9037269443519443,
+      "fp": 16,
+      "fn": 14,
+      "notices": 200,
+      "prediction": "runs/harness_improve_20260919/gpu_campaign_01/recovered/full/dev200_default/submission.csv",
+      "sha256": "43bc14990c577b1072c17256ea22ad740b20adb32bfa725c4af1500623eaf4f3",
+      "metrics": "runs/harness_improve_20260919/gpu_campaign_01/recovered/dev200_default/score.json",
+      "metric_key": [
+        "macro_f1"
+      ],
+      "full_fresh_inference": true,
+      "new_model_calls": 517,
+      "source_fingerprint": "803487289ff952d8284b570c4dd969d3274f14d230a1e3d1a824a34cc3561804",
+      "official_score": null,
+      "production_adopted": true,
+      "limitation": "development200 is in-sample for the rule base; A100-80GB, not L40S; not an official score."
+    },
+    {
+      "id": "harness_improve_round3_consumers_on_fresh_build_02_dev200_responses",
+      "label": "Round-3 consumers (build_03) replayed on the fresh build_02 tier2 development200 responses of GPU campaign 01",
+      "kind": "saved_response_current_cpu_replay",
+      "macro_f1": 0.9082723988973989,
+      "fp": 16,
+      "fn": 13,
+      "notices": 200,
+      "prediction": "runs/harness_improve_20260919/eval/r3_official_fresh/submission.csv",
+      "sha256": "9fcf950ca1b6934e89922c6e30079b029bd8c39cc304bf83a4d960e4f3d0d3e9",
+      "metrics": "runs/harness_improve_20260919/eval/r3_official_fresh/score.json",
+      "metric_key": [
+        "macro_f1"
+      ],
+      "full_fresh_inference": false,
+      "new_model_calls": 0,
+      "source_fingerprint": "1b0d534291004938dfa86c0a9f381d2e28930c8efb815d5ac9004da2a511e497",
+      "official_score": null,
+      "production_adopted": true,
+      "recoveries": 1,
+      "new_errors": 0,
+      "limitation": "Zero-call replay; default-config model inputs of build_03 are token-identical to build_02; development200 is in-sample."
     }
   ],
   "protected_files": [

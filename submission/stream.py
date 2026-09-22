@@ -1,10 +1,12 @@
 """Record-major streaming execution against the one fixed engine.
 
-Contract: every input record ends with 24 predictions in the CSV, in time.
+Contract: every input record ends with 24 predictions in the CSV, in time;
+a run in which the model never answered writes no CSV.
 Records enter the engine in input order, each record's shared-prefix requests
 adjacent so the prefix cache is still warm; format failures are retried at
-once; and per record the scheduler runs the richest judgment tier the
-remaining budget affords. Prompts, schemas and consumers are the canonical
+once; and each record's judgment tier comes from a plan fixed before the first
+submission, the richest the budget affords, with measured costs deciding only
+once the run falls behind that plan. Prompts, schemas and consumers are the canonical
 ones. This module decides only which prepared requests run and when, and it
 records every such decision.
 """
@@ -15,13 +17,16 @@ import dataclasses
 import gzip
 import hashlib
 import json
+import os
 import time
 import traceback
 from pathlib import Path
 
 from .b4_entry import PROFILES
 from .engine import serial
+from .pps import corpus_lines, precision_gates
 from .pps.data import ABSENCE, missing_evidence_items, write_csv
+from .prep import PROFILE_ITEMS
 from .runtime import Journal, format_recovery_packet, sha256, source_manifest
 
 # Cheaper tiers drop, in order, the work measured least valuable per second of
@@ -42,6 +47,7 @@ FALLBACK_TIER = 'deadline_source_rules'
 # prefix is still resident; the long-decoding A10 comes third.
 SUBMIT_ORDER = ('A1', 'A19', 'A10', 'Q10', 'L19', 'W20')
 A_PROFILES = ('A1', 'A10', 'A19')
+RULE_PROFILE = {k: profile for profile, items in PROFILE_ITEMS.items() for k in items}   # item -> source-rule row
 # Observed on the A100-40GB development200 stream run (2026-09-19): tokens per
 # executed request beyond the prefix cache, decode tokens, the fraction of
 # records that carry the packet or pass its gate, and the cached share.
@@ -49,6 +55,12 @@ PRIOR_TOKENS = {'A1': (10944, 256), 'A10': (3439, 1062), 'A19': (4500, 286), 'L1
                 'Q10': (9371, 118), 'S9': (9794, 236), 'W20': (12000, 300)}
 PRIOR_PRESENCE = {'A1': 1., 'A10': 1., 'A19': 1., 'L19': 1., 'Q10': .585, 'S9': .188, 'W20': 0.}
 PRIOR_CACHED = {'A1': .11, 'A10': .71, 'A19': .66, 'L19': .01, 'Q10': 0., 'S9': .13, 'W20': 0.}
+# The fixed tier plan's only machine inputs: engine seconds per new prefill and
+# per decode token on the official L40S image, and the engine-ready time the plan
+# assumes. Update this one set from a measured official-image run; provenance in
+# docs/RUNTIME_STREAMING.md.
+PLAN_PRIORS = {'prefill_seconds_per_token': 133.8e-6, 'decode_seconds_per_token': 1.314e-3,
+               'engine_ready_seconds': 320.}
 
 
 @dataclasses.dataclass
@@ -59,6 +71,14 @@ class StreamOptions:
     tier_ceiling: int = 2               # tiers 0/1 cost more and scored lower than tier2 on fresh dev200 runs
     tier_floor: int = len(TIERS) - 1
     projection_records: int | None = None
+    # 'fixed': FixedTierPlan, tiers decided per record before the first submission;
+    # 'adaptive': TierPolicy decides every record from measured costs.
+    tier_plan: str = 'fixed'
+    plan_prefill_seconds_per_token: float = PLAN_PRIORS['prefill_seconds_per_token']
+    plan_decode_seconds_per_token: float = PLAN_PRIORS['decode_seconds_per_token']
+    plan_engine_ready_seconds: float = PLAN_PRIORS['engine_ready_seconds']
+    guard_reserve_fraction: float = .5  # a fixed plan may lag by this share of its reserve before TierPolicy takes over
+    guard_min_slack_seconds: float = 120.
     # Engine cost priors: A100-40GB, int8 weight-only MoE with the default
     # Triton config, fitted on the 2026-09-19 stream runs (prefill dominates).
     prior_prefill_seconds_per_token: float = 157e-6
@@ -85,6 +105,13 @@ class StreamOptions:
             raise ValueError('Lookahead, dwell and steady-state sizes must be positive')
         if self.projection_records is not None and self.projection_records < 1:
             raise ValueError('Projection record count must be positive')
+        if self.tier_plan not in ('fixed', 'adaptive'):
+            raise ValueError("Tier plan must be 'fixed' or 'adaptive'")
+        if (min(self.plan_prefill_seconds_per_token, self.plan_decode_seconds_per_token) <= 0
+                or self.plan_engine_ready_seconds < 0):
+            raise ValueError('Plan cost priors must be positive and the planned engine-ready time nonnegative')
+        if not 0 < self.guard_reserve_fraction < 1 or self.guard_min_slack_seconds < 0:
+            raise ValueError('The guard must keep part of the plan reserve')
 
 
 class ProfileStats:
@@ -292,15 +319,104 @@ class TierPolicy:
             self.since_change += 1
         return chosen
 
+    def receipt(self):
+        return {'mode': 'adaptive'}
+
+
+class FixedTierPlan(TierPolicy):
+    """Per-record tiers fixed before the first submission: the same input gets the same requests.
+
+    The plan reads the record count (projection_records when larger) and priors
+    only: PRIOR_TOKENS/PRIOR_PRESENCE for each tier's work per record, PLAN_PRIORS
+    for the engine. It is the richest mix of two adjacent tiers whose planned work
+    meets TierPolicy's budget rule, work <= time left x (1 - margin_fraction), with
+    time counted from the planned engine-ready time; the cheaper tier's records
+    are spread evenly by input index. Nothing measured moves a tier while the run
+    keeps to the plan's schedule. Guard: when a submission starts later than its
+    planned start by more than max(guard_min_slack_seconds, guard_reserve_fraction
+    x the planned reserve), TierPolicy decides that record and every later one.
+    """
+
+    def __init__(self, options, stats, model, *, total_records, clock, submit_deadline, started_at):
+        super().__init__(options, stats, model, total_records=total_records, clock=clock,
+                         submit_deadline=submit_deadline)
+        self.records, self.started_at = total_records, started_at
+        prior = ProfileStats()
+        self.cost = {t: prior.seconds_per_record(t, options.plan_prefill_seconds_per_token,
+                                                 options.plan_decode_seconds_per_token)
+                     for t in range(options.tier_ceiling, options.tier_floor + 1)}
+        # TierPolicy's first-decision view from options alone (prior latency reserve), so no clock enters.
+        self.time_left = (options.total_runtime_seconds - options.margin_seconds - options.plan_engine_ready_seconds
+                          - max(0., self.expected_latency() - options.abort_grace_seconds))
+        budget, n = self.time_left * (1 - options.margin_fraction), self.total
+        self.rich = self.cheap = options.tier_floor
+        rich_count = n
+        for tier in range(options.tier_ceiling, options.tier_floor + 1):
+            if n * self.cost[tier] <= budget:
+                if tier == options.tier_ceiling:
+                    self.rich = self.cheap = tier
+                else:
+                    self.rich, self.cheap = tier - 1, tier
+                    rich_count = int((budget - n * self.cost[tier]) // (self.cost[tier - 1] - self.cost[tier]))
+                break
+        cheap_count = n - rich_count
+        # Bresenham spreading: record i is cheap where the running cheap quota crosses an integer.
+        self.tiers = [self.cheap if (i + 1) * cheap_count // n > i * cheap_count // n else self.rich
+                      for i in range(n)]
+        self.starts, elapsed = [], options.plan_engine_ready_seconds
+        for tier in self.tiers:
+            self.starts.append(elapsed)      # planned start of each record, seconds after started_at
+            elapsed += self.cost[tier]
+        self.work = elapsed - options.plan_engine_ready_seconds
+        self.reserve = self.time_left - self.work
+        self.slack = max(options.guard_min_slack_seconds, options.guard_reserve_fraction * self.reserve)
+        self.max_lag = self.switch_index = self.switch_elapsed = self.switch_lag = None
+        if self.tiers:
+            self.current = self.tiers[0]
+
+    def decide(self, submitted):
+        if self.switch_index is None:
+            elapsed = self.clock() - self.started_at
+            lag = elapsed - self.starts[submitted]
+            self.max_lag = lag if self.max_lag is None else max(self.max_lag, lag)
+            if lag <= self.slack:
+                self.current = self.tiers[submitted]
+                return self.current
+            self.switch_index, self.switch_elapsed, self.switch_lag = submitted, round(elapsed, 1), round(lag, 1)
+            self.since_change = 10 ** 9     # TierPolicy starts as at run start, from the tier last planned
+        return super().decide(submitted)
+
+    def receipt(self):
+        return {'mode': 'fixed', 'records': self.records, 'plan_records': self.total,
+                'planned_counts': dict(collections.Counter(TIERS[t]['name'] for t in self.tiers[:self.records])),
+                'plan_sha256': hashlib.sha256(bytes(self.tiers)).hexdigest(),
+                'seconds_per_record': {TIERS[t]['name']: round(c, 4) for t, c in self.cost.items()},
+                'priors': {'prefill_seconds_per_token': self.options.plan_prefill_seconds_per_token,
+                           'decode_seconds_per_token': self.options.plan_decode_seconds_per_token,
+                           'engine_ready_seconds': self.options.plan_engine_ready_seconds},
+                'time_left_seconds': round(self.time_left, 1), 'planned_work_seconds': round(self.work, 1),
+                'reserve_seconds': round(self.reserve, 1), 'guard_slack_seconds': round(self.slack, 1),
+                'max_lag_seconds': None if self.max_lag is None else round(self.max_lag, 1),
+                'guard_triggered': self.switch_index is not None, 'switch_record_index': self.switch_index,
+                'switch_elapsed': self.switch_elapsed, 'switch_lag_seconds': self.switch_lag}
+
+
+def journaling():
+    """Notice-text journals are development evidence only; the official run leaves the CSV and aggregates."""
+    return os.environ.get('PPS_STREAM_JOURNAL') == '1'
+
 
 class Appender:
-    """Rotating gzip JSONL writer; each row is flushed so a crash keeps evidence."""
+    """Rotating gzip JSONL writer; each row is flushed so a crash keeps evidence. Writes only when journaling()."""
 
     def __init__(self, root, prefix, rotate=200):
         self.root, self.prefix, self.rotate = Path(root), prefix, rotate
         self.stream, self.files, self.rows = None, [], 0
+        self.enabled = journaling()
 
     def write(self, row):
+        if not self.enabled:
+            return
         if self.stream is None or self.rows >= self.rotate:
             self._open()
         self.stream.write(json.dumps(row, ensure_ascii=False) + '\n')
@@ -340,6 +456,10 @@ class RecordState:
         self.error = None
         self.final = None
         self.b3 = None
+        self.details = {}
+        self.focused_decided = False
+        self.focused_preparing = False
+        self.focused_proofs = {}
 
 
 class StreamingExecutor:
@@ -356,8 +476,12 @@ class StreamingExecutor:
         self.abort_deadline = self.submit_deadline + options.abort_grace_seconds
         self.stats = ProfileStats()
         self.model = CostModel(options.prior_prefill_seconds_per_token, options.prior_decode_seconds_per_token)
-        self.policy = TierPolicy(options, self.stats, self.model, total_records=len(self.records), clock=clock,
-                                 submit_deadline=self.submit_deadline)
+        if options.tier_plan == 'fixed':
+            self.policy = FixedTierPlan(options, self.stats, self.model, total_records=len(self.records), clock=clock,
+                                        submit_deadline=self.submit_deadline, started_at=started_at)
+        else:
+            self.policy = TierPolicy(options, self.stats, self.model, total_records=len(self.records), clock=clock,
+                                     submit_deadline=self.submit_deadline)
         self.states = [RecordState(i, r) for i, r in enumerate(self.records)]
         self.ready = {}
         self.prep_cursor = self.submit_cursor = self.rules_cursor = 0
@@ -378,6 +502,14 @@ class StreamingExecutor:
         self.busy_since_tick = False
         self.engine_ready_at = None
         self.first_submit_at = None
+        self.focused_tasks = set()
+        self.focused_reserved_seconds = 0.
+        self.focused_budget_seconds = (len(self.records) * getattr(pipeline.config, 'focused_verify_seconds_per_record', .1619)
+                                       if getattr(pipeline.config, 'focused_verify', False) else 0.)
+        # Loaded here, before the engine: corpus_seen_filter without its index file fails at once.
+        self.corpus_index = corpus_lines.load_for(pipeline)
+        self.source_rule_items = tuple(getattr(pipeline.config, 'source_rule_items', ()) or ())
+        self.precision_gates = tuple(getattr(pipeline.config, 'precision_gates', ()) or ())
 
     # ---- preparation -----------------------------------------------------
     def prefeed(self):
@@ -433,6 +565,17 @@ class StreamingExecutor:
         elif kind == 'consume':
             entry = self.consume_tasks.pop(result['id'])
             self._consumed(entry, result)
+        elif kind == 'focused_prepare':
+            state = self.states[result['id']]
+            self.focused_tasks.discard(state.index)
+            state.focused_preparing = False
+            if state.finalized:
+                return
+            if result.get('error'):
+                state.sources['FV'] = 'preparation_failed: ' + result['error']
+            else:
+                self._submit_focused(state, result['packets'])
+            self._maybe_finalize(state)
         else:
             raise RuntimeError('Unexpected preparation result kind: ' + str(kind))
 
@@ -520,7 +663,8 @@ class StreamingExecutor:
         cached = min(prompt_tokens, native['cached_input_tokens'] or 0)
         new_prefill = prompt_tokens - cached
         decode = response.get('output_tokens', 0)
-        self.stats.observe_request(profile, new_prefill, decode, cached / prompt_tokens if prompt_tokens else None)
+        self.stats.observe_request('FV' if profile.startswith('FV:') else profile,
+                                   new_prefill, decode, cached / prompt_tokens if prompt_tokens else None)
         self.model.observe(new_prefill, decode)
         if response.get('generation_stall'):
             self._resolve_failure(state, profile, attempt, packet, 'JSON generation stalled', response=response)
@@ -546,6 +690,10 @@ class StreamingExecutor:
             self._resolve_failure(state, profile, attempt, packet, result['cpu_error'], response=response)
             return
         state.rows[profile] = result['row']
+        if getattr(self.pipeline.config, 'focused_verify', False):
+            state.details[profile] = result['details']
+            if profile.startswith('FV:'):
+                state.focused_proofs[profile] = result['details']
         state.sources[profile] = 'model_response' if attempt == 0 else f'format_recovery_attempt_{attempt}'
         self.consumed_out.write({'request_key': packet['request_key'], 'record_id': state.record['id'],
                                  'attempt': attempt, 'row': result['row'], 'details': result['details'],
@@ -556,6 +704,8 @@ class StreamingExecutor:
 
     def _resolve_failure(self, state, profile, attempt, packet, error, *, response=None, retryable=False):
         retries = getattr(self.pipeline.config, 'max_response_retries', 0)
+        if profile.startswith('FV:'):
+            retries = 0  # Optional calls cannot spend the envelope on format recovery.
         self.consumed_out.write({'request_key': packet['request_key'], 'record_id': state.record['id'],
                                  'attempt': attempt, 'row': None, 'details': None, 'error': error,
                                  'retryable': retryable, 'response': response})
@@ -597,12 +747,53 @@ class StreamingExecutor:
             self._fallback(state, 'S9', 'submissions closed')
 
     # ---- finalization ----------------------------------------------------
+    def _gate_focused(self, state):
+        state.focused_decided = True
+        if (not getattr(self.pipeline.config, 'focused_verify', False) or self.submissions_closed or self.aborted
+                or state.tier != TIERS[self.options.tier_ceiling]['name']
+                or self.policy.current != self.options.tier_ceiling
+                or self.focused_budget_seconds - self.focused_reserved_seconds < 1024 * .35e-3
+                or 'A19' not in state.planned or self.clock() >= self.policy.effective_submit_deadline()):
+            return
+        state.focused_preparing = True
+        self.focused_tasks.add(state.index)
+        details = [state.fallback_rows[p][1] for p in A_PROFILES if p in state.fallback_rows]
+        details.extend(state.details[p] for p in ('A1', 'A10', 'A19', 'Q10') if p in state.details)
+        self.pool.submit({'kind': 'focused_prepare', 'id': state.index, 'record': state.record,
+                          'baseline': self._assemble(state, count=False), 'details': details})
+
+    def _submit_focused(self, state, packets):
+        """Reserve worst-case decode tokens; drop FV before any existing tier."""
+        for packet in packets:
+            view = self.policy.projection(self.submit_cursor)
+            a, b = max(150e-6, view['a']), max(.35e-3, view['b'])
+            cost = a * len(packet['token_ids']) + b * packet['generation']['max_output_tokens']
+            base_need = view['need'][self.options.tier_ceiling]
+            affordable = (base_need + cost <= view['time_left'] * (1-self.options.margin_fraction))
+            if (self.submissions_closed or self.aborted or self.policy.current != self.options.tier_ceiling
+                    or self.clock() >= self.policy.effective_submit_deadline() or not affordable
+                    or self.focused_reserved_seconds + cost > self.focused_budget_seconds):
+                self.counts['focused_budget_drops'] += 1
+                continue
+            self.focused_reserved_seconds += cost
+            profile = packet['batch']
+            state.packets[profile] = packet
+            state.planned.append(profile)
+            self.packet_hash.update(packet['token_ids_sha256'].encode())
+            self.packets_out.write(packet)
+            self._submit_request(state, profile, packet, 0)
+            self.counts['focused_requests'] += 1
+
     def _maybe_finalize(self, state):
         if state.finalized or state.pending:
             return
         if 'S9' in state.planned and not state.s9_decided:
             return
         if any(p not in state.rows for p in state.planned):
+            return
+        if not state.focused_decided:
+            self._gate_focused(state)
+        if state.focused_preparing:
             return
         self._finalize(state)
 
@@ -628,7 +819,7 @@ class StreamingExecutor:
         state.pending = {}
         self._progress()
 
-    def _assemble(self, state):
+    def _assemble(self, state, *, count=True):
         result = {'id': state.record['id'], **{f'v{k}': None for k in range(1, 25)}, **{f'e{k}': '' for k in range(1, 25)}}
         for profile in A_PROFILES:
             row = state.rows.get(profile)
@@ -636,7 +827,8 @@ class StreamingExecutor:
                 row = state.fallback_rows[profile][0] if profile in state.fallback_rows else None
                 if row is not None:
                     state.sources.setdefault(profile, 'source_rules_not_planned')
-                    self.counts['source_rule_rows'] += 1
+                    if count:
+                        self.counts['source_rule_rows'] += 1
             if row is not None:
                 result.update(row)
         for profile in ('Q10', 'S9'):
@@ -648,12 +840,43 @@ class StreamingExecutor:
             row = state.rows.get(profile)
             if row:
                 result.update({k: row[k] for k in ('v20', 'e20') if k in row})
+        # Source-only judgment for the configured items: there the model verdict adds
+        # firing on untouched notices, not injected edits.
+        for k in getattr(self, 'source_rule_items', ()):
+            source = state.fallback_rows.get(RULE_PROFILE[k])
+            if source is not None:
+                result[f'v{k}'], result[f'e{k}'] = source[0][f'v{k}'], source[0][f'e{k}']
+        # Resolve all focused answers together: conflicting routes for the same
+        # cited clause abstain, and existing positives/evidence are preserved.
+        clauses = collections.defaultdict(set)
+        for proof in state.focused_proofs.values():
+            if proof.get('reason') == 'accepted':
+                s = proof['citation']
+                clauses[(proof['family'], s['doc_index'], s['start'], s['end'])].add(proof['item'])
+        for proof in state.focused_proofs.values():
+            if proof.get('reason') != 'accepted':
+                continue
+            s, item = proof['citation'], proof['item']
+            key = (proof['family'], s['doc_index'], s['start'], s['end'])
+            if len(clauses[key]) == 1 and not result[f'v{item}']:
+                result[f'v{item}'], result[f'e{item}'] = 1, proof['evidence']
         filled = [k for k in range(1, 25) if result[f'v{k}'] is None]
         for k in filled:
             result[f'v{k}'], result[f'e{k}'] = 0, ''
         if filled:
             state.sources['_filled_zero_items'] = filled
-            self.counts['filled_zero_cells'] += len(filled)
+            if count:
+                self.counts['filled_zero_cells'] += len(filled)
+        index = getattr(self, 'corpus_index', None)
+        if index is not None:
+            dropped = corpus_lines.apply(state.record, result, index)
+            if dropped:
+                state.sources['_corpus_seen_dropped'] = dropped
+        gates = getattr(self, 'precision_gates', ())
+        if gates:
+            cleared = precision_gates.apply(state.record, result, gates)
+            if cleared:
+                state.sources['_precision_gates'] = cleared
         state.b3 = b3
         return result
 
@@ -754,7 +977,7 @@ class StreamingExecutor:
                     self._finalize_idle()
                 if now >= self.abort_deadline and not self.aborted:
                     self._abort_inflight()
-                elif (self.submit_cursor >= len(self.states) and not self.inflight and not self.consume_tasks
+                elif (self.submit_cursor >= len(self.states) and not self.inflight and not self.consume_tasks and not self.focused_tasks
                       and self.finalized < len(self.states)):
                     # Nothing can arrive any more: complete every record from what it has.
                     for state in self.states:
@@ -776,7 +999,7 @@ class StreamingExecutor:
                 appender.close()
 
     def _emergency_csv(self):
-        """A complete CSV from whatever finished plus source-only rows; never nothing."""
+        """A complete CSV from whatever finished plus source-only rows, once the model has answered."""
         try:
             for state in self.states:
                 if not state.finalized:
@@ -792,6 +1015,9 @@ class StreamingExecutor:
             self.journal.save('emergency_csv_failure.json', {'traceback': traceback.format_exc()})
 
     def _write_csv(self, *, emergency=False):
+        if not self.counts['responses']:
+            # The competition requires at least one answered LLM call; a rules-only file is never submitted.
+            raise RuntimeError('No LLM response arrived; refusing a rules-only submission')
         rows = [self.states[i].final for i in range(len(self.states))]
         config = self.pipeline.config
         path = self.journal.root / 'submission.csv'
@@ -813,7 +1039,7 @@ class StreamingExecutor:
     def _complete(self):
         self._write_csv()
         b3_rows = [state.b3 for state in self.states]
-        if all(r is not None and all(r[f'v{k}'] is not None for k in range(1, 25)) for r in b3_rows):
+        if journaling() and all(r is not None and all(r[f'v{k}'] is not None for k in range(1, 25)) for r in b3_rows):
             try:
                 write_csv(self.journal.root / 'B3.csv', b3_rows, recs=self.records,
                           require_positive_evidence=self.pipeline.config.require_positive_evidence)
@@ -831,11 +1057,17 @@ class StreamingExecutor:
                   'records_after_submission_deadline': self.counts['records_after_submission_deadline'],
                   'aborted_requests': self.counts['aborted_requests'],
                   's9_gate_skips': self.counts['s9_gate_skips'], 'code_only_skips': self.counts['code_only_skips'],
-                  'tier_counts': dict(self.tier_counts), 'tier_timeline': self.policy.timeline,
+                  'tier_counts': dict(self.tier_counts), 'tier_plan': self.policy.receipt(),
+                  'tier_timeline': self.policy.timeline,
                   'final_tier': TIERS[self.policy.current]['name'],
                   'measured_tier_decisions': self.policy.measured_decisions,
                   'cost_model': self.model.snapshot(),
                   'profile_stats': self.stats.snapshot(a, b),
+                  'focused_verify': {'enabled': getattr(self.pipeline.config, 'focused_verify', False),
+                                     'requests': self.counts['focused_requests'],
+                                     'budget_drops': self.counts['focused_budget_drops'],
+                                     'reserved_seconds': self.focused_reserved_seconds,
+                                     'budget_seconds': self.focused_budget_seconds},
                   'expected_record_latency_seconds': self.policy.expected_latency(),
                   'seconds': now - self.started_at, 'engine_load_seconds': getattr(self.runner, 'load_seconds', None),
                   'timing': {'engine_ready_elapsed': None if self.engine_ready_at is None else round(self.engine_ready_at - self.started_at, 1),
@@ -863,7 +1095,7 @@ class StreamingExecutor:
 def execute_stream(input_path, data_dir, output_dir, *, tokenizer_dir, runner_factory, options,
                    source_options=None, limit=None, started_at=None, pool=None, records_override=None,
                    clock=time.monotonic, pipeline=None, engine_overrides=None, pre_engine=None):
-    """Prepare in workers, load the engine once, stream every record, always write the CSV."""
+    """Prepare in workers, load the engine once, stream every record, write the CSV once the model answered."""
     from .pps.data import records as read_records
     from .pps.input_contract import diagnostics, VERSION as INPUT_CONTRACT_VERSION
     journal = Journal(output_dir)
@@ -875,9 +1107,10 @@ def execute_stream(input_path, data_dir, output_dir, *, tokenizer_dir, runner_fa
         journal.progress(phase='read_inputs')
         original_input_sha256 = sha256(input_path) if Path(input_path).is_file() else None
         recs = list(records_override) if records_override is not None else list(read_records(input_path, limit))
-        journal.save('input_contract.json', {'version': INPUT_CONTRACT_VERSION,
-            'original_input_sha256': original_input_sha256, 'records': [diagnostics(r) for r in recs],
-            'prediction_features_added': False})
+        if journaling():
+            journal.save('input_contract.json', {'version': INPUT_CONTRACT_VERSION,
+                'original_input_sha256': original_input_sha256, 'records': [diagnostics(r) for r in recs],
+                'prediction_features_added': False})
         journal.save('input_freeze.json', {'epoch': time.time(), 'labels_read': False, 'source_sha256': code,
             'original_input_sha256': original_input_sha256, 'records': len(recs), 'executor': 'stream'})
         if pipeline is None:

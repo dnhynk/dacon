@@ -370,6 +370,14 @@ independent A judgment. Empty discovery remains fallible model review.
         'deterministic_whole_specification_permissions':source_whole_permissions,
         'fallback':'independent_A_judgment' if blockers else None,
         'absence_inferred':False, 'positive_inferred':False})
+    if not blockers and row['v9'] == 0:
+        # The optional specialist must preserve the same source-only positive
+        # used by the shared A consumer. No negative CPU verdict is inferred.
+        from .specification_purchase import named_purchase_check
+        purchase = named_purchase_check(record)
+        if purchase is not None:
+            row = {'v9': 1, 'e9': purchase['evidence']}
+            details.append(purchase)
     return ({} if blockers else row), details
 
 

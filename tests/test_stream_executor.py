@@ -13,6 +13,12 @@ from submission.prep import PreparationPool
 from submission.stream import StreamOptions, StreamingExecutor, TIERS, execute_stream
 
 
+@pytest.fixture(autouse=True)
+def development_journal(monkeypatch):
+    """These contracts read the notice-text journals, which only development runs write."""
+    monkeypatch.setenv('PPS_STREAM_JOURNAL', '1')
+
+
 def read_rows(path):
     with gzip.open(path, 'rt', encoding='utf-8') as handle:
         return [json.loads(line) for line in handle]
@@ -89,10 +95,11 @@ class FakeRunner:
         self.submitted, self.aborted = [], []
         self.load_seconds, self.tokenizer, self.closed = 1., None, False
         self.fail_after = None
+        self.steps_for = {}         # record id -> steps, overriding steps_to_finish
 
     def submit(self, request_id, pkt):
         self.submitted.append(request_id)
-        self.queue[request_id] = [pkt, self.steps_to_finish]
+        self.queue[request_id] = [pkt, self.steps_for.get(pkt['record_id'], self.steps_to_finish)]
 
     def step(self):
         self.clock.advance(self.seconds_per_step)
@@ -233,7 +240,9 @@ def test_submission_deadline_completes_the_csv_from_source_rules(tmp_path):
     pipeline = SyntheticPipeline()
     clock = Clock()
     runner = FakeRunner(answer, clock, steps_to_finish=2, seconds_per_step=30.)
-    options = StreamOptions(total_runtime_seconds=300, margin_seconds=180, abort_grace_seconds=60, inflight_requests=2, tier_ceiling=0)
+    # Tier pinned to canonical: a fixed plan in a budget below its planned engine-ready time is all a1_only.
+    options = StreamOptions(total_runtime_seconds=300, margin_seconds=180, abort_grace_seconds=60, inflight_requests=2,
+                            tier_ceiling=0, tier_floor=0)
     report, runner = run(tmp_path, recs, pipeline, answer, options=options, clock=clock, runner=runner)
     assert report['records'] == 4 and report['records_after_submission_deadline'] >= 1
     assert report['records_without_model_call'] == report['records_after_submission_deadline']
@@ -251,9 +260,10 @@ def test_abort_deadline_finalizes_inflight_records(tmp_path):
     pipeline = SyntheticPipeline()
     clock = Clock()
     runner = FakeRunner(answer, clock, steps_to_finish=1000, seconds_per_step=20.)
-    options = StreamOptions(total_runtime_seconds=300, margin_seconds=180, abort_grace_seconds=60, tier_ceiling=0)
+    runner.steps_for = {'r1': 1}    # r1 answers; r2 is still in flight at the abort deadline
+    options = StreamOptions(total_runtime_seconds=300, margin_seconds=180, abort_grace_seconds=60, tier_ceiling=0, tier_floor=0)
     report, runner = run(tmp_path, recs, pipeline, answer, options=options, clock=clock, runner=runner)
-    assert report['aborted_requests'] == 8 and runner.aborted
+    assert report['aborted_requests'] == 4 and runner.aborted
     assert report['deadline']['aborted'] is True
     rows = csv_rows(tmp_path / 'output/submission.csv')
     assert set(rows) == {'r1', 'r2'} and all(v in {'0', '1'} for row in rows.values() for k, v in row.items() if k.startswith('v'))
@@ -264,13 +274,39 @@ def test_engine_failure_still_writes_a_complete_csv_before_raising(tmp_path):
     pipeline = SyntheticPipeline()
     clock = Clock()
     runner = FakeRunner(answer, clock)
-    runner.fail_after = 8
+    runner.fail_after = 12          # r1 and r2 are answered, the engine fails with r3 in flight
     with pytest.raises(RuntimeError, match='synthetic engine failure'):
         run(tmp_path, recs, pipeline, answer, clock=clock, runner=runner)
     assert (tmp_path / 'output/failure.json').is_file()
     rows = csv_rows(tmp_path / 'output/submission.csv')
     assert set(rows) == {'r1', 'r2', 'r3'}
     assert runner.closed
+
+
+def test_a_run_without_any_model_response_refuses_a_rules_only_csv(tmp_path):
+    recs = [record('r1'), record('r2')]
+    clock = Clock()
+    runner = FakeRunner(answer, clock)
+    runner.fail_after = 8           # the engine fails before its first answer
+    with pytest.raises(RuntimeError, match='synthetic engine failure'):
+        run(tmp_path / 'crash', recs, SyntheticPipeline(), answer, clock=clock, runner=runner)
+    clock = Clock()
+    runner = FakeRunner(answer, clock, steps_to_finish=1000, seconds_per_step=20.)
+    options = StreamOptions(total_runtime_seconds=300, margin_seconds=180, abort_grace_seconds=60, tier_ceiling=0)
+    with pytest.raises(RuntimeError, match='No LLM response'):
+        run(tmp_path / 'silent', recs, SyntheticPipeline(), answer, options=options, clock=clock, runner=runner)
+    for case in ('crash', 'silent'):
+        assert not (tmp_path / case / 'output/submission.csv').exists()
+        assert (tmp_path / case / 'output/emergency_csv_failure.json').is_file()
+
+
+def test_official_default_leaves_no_notice_text_in_the_output(tmp_path, monkeypatch):
+    monkeypatch.delenv('PPS_STREAM_JOURNAL')
+    report, runner = run(tmp_path, [record('r1'), record('r2')], SyntheticPipeline(q10={'r2'}), answer)
+    names = sorted(p.name for p in (tmp_path / 'output').iterdir())
+    assert 'submission.csv' in names and 'input_contract.json' not in names
+    assert all(n == 'submission.csv' or n.endswith('.json') for n in names)   # no journal, no B3.csv
+    assert report['journal_files'] == {'native': [], 'consumed': [], 'packets': [], 'records': []}
 
 
 def test_code_only_a10_skips_the_engine(tmp_path, monkeypatch):

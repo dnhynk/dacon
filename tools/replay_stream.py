@@ -113,6 +113,7 @@ def main():
     pool = PreparationPool(args.data_dir, args.tokenizer_dir, {}, workers=args.workers, encoder=args.embed_device,
                            encoder_dir=os.environ.get('PPS_EMBED_DIR'))
     began = time.monotonic()
+    os.environ.setdefault('PPS_STREAM_JOURNAL', '1')   # verify_stream_run.py reads the journals
     report = execute_stream(args.input, args.data_dir, args.output, tokenizer_dir=args.tokenizer_dir,
                             runner_factory=factory, options=options, limit=args.limit, pool=pool)
     report['replay'] = {'missing_frozen_responses': runners[0].missing if runners else None,

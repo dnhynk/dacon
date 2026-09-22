@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import difflib
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -59,6 +61,117 @@ def parse_output(text, spans, items=tuple(range(1, 25)), *, rec=None):
     return labels, evidence
 
 
+def _repair_evidence_locator(rec, row, response, spans, items, values, evidence):
+    """Repair only a model-owned citation after all judgment decisions.
+
+    A fact's explicit S locator and a unique long literal source match must
+    agree. Never infer a violation, invent a quote, or replace a rule's witness.
+    """
+    from .model_citation import cited_indices, _span_source
+    fields = {
+        # The joint v1/v9 fact mixes licensing, institutional limits and models;
+        # a literal match alone cannot identify which condition supports v1.
+        **{k: '필수실적_배점구별_금액비교' for k in (2, 3, 4, 8)},
+        **{k: '지역범위_금액상한_예외' for k in (5, 6, 7)},
+        19: '확약서발급주체_보유시점_제출시점',
+        21: '공동계약방식_최소비율',
+        22: '사전설명회_제안서마감_날짜차이',
+        23: '사전설명회_제안서마감_날짜차이',
+        24: '본문과메타의동일필드차이',
+    }
+    obj = response_json(response['text'])
+    facts = obj.get('facts', {}) if isinstance(obj, dict) else {}
+    repairs = []
+    for k in items:
+        if (k not in fields or not values[k-1] or row[f'v{k}'] != 1
+                or row[f'e{k}'] != evidence[k-1]):
+            continue
+        summary = facts.get(fields[k], '') if isinstance(facts, dict) else ''
+        if not isinstance(summary, str):
+            continue
+        candidates, already_grounded = {}, False
+        for index in cited_indices(summary, len(spans)):
+            span = spans[index]
+            text = _span_source(rec, span)
+            if text is None:
+                continue
+            for match in difflib.SequenceMatcher(None, summary, span.text, autojunk=False).get_matching_blocks():
+                anchor = span.text[match.b:match.b + match.size].strip()
+                if len(anchor) < 20 or len(re.findall('[가-힣]', anchor)) < 8:
+                    continue
+                if re.sub(r'\s+', '', anchor) in re.sub(r'\s+', '', row[f'e{k}']):
+                    already_grounded = True
+                if span.text.count(anchor) != 1:
+                    # One S locator can still contain repeated candidate clauses.
+                    already_grounded = True
+                    continue
+                # Quote the complete source paragraph, never a clipped predicate.
+                start, end = span.start + match.b, span.start + match.b + match.size
+                lo = text.rfind('\n\n', 0, start) + 2
+                if lo == 1:
+                    lo = 0
+                hi = text.find('\n\n', end)
+                if hi < 0:
+                    hi = len(text)
+                if hi - lo > 500:
+                    continue
+                source = (span.doc_index, lo, hi)
+                quote = clean_evidence(text[lo:hi], rec, source=source)
+                if quote and anchor in quote:
+                    candidates[source] = (quote, index + 1)
+        if already_grounded or len(candidates) != 1:
+            continue
+        source, (quote, number) = next(iter(candidates.items()))
+        if quote == row[f'e{k}']:
+            continue
+        if k in (2, 3, 4, 8):
+            from .performance import performance_facts, validate_model_witness
+            facts = performance_facts(rec)
+            roles = {c['status'] for c in facts['candidates']
+                     if c['evidence']['doc_index'] == source[0]
+                     and c['evidence']['start'] < source[2]
+                     and c['evidence']['end'] > source[1]}
+            if roles & {'scoring', 'forms_or_submission'}:
+                continue  # Mixed-purpose paragraphs are also unsuitable for locator repair.
+            candidate = {**row, f'e{k}': quote}
+            if validate_model_witness(rec, candidate, k, facts) is not None:
+                continue  # Do not replace a missing proof with a scored/form-only clause.
+        repairs.append({'source': 'literal_fact_citation_repair', 'item': k,
+                        'previous_evidence': row[f'e{k}'], 'evidence': quote,
+                        'span_number': number, 'source_range': source,
+                        'judgment_preserved': True, 'semantic_verdict_verified': False})
+        row[f'e{k}'] = quote
+    return repairs
+
+
+def _fill_missing_evidence(rec, row, response, items):
+    """Fill only empty positive citations; never assign a judgment value."""
+    repairs = []
+    for k in (2, 8, 24):
+        if k not in items or row[f'v{k}'] != 1 or row[f'e{k}']:
+            continue
+        if k == 24:
+            from .comparison import compare, missing_evidence
+            obj = response_json(response['text'])
+            facts = obj.get('facts', {})
+            claim = facts.get('본문과메타의동일필드차이') if isinstance(facts, dict) else None
+            candidate = missing_evidence(rec, compare(rec), claim)
+        else:
+            from .performance import performance_facts, missing_evidence
+            candidate = missing_evidence(rec, k, performance_facts(rec))
+        if candidate is None:
+            continue
+        quote = candidate['evidence']
+        di, lo, hi = candidate['source_range']
+        if (not quote or len(quote) > 500 or quote.startswith(('=', '+', '@'))
+                or rec['docs'][di]['text'][lo:hi] != quote):
+            continue
+        row[f'e{k}'] = quote
+        repairs.append({'source': 'confirmed_observation_evidence_fill', 'item': k,
+                        **candidate, 'judgment_preserved': True})
+    return repairs
+
+
 def _response_row(rec, response, prompt, items, config, knowledge, final_items):
     values, evidence = parse_output(response["text"], prompt["spans"], items, rec=rec)
     row = make_row(rec, values, evidence)
@@ -108,6 +221,11 @@ def _response_row(rec, response, prompt, items, config, knowledge, final_items):
         row, table_field = apply_flattened_model_table(rec, row, items=items)
         if table_field is not None:
             rule_details.append(table_field)
+    rule_details.extend(_repair_evidence_locator(
+        rec, row, response, prompt['spans'], items, values, evidence))
+    rule_details.extend(_fill_missing_evidence(rec, row, response, items))
+    from .evidence_selection import select_verdict_evidence
+    rule_details.extend(select_verdict_evidence(rec, row, rule_details, items))
     # Only this pass's items are final here; other grouped items may be unset.
     if config.require_positive_evidence:
         require_evidence(row, final_items)
@@ -171,16 +289,18 @@ class VLLMRunner:
         """One request's exact sampling/grammar contract; shared by both executors."""
         from vllm import SamplingParams
         from vllm.sampling_params import StructuredOutputsParams
+        schema = (p['generation']['schema'] if p.get('generation', {}).get('response_format') == 'focused_verify'
+                  else generation_schema(p.get('generation', {}).get('response_format', self.config.response_format),
+                      len(p['spans']), p['items'], schema_order=p.get('generation', {}).get('schema_order'),
+                      catalog_roles=p.get('generation', {}).get('catalog_roles'),
+                      catalog_fields=p.get('generation', {}).get('catalog_fields'),
+                      specification_inventory=p.get('generation', {}).get('specification_inventory')))
         return SamplingParams(temperature=0., seed=self.config.seed,
                               max_tokens=p.get('generation', {}).get('max_output_tokens', max_tokens or self.config.max_output_tokens),
                               skip_special_tokens=not self.config.enable_thinking,
                               thinking_token_budget=p.get('generation', {}).get('thinking_budget', self.config.thinking_budget_for(p["items"])),
                               structured_outputs=StructuredOutputsParams(
-                                  json=generation_schema(p.get('generation', {}).get('response_format', self.config.response_format),
-                                      len(p["spans"]), p["items"], schema_order=p.get('generation', {}).get('schema_order'),
-                                      catalog_roles=p.get('generation', {}).get('catalog_roles'),
-                                      catalog_fields=p.get('generation', {}).get('catalog_fields'),
-                                      specification_inventory=p.get('generation', {}).get('specification_inventory')),
+                                  json=schema,
                                   disable_any_whitespace=True))
 
     def response_from_native(self, row, prompt):

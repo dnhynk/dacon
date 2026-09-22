@@ -97,6 +97,19 @@ def repair_v9(rec, row, response, spans, *, items):
     if 9 not in items or row.get('v9') not in (1, '1'):
         return result, None
     obj = loads(response['text'])
+    judgments = obj.get('judgments', {}) if isinstance(obj, dict) else {}
+    model_value = None
+    if isinstance(judgments, dict):
+        if isinstance(judgments.get('v9'), dict):
+            model_value = judgments['v9'].get('v')
+        elif isinstance(judgments.get('v'), list):
+            index = tuple(items).index(9)
+            if index < len(judgments['v']):
+                model_value = judgments['v'][index]
+    if model_value == 0 and row.get('e9'):
+        # A CPU-positive witness is independent of the model's negative
+        # explanation. That explanation cannot relocate its evidence.
+        return result, None
     facts = obj.get('facts', {}) if isinstance(obj, dict) else {}
     summary = facts.get(FIELD, '') if isinstance(facts, dict) else ''
     if not isinstance(summary, str) or not summary:

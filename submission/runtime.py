@@ -49,8 +49,8 @@ class Journal:
     def __init__(self, output_dir):
         self.root = Path(output_dir)
         self.root.mkdir(parents=True, exist_ok=True)
-        if any(self.root.iterdir()):
-            raise FileExistsError('Use an empty output directory; existing results are preserved')
+        if (self.root / 'started.json').exists():
+            raise FileExistsError('This output directory holds a prior run; existing results are preserved')
         with (self.root / 'started.json').open('x', encoding='utf-8') as stream:
             json.dump({'epoch': time.time(), 'duplicate_execution_forbidden': True}, stream)
 

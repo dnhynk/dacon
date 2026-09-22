@@ -10,6 +10,8 @@
 | 동결 입력·단일 엔진 전체 실행과 회수 가능한 체크포인트 | `run_frozen_canonical.py`, `checkpoint_native_run.py` |
 | 동결 응답으로 스트리밍 실행기·병렬 준비를 무GPU 재생 | `replay_stream.py --responses 보존실행 --output 새폴더` |
 | 스트리밍 실행 결과를 동결 기준과 대조(패킷 토큰·호출 집합·셀·점수) | `verify_stream_run.py --run 새폴더 --baseline-packets ... --baseline-csv ... --output 새파일` |
+| 스트림 실행의 저장 응답을 현행 소비·판정 코드로 무GPU 재판정(청크 재개, 항목 필터, 보류된 Q10 응답 포함) | `cell_reconsume.py --run-dir 보존실행 --input 레코드 --data-dir data_open/data --output-dir 새폴더 [--key 키 --target-items v24]` |
+| 자연 공고 풀에서 규칙 경로(모델 호출 0회)의 발화 전수 조사(청크 재개, 동결 소스 지정) | `natural_firing_census.py run / summarize / retry-errors` |
 | 동일 코드 ZIP / Colab 노트북 생성 | `build_submission.py` / `create_colab_notebook.py` |
 | 완성된 예측 CSV 채점·세 기준과 비교 | `evaluate.py --labels ... --predictions ... --baseline ... --out 새파일` |
 | 보존한 .751807의 CPU 재현 | `replay_preserved_reference.py --output 새폴더` |

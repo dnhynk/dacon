@@ -44,7 +44,8 @@ def main():
 새 비용이 발생합니다. 기본 실행기는 스트리밍입니다: 준비 워커가 공고를 병렬로 패킷화하고,
 모델은 한 번 적재해 공고 단위로 A1/A10/A19를 연속 투입하며, 남은 시간 예측에 따라
 공고별로 L19·Q10·S9·A10 모델 호출을 줄입니다(docs/RUNTIME_STREAMING.md).
-재현 제어와 native 응답 기록은 별도 노트북 코드가 아닌 제출 본체가 담당합니다.
+재현 제어와 native 응답 기록은 별도 노트북 코드가 아닌 제출 본체가 담당합니다. 이 노트북은 개발 저널
+(`PPS_STREAM_JOURNAL=1`: 패킷·원응답·레코드)을 켜고, 공식 실행은 submission.csv와 집계 JSON만 남깁니다.
 개발 타이밍 확인에는 `--projection-records 1853`을, 옛 32공고 묶음 실행에는 `--executor cohort`를 씁니다.
 
 실행 성공과 점수 향상, L40S 2시간 충족은 서로 다른 확인입니다.
@@ -90,7 +91,7 @@ args = [str(PY), '-B', str(WORK / 'script.py'), '--input', str(INPUT),
         '--output-dir', str(OUTPUT_DIR)]
 with LOG.open('x', encoding='utf-8') as stream:
     with subprocess.Popen(args, cwd=WORK, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                          text=True, bufsize=1) as proc:
+                          text=True, bufsize=1, env={**os.environ, 'PPS_STREAM_JOURNAL': '1'}) as proc:
         for line in proc.stdout:
             print(line, end='', flush=True)
             stream.write(line)

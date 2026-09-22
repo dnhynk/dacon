@@ -239,3 +239,34 @@ def candidate_fields(record):
         candidate = {name: value for name, value in item.items() if name != 'role'}
         result.append({**candidate, 'candidate_role': item['role']})
     return result
+
+
+# The procurement system appends the contract method and amount band to every
+# notice title, e.g. ``...처리 용역(제한경쟁·3억원미만)``. A line, or the leading
+# cell of a table row, that holds exactly such a title is the notice's own
+# purchase title even where the table layout gives it no field label.
+_NOTICE_TITLE_SUFFIX = (r'[(（][ \t]*(?:(?:제한|일반|지명)[ \t]*경[ \t]*쟁|수[ \t]*의[ \t]*계[ \t]*약)'
+                        r'[ \t]*[·ㆍ][ \t]*\d+[ \t]*(?:억|천만)[ \t]*원[ \t]*(?:미만|이상)[ \t]*[)）]')
+_NOTICE_TITLE_CELL = re.compile(
+    r'(?m)^[ \t○◯❍□■ㆍ·ㅇ-]*(?P<title>[^\r\n|]{2,160}?' + _NOTICE_TITLE_SUFFIX + r')'
+    r'(?:[ \t]*[(\[][ \t]*(?:긴급|재공고)[ \t]*[)\]])?[ \t]*(?=\||\r?$)')
+
+
+def notice_title_fields(record):
+    """Unlabeled cells holding a complete system-formatted notice title.
+
+    For the scope consumer only; discovery and prompt field hints are unchanged.
+    The title must name actual work: a masked or generic title, a document
+    pointer, or a mention of the title inside a sentence is not such a cell.
+    """
+    result = []
+    for di, doc in enumerate(record['docs']):
+        for match in _NOTICE_TITLE_CELL.finditer(doc['text']):
+            name = re.sub(_NOTICE_TITLE_SUFFIX, '', match['title'])
+            if (not has_scope_content(name) or document_reading_instruction(name)
+                    or unusable_scope_role(name)):
+                continue
+            result.append({'doc_index': di, 'start': match.start('title'), 'end': match.end('title'),
+                           'text': match['title'], 'document_role': doc['type'],
+                           'candidate_role': 'title_or_scope_field'})
+    return result

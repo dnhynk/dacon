@@ -109,7 +109,8 @@ def catalog_packet(pipe, record, control):
         return None
     if policy == 'shared' or not cap:
         body=service_prompt(record,shared,pipe.tokenizer,pipe.knowledge.products,
-                    explain_contract=pipe.config.catalog_review=='explicit')
+                    explain_contract=pipe.config.catalog_review=='explicit',
+                    q10_variant=pipe.config.q10_variant,max_model_len=pipe.config.max_model_len)
         stats['source_tokens_total'] += shared['source_tokens']
         stats['seconds'] += time.monotonic()-began
         return packet(record,body,shared,family='Q',profile='Q10',fmt='catalog_scope',
@@ -131,7 +132,8 @@ def catalog_packet(pipe, record, control):
             'attempted_source_budgets':list(attempted),'task_groups':grouped,
             'scope':'current_notice_only','retrieval_is_not_absence_proof':True}
         body=service_prompt(record,src,pipe.tokenizer,pipe.knowledge.products,
-                    explain_contract=pipe.config.catalog_review=='explicit',task_groups=grouped)
+                    explain_contract=pipe.config.catalog_review=='explicit',task_groups=grouped,
+                    q10_variant=pipe.config.q10_variant,max_model_len=pipe.config.max_model_len)
         try:
             result=packet(record,body,src,family='Q',profile='Q10',fmt='catalog_scope',
                           output_tokens=1536,max_model_len=pipe.config.max_model_len)
@@ -155,7 +157,8 @@ def catalog_packet(pipe, record, control):
         'requested_policy':policy,'reason':'task_context_packet_exceeds_context',
         'shared_Q_source_token_cap':cap,'attempted_source_budgets':attempted}
     body=service_prompt(record,fallback,pipe.tokenizer,pipe.knowledge.products,
-                explain_contract=pipe.config.catalog_review=='explicit')
+                explain_contract=pipe.config.catalog_review=='explicit',
+                q10_variant=pipe.config.q10_variant,max_model_len=pipe.config.max_model_len)
     stats['shared_fallbacks'] += 1
     stats['source_tokens_total'] += fallback['source_tokens']
     stats['seconds'] += time.monotonic()-began

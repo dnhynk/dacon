@@ -8,11 +8,11 @@ from .data import clean_evidence
 from .temporal import predict as temporal_checks
 from .performance import performance_facts
 from .other_checks import predict as other_checks
-from .assertions import assertion_scope, unresolved_assertion, has_withdrawal
+from .assertions import assertion_scope, clause, unresolved_assertion, has_withdrawal
 from .anonymized_tokens import (
     anonymous_tokens, basic_notice_authority, registered_region_tokens,
 )
-from .region_thresholds import regional_price_bounds
+from .region_thresholds import below_ceiling, regional_price_bounds
 
 
 def narrow_region_check(rec):
@@ -26,17 +26,21 @@ def narrow_region_check(rec):
         return None
     meta = rec["meta"]
     from .prices import project_prices
-    from .regions import regional_competition_scope
+    from .regions import regional_competition_scope, provinces, NAME, OFFICE, relative_office_scope
     law = applicable_law(rec)
-    price = project_prices(rec)['estimated_price']['value_won']
-    if (law not in {"국가계약법", "지방계약법"} or type(price) not in (int, float)
-            or price <= 0 or not regional_competition_scope(rec)
+    estimate = project_prices(rec)['estimated_price']
+    price = estimate['value_won']
+    if (law not in {"국가계약법", "지방계약법"} or not regional_competition_scope(rec)
             or meta.get("업무구분") not in {"일반용역", "물품(내자)"}):
         return None
     bounds = regional_price_bounds(rec)
     ceiling = bounds['below_ceiling']
     if ceiling is None:
         return None
+    # The item is an amount band, not an exact price. Conflicting or
+    # tax-basis-unresolved observations that all stay under the ceiling
+    # establish it; anything else keeps the decision with the model.
+    below = below_ceiling(estimate, ceiling) is True
     registered = registered_region_tokens(rec)
     structured_basic_scope = (
         meta.get('지역제한여부') == 'Y'
@@ -47,6 +51,20 @@ def narrow_region_check(rec):
         if doc["type"] != "공고문":
             continue
         text = doc["text"]
+        if below:
+            for office in OFFICE.finditer(text):
+                target = assertion_scope(text, office.start(), office.end(), 'region')
+                relative = relative_office_scope(target)
+                if relative and relative['unit'] == 'basic':
+                    # A scope joined across connectives is a reading, not a
+                    # quote; fall back to the verbatim clause around the office.
+                    evidence = (clean_evidence(target, rec)
+                                or clean_evidence(text[slice(*clause(text, office.start(), office.end()))], rec))
+                    if evidence:
+                        return {'item': 6, 'value': 1, 'evidence': evidence,
+                                'source': 'source_relative_basic_municipality_office_qualification',
+                                'estimated_price': price, 'ceiling': ceiling,
+                                'regional_price_bounds': bounds, 'relative_scope': relative}
         for token in anonymous_tokens(text):
             if token.errors or not (
                     token.kind == 'region' and token.attribute('단위') == '기초'
@@ -60,7 +78,17 @@ def narrow_region_check(rec):
             right = min(end if end >= 0 else len(text), token.end+160)
             context = text[left:right]
             prefix, suffix = text[left:token.start], text[token.end:right]
-            office_bound = bool(re.search(r"본점|주된\s*영업소|본사", prefix))
+            if re.search(r'동점|동일.{0,30}(?:점수|경우)|우선(?:으로|순위)|선순위', context):
+                continue
+            office_bound = bool(OFFICE.search(prefix)
+                                or re.search(r"사업장\s*(?:의\s*)?소재지", prefix))
+            # Bind the location before a buyer's separate supply duty.
+            location_tail = re.match(
+                rf'(?:\s*(?:,|또는|및|와|과)\s*(?:{NAME.pattern}))*'
+                r'\s*\)?\s*(?:관할\s*(?:행정\s*)?구역\s*)?(?:(?:내|안)(?:에)?\s*|에\s*)?'
+                r'(?:(?:법인등기부상\s*)?(?:본점|본사|사무소|주된\s*영업소)[^\n]{0,160})?'
+                r'(?:소재|위치(?:한|하고|해)|둔|두고|있는|인\s*(?:업체|자|기업))', suffix)
+            office_after = bool(re.match(r'\s*\)?\s*(?:내(?:에)?|에)\s*(?:법인등기부상\s*)?(?:본점|본사|사무소|주된\s*영업소)', suffix))
             # A notice may state the restriction directly as
             # ``[basic-municipality token] 지역 업체`` under bidder
             # qualifications without repeating "head office".  The typed token
@@ -70,13 +98,27 @@ def narrow_region_check(rec):
                 re.match(r'\s*(?:지역\s*)?(?:소재한\s*)?(?:업체|사업자)', suffix)
                 and re.search(r'입찰|참가|자격|부정당\s*업체|제재를\s*받지\s*않은', context)
             )
-            if not office_bound and not direct_local_bidder:
+            # 영 제21조①6호 / 제20조①6호 state the restriction as where the
+            # registered office is. A notice may write that as an assignment
+            # ("주된 영업소가 <광역> <기초>로 되어 있어야", "본점소재지 ｢<광역>
+            # <기초>｣로 등록한 자") whose predicate follows the value instead of
+            # a locative verb straight after the token. The office anchor must
+            # own the province immediately before the token, so an address or a
+            # delivery place still does not qualify.
+            office_assignment = bool(
+                re.search(rf'(?:{OFFICE.pattern}|사업장\s*(?:의\s*)?소재지)'
+                          r'[^\r\n]{0,60}(?:가|이|는|은|를|을|지)\s*[「｢‘“\'"(]?\s*'
+                          rf'(?:{NAME.pattern})\s*$', prefix)
+                and re.search(r'업체|기업|법인|단체|사업자(?!등록)|'
+                              r'(?:입찰|낙찰|참가|응찰)자|(?:한|둔|는|인)\s*자', context))
+            if not office_bound and not office_after and not direct_local_bidder:
                 continue
-            if office_bound and not (re.search(r"소재|둔|두고|있는", suffix) and re.search(r"업체|갖춘\s*자", suffix)):
+            if not (direct_local_bidder or office_assignment
+                    or location_tail and re.search(r"업체|기업|사업자(?!등록)|(?:한|둔|는|인)\s*자", suffix)):
                 continue
-            if re.search(r"견적|수의계약|해제|지역제한\s*없", context):
+            if re.search(r"견적.{0,12}(?:참가자격|참가하고자)|수의계약|해제|지역제한\s*없", context):
                 continue
-            if price >= ceiling:
+            if not below:
                 continue
             evidence = clean_evidence(context, rec)
             if evidence:
@@ -91,14 +133,17 @@ def narrow_region_check(rec):
         # restriction is sufficient for item 6.  Keep the source clause as the
         # evidence and use the metadata only for its declared administrative
         # unit; a delivery location or an unbound region flag is insufficient.
-        if structured_basic_scope and price < min(ceiling, 230_000_000):
+        if structured_basic_scope and below_ceiling(estimate, min(ceiling, 230_000_000)) is True:
             for office in re.finditer(r'본점|주된\s*(?:영업소|사무소)|본사', text):
                 target = assertion_scope(text, office.start(), office.end(), 'region')
                 n = re.sub(r'\s+', '', target)
                 if unresolved_assertion(target):
                     continue
+                if (not provinces(target)
+                        or re.search(r'동점|동일.{0,30}(?:점수|경우)|우선(?:으로|순위)|선순위', n)):
+                    continue
                 if not (re.search(r'(?:소재지|소재|둔|두고|있는)', n)
-                        and re.search(r'(?:업체|사업자|갖춘자|이어야|제한)', n)):
+                        and re.search(r'(?:업체|사업자(?!등록)|기업|갖춘자|이어야|제한)', n)):
                     continue
                 if re.search(r'납품(?:지|장소)|사업현장|공사현장|운행구간|대상시설', n):
                     continue
@@ -129,7 +174,7 @@ def joint_share_check(rec):
         return None
     local = scope == "지방계약법"
     threshold = 5. if local else 10.
-    found = []
+    found, unparsed = [], False
     pattern = re.compile(r"최소\s*(?:계약\s*)?(?:참여\s*)?(?:지분율|지분|출자\s*비율|참여\s*비율)"
                          r"[^\d%％]{0,25}(\d+(?:\.\d+)?)\s*(?:[%％]|퍼센트)")
     for doc in rec["docs"]:
@@ -154,7 +199,8 @@ def joint_share_check(rec):
                 continue
             if "분담" in mode and "공동이행" not in mode:
                 continue
-            if "분담이행" in context and "공동이행" not in context:
+            if ("분담이행" in context and "공동이행" not in context
+                    and not re.search(r'공동\s*(?:또는|및|[·ㆍ/])\s*분담\s*이행', context)):
                 continue
             tail = text[match.end():match.end()+65]
             if re.match(r"\s*범위.{0,25}조정", tail):
@@ -170,13 +216,24 @@ def joint_share_check(rec):
             found.append({"value": value, "minimum": permitted_minimum,
                           "violation": value < permitted_minimum,
                           "evidence": clean_evidence(context, rec)})
-        if (not doc_found and re.search(r"공동이행|구성원별", text)
-                and re.search(r"(?:지분|출자\s*비율|참여\s*비율).{0,35}\d+(?:\.\d+)?\s*(?:[%％]|퍼센트)", text)
+        # The abstention below exists so that share wording this parser does not
+        # recognize cannot be read as certifying compliance. A requirement that
+        # the members' shares add up to 100% states arithmetic completeness, not
+        # a per-member floor, and an explicit sub-minimum clause parsed in any
+        # document is an observed violation that unparsed wording cannot undo.
+        # It is decided after every document is read, so document order cannot.
+        unrecognized = [m for m in re.finditer(
+            r"(?:지분|출자\s*비율|참여\s*비율).{0,35}\d+(?:\.\d+)?\s*(?:[%％]|퍼센트)", text)
+            if not re.match(r"[^\d%％]{0,12}합(?:계)?(?:이|은|을)?[^\d%％]{0,6}100",
+                            text[m.start():m.end()])]
+        if (not doc_found and unrecognized and re.search(r"공동이행|구성원별", text)
                 and not ("분담이행" in text and "공동이행" not in text)):
-            return None  # Unrecognized share wording is not proof of compliance.
+            unparsed = True
     if not found:
         return None  # No recognized condition cannot certify the model's positive as normal.
     bad = next((x for x in found if x["violation"]), None)
+    if bad is None and unparsed:
+        return None  # Unrecognized share wording is not proof of compliance.
     return {"item": 21, "value": int(bad is not None),
             "evidence": bad["evidence"] if bad else "", "parsed": found,
             "source": "공동계약운용요령 제9조⑤ / 지방 집행기준 제6장 구성원 수 등"}
@@ -185,12 +242,19 @@ def joint_share_check(rec):
 def apply_rules(rec, row, knowledge=None, *, comparison=None, items=tuple(range(1, 25))):
     result = dict(row)
     wanted = set(items)
+    if 9 in wanted and row.get('v9') not in (1, '1'):
+        from .model_exclusivity import named_or_exclusive_check as named_purchase_check
+        purchase = named_purchase_check(rec)
+    else:
+        purchase = None
     from .regions import multiple_region_check, above_ceiling_region_check
     checks = [fn(rec) for k, fn in ((21, joint_share_check), (6, narrow_region_check),
                                   (7, multiple_region_check), (5, above_ceiling_region_check)) if k in wanted]
+    if purchase is not None:
+        checks.append(purchase)
     if 1 in wanted:
-        from .eligibility_restrictions import direct_facility_ownership_check
-        checks.append(direct_facility_ownership_check(rec))
+        from .eligibility_restrictions import eligibility_restriction_check
+        checks.append(eligibility_restriction_check(rec))
     # Dates and metadata extraction only prove specific violations. Their
     # explicit negatives or abstentions cannot certify a whole legal item.
     if wanted & {23, 24}:
@@ -202,7 +266,7 @@ def apply_rules(rec, row, knowledge=None, *, comparison=None, items=tuple(range(
     if comparison is not None and 24 in wanted:
         from .comparison import positive_decision
         checks.append(positive_decision(rec, comparison))
-    performance = performance_facts(rec) if wanted & {2, 3, 4, 8} else {'overlays': {}}
+    performance = performance_facts(rec, consumer=True) if wanted & {2, 3, 4, 8} else {'overlays': {}}
     from .performance import validate_model_witness
     for k in sorted(wanted & {2, 3, 4, 8}):
         checks.append(validate_model_witness(rec, row, k, performance))
@@ -230,6 +294,9 @@ def apply_rules(rec, row, knowledge=None, *, comparison=None, items=tuple(range(
             if evidence:
                 checks.append({"item": int(item[1:]), "value": 1, "evidence": evidence,
                                "reason": decision["reason"], "source": "supplied_performance_rules"})
+    if wanted & {2, 8}:
+        from .competitive_performance import checks as competitive_performance_checks
+        checks.extend(competitive_performance_checks(rec, performance, wanted))
     other = other_checks(rec, wanted)
     if 19 in wanted:
         from .pledge_witness import validate_model_witness as validate_pledge_witness

@@ -137,7 +137,8 @@ def v23(rec):
         for a in BRIEF.finditer(t):
             block,end=field_window(t,a.start(),a.end(),170)
             before=t[max(0,a.start()-90):a.start()]
-            if re.search(r'담합|손해|배상|착수|주민|홍보|워크숍|프로그램|과업\s*수행',before):continue
+            if re.search(r'담합|손해|착수|주민|홍보|워크숍|프로그램|과업\s*수행',before):continue
+            if re.search(r'배상',t[max(t.rfind('\n',0,a.start())+1,a.start()-90):a.start()]):continue
             if d['type']!='공고문' and not SCHEDULE.search(before):continue
             # Attendability/handbook mentions are not scheduling anchors.
             immediate=t[a.end():a.end()+35]
@@ -161,10 +162,18 @@ def v23(rec):
             if not ds:continue
             between=block[a.end()-a.start():ds[0][0]]
             if re.search(r'개찰|평가|발표|설명회|설명\s*:',between):continue
+            # Announcement signatures, contacts and handouts are not deadlines.
+            if re.search(r'공고합니다|관련\s*사항|제안서\s*교부',between):continue
+            # A cited statute's edition date belongs to the citation, even
+            # when it follows a proposal submission-method heading.
+            if re.search(r'(?:법률|시행령|시행규칙|예규|고시)\s*(?:제?\s*[\d-]+\s*호)?\s*[（(]\s*$',between):continue
             # Explicit date ranges yield their final endpoint. No bid-opening fallback.
             chosen=ds[0]
-            if len(ds)>1 and re.search(r'~|∼|～|부터',block[ds[0][1]:ds[1][0]]):chosen=ds[1]
-            elif len(ds)>1 and ds[1][0]-ds[0][1]<45 and re.search(r'~|∼|～|부터',block[ds[0][1]:ds[1][1]]):chosen=ds[1]
+            if len(ds)>1:
+                separator=block[ds[0][1]:ds[1][0]]
+                # A 10:00~17:00 time range cannot reach the next event's date.
+                if re.fullmatch(r'\s*(?:\([월화수목금토일]\)\s*)?(?:\d{1,2}:\d{2}\s*)?(?:~|∼|～|부터)\s*',separator):chosen=ds[1]
+                elif ds[1][0]-ds[0][1]<45 and re.fullmatch(r'\s*(?:\([월화수목금토일]\)\s*)?(?:\d{1,2}:\d{2}\s*)?',separator) and re.match(r'(?:~|∼|～|부터)',block[ds[1][0]:ds[1][1]]):chosen=ds[1]
             deadlines.append(fact(di,t,a.start(),a.start()+chosen[1],'proposal_deadline',chosen[2].isoformat()))
         if d['type']=='공고문':
             for a in re.finditer(r'공고\s*(?:게시\s*일|일자|일|기간)\s*[:：|]',t):
@@ -316,25 +325,40 @@ def region_clauses(rec, *, doc_types=('공고문',)):
     return facts
 
 
-def contract_fields(rec, *, doc_types=('공고문',)):
+def contract_fields(rec, *, doc_types=('공고문',), include_unresolved=False, observation_only=False):
+    """Keep measured literal observations separate from method policy inference."""
     out=[]
     for di,d in enumerate(rec['docs']):
         if doc_types is not None and d['type'] not in doc_types:continue
         t=d['text']
+        title_methods=set(re.findall(r'[(（](일반경쟁|제한경쟁|지명경쟁|수의계약)[·ㆍ・･.]', compact(t)))
+        quotation=bool(re.search(
+            r'(?:소액\s*수의|수의\s*견적|견적\s*제출)[^\n.]{0,45}(?:공고|안내)|'
+            r'(?:제출\s*(?:된|한)?|대비)\s*견적\s*가격|소액\s*수의계약\s*결격', t))
         pat=re.compile('(?:'+sp('계약방법')+'|'+sp('입찰방법')+'|'+sp('입찰방식')+r')\s*[:：|]?\s*([^\n]{0,85})')
         for a in pat.finditer(t):
-            value=a.group(1);m=re.search(r'일반\s*경쟁|제한\s*경쟁|지명\s*경쟁|수의\s*계약',value)
+            value=a.group(1)
+            normalized=value if observation_only else re.sub(r'[(（]\s*(?:단가|총액)\s*[)）]', '', value)
+            m=re.search(r'일반\s*경쟁|제한\s*경쟁|지명\s*경쟁|수의\s*계약',normalized)
             if m:
                 # Restrictions within a small-quotation procedure do not change
                 # the semantic contract method into competitive tendering.
-                value_compact=compact(value)
-                quote=bool(re.search(r'(?:소액(?:\(총액\))?)?수의(?:계약|견적|입찰)|소액(?:\(총액\))?수의',value_compact))
+                value_compact=compact(normalized)
+                quote=bool(re.search(r'(?:소액(?:\(총액\))?)?수의(?:계약|견적|입찰)|소액(?:\(총액\))?수의'
+                                    if observation_only else r'(?:소액)?수의(?:계약|견적|입찰)|소액수의',value_compact))
                 method='수의계약' if quote else compact(m.group())
-                out.append(fact(di,t,a.start(),a.end(),'competition_method',method))
+                unresolved=not observation_only and bool(re.search(r'(?:제한|일반|지명)\s*[/／]\s*(?:제한|일반|지명)', value)
+                    or quotation and method!='수의계약'
+                    or title_methods and title_methods!={method})
+                if unresolved and not include_unresolved:
+                    continue
+                out.append(fact(di,t,a.start(),a.end(),'competition_method',method,
+                    **({'assertion_scope_unresolved':True} if unresolved else {})))
     return out
 
 
-def industry_fields(rec, *, doc_types=('공고문',)):
+def industry_fields(rec, *, doc_types=('공고문',), observation_only=False):
+    """Policy may extend a predicate; observation coordinates remain unchanged."""
     from .assertions import assertion_scope, unresolved_assertion, has_withdrawal
     out=[]
     pat=re.compile(r'(?:업종|면허)\s*(?:코드|번호)?\s*[:：]?\s*(\d{4})(?!\d)')
@@ -354,6 +378,17 @@ def industry_fields(rec, *, doc_types=('공고문',)):
         seen = set()
         for start, end, code, mechanism in sorted(candidates):
             lo,hi=registration_bounds(t,start,end)
+            # A wrapped parenthesis can contain the code while the registration
+            # predicate follows on the next paragraph. Keep its numbered item.
+            item_lo=max((m.end() for m in _REGISTRATION_ITEM.finditer(t,0,start)),default=0)
+            item_end=_REGISTRATION_ITEM.search(t,end)
+            item_hi=item_end.start() if item_end else len(t)
+            if not observation_only and t[item_lo:start].count('(')>t[item_lo:start].count(')'):
+                closing=t.find(')',end,item_hi)
+                if closing>=0 and closing-end<=800:
+                    lo=max(item_lo,start-420)
+                    stop=re.search(r'[.。;；](?=\s|$)',t[closing:item_hi])
+                    hi=min(item_hi,closing+stop.start()+1 if stop else closing+240)
             context=assertion_scope(t,start,end,'industry',bounds=(lo,hi))
             if not re.search(r'등록|신고|허가',context):continue
             if not re.search(r'업체|자이어야|한\s*자|된\s*자|갖춘\s*자|등록한',context):continue

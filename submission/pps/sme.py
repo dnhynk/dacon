@@ -12,16 +12,83 @@ ITEMS=tuple(range(10,19))
 FLOOR=100_000_000
 NOTICE=230_000_000
 CODE=re.compile(r'(?<!\d)\d{10}(?!\d)')
-CLASS=r'(?:중소기업|중[·ㆍᆞ․‧・∙･.,-]소기업|중기업|소기업|소상공인)'
+CLASS=r'(?:중소기업|중[·ㆍᆞ․‧・∙･.,/-]소기업|중기업|소기업|소상공인)'
 SEP=r'(?:[·ㆍᆞ․‧・∙･.,\/()\-]|또는|및|혹은|와|과)*'
 CERT=re.compile(CLASS+r'(?:자)?(?:'+SEP+CLASS+r'(?:자)?)*'+r'[)]?(?:확인서|확인증)')
 SIZE_SIGNAL=re.compile(CLASS)
 DIRECT=re.compile(r'직접생산(?:확인)?(?:증명|확인)?서|직접생산확인기준|직접생산하는')
 ELIG=re.compile(r'참가자(?:의)?자격|참가자격|참여자격|입찰자격|응모자격|참가조건|제안자격')
-END=re.compile(r'소지한|보유한|갖춘|소지하여|보유하여|소지해야|보유해야|소지한자|업체이어야|업체여야|자이어야|참가할수|참가가능')
+_HOLDING = (r'(?:소지|보유)(?:한|하여|해야|(?:업체(?:\(자\))?|자)'
+            r'(?=$|[.,]|이어야|여야|로서|에한(?:함|한다)))')
+_CONNECTED_HOLDING = r'(?:소지|보유)하고.{0,160}(?:충족(?:하여야|해야|한)|갖추어야)'
+_POSTPOSED_SIZE = (r'등록(?:을)?한자[,，]?\((' + CLASS + r'(?:자)?(?:' + SEP + CLASS +
+                   r'(?:자)?)*)으로제한\)')
+END=re.compile(_HOLDING + '|' + _CONNECTED_HOLDING + '|' + _POSTPOSED_SIZE +
+    r'|갖춘|업체이어야|업체여야|자이어야|참가할수|참가가능')
 
 
 def norm(s):return normalized_map(s)[0]
+
+
+def list_marker(n):
+    """Visible list grammar and ordinal, without guessing indentation."""
+    m = re.match(r'^([가나다라마바사아자차카타파하])([.)])', n)
+    if m:
+        return ('korean'+m[2], '가나다라마바사아자차카타파하'.index(m[1]))
+    for chars, family in [('①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳', 'circled'),
+                          ('➀➁➂➃➄➅➆➇➈➉', 'circled'), ('㉠㉡㉢㉣㉤㉥㉦㉧㉨㉩㉪㉫㉬㉭', 'circled_korean')]:
+        if n[:1] and n[0] in chars:
+            return (family, chars.index(n[0]))
+    m = re.match(r'^(\d{1,3})([.)])(?!\d)', n)
+    return ('number'+m[2], int(m[1])) if m else None
+
+
+def _restore_sibling_roles(lines, roles, recognize):
+    """End a child role at a visible later sibling of its enclosing list.
+
+    This restores only line roles. It does not invent a closed eligibility
+    range or use a recovered positive clause to certify source completeness.
+    """
+    from .qualification_structure import explicit_other_title, path
+    parent, parent_marker, members, restored = None, None, {}, None
+    for i, line in enumerate(lines):
+        n, marker = norm(line[0]), list_marker(line[0].strip())
+        new = recognize(n)
+        context = roles[i]
+        if new == 'eligibility':
+            if parent is None or marker:
+                parent, parent_marker, members = context, marker, {}
+            restored = None
+            continue
+        if parent is None:
+            continue
+        number = path(line[0])
+        parent_number = path(parent['heading']['text']) if parent['heading'] else None
+        descendant = bool(number and parent_number and len(number)>len(parent_number)
+                          and number[:len(parent_number)] == parent_number)
+        # Explicit peer document sections and later stages remain barriers.
+        if re.match(r'^(?:붙임|첨부)[:：]', n) or (new and (explicit_other_title(n) or
+                (marker and parent_marker and marker[0] == parent_marker[0]
+                 and marker[1] > parent_marker[1] and not descendant))):
+            parent, parent_marker, members, restored = None, None, {}, None
+            continue
+        sibling = marker and marker[0] in members and marker[1] > members[marker[0]]
+        if (new == 'other' and descendant
+                and re.search(r'(?:입찰)?참가자격등록$', n)):
+            restored = parent
+        elif sibling:
+            restored = parent if new not in ('forms', 'scoring') else None
+        elif new in ('forms', 'scoring'):
+            restored = None
+            if not marker and not descendant:
+                parent, parent_marker, members = None, None, {}
+                continue  # An unnumbered new role has no proven list parent.
+        if (marker and (context['role'] == 'eligibility' or sibling or
+                        (new in ('forms', 'scoring') and not members))
+                and marker != parent_marker):
+            members[marker[0]] = marker[1]
+        if restored:
+            roles[i] = {**restored, 'ancestors':list(restored['ancestors'])}
 
 
 def small_enterprise_special_reference(text):
@@ -50,8 +117,15 @@ def mask_laws(n):
     def mask(m):
         return ' '*len(m.group()) if re.search(r'법|규정|규칙|기준|지침|요령',m.group()) else m.group()
     n=re.sub(r'[「｢『][^」｣』]{1,180}[」｣』]',mask,n)
-    for title in ['중소기업범위및확인에관한규정','중소기업공공구매종합정보망','중소기업제품공공구매종합정보망','중소기업기본법','소상공인기본법']:
+    for title in ['중소기업범위및확인에관한규정','중소기업공공구매종합정보망','중소기업제품공공구매종합정보망','중소기업기본법','소상공인기본법',
+                  '중소기업제품구매촉진및판로지원에관한법률','중소기업협동조합법',
+                  '소상공인보호및지원에관한법률']:
         n=n.replace(title,' '*len(title))
+    # Article captions and a cooperative's name identify a rule/entity type,
+    # not the size of ordinary bidders. Leave any actual certificate intact.
+    n=re.sub(r'(?<=\()중소기업자간경쟁입찰참여제한(?:등)?(?=\))',
+             lambda m:' '*len(m[0]),n)
+    n=re.sub(r'중소기업(?=협동조합)',lambda m:' '*len(m[0]),n)
     return n
 
 
@@ -59,14 +133,14 @@ _HEADING_DECORATION = r'[|○●□■❍•·ㆍ※-]*'
 _SECTION_PATH = r'\d{1,3}(?:[.-]\d{1,3}){0,4}'
 _HEADING_PREFIX = (_HEADING_DECORATION + r'(?:' + _SECTION_PATH +
                    r'[.)]?|[가-하][.)]|[ivx]{1,8}[.)]?)?' + _HEADING_DECORATION)
-_BID_METHOD = (r'(?:입찰서제출|견적서제출|견적제출자|견적제출|견적입찰|전자입찰|'
+_BID_METHOD = (r'(?:입찰서제출|입찰제출|견적서제출|견적제출자|견적제출|견적서|견적입찰|전자입찰|'
                r'용역입찰|물품입찰|제안서제출|용역업체|공급업체|제안업체|입찰|견적|공모|응모|제안|사업)')
 _QUALIFICATION_TITLE = re.compile('^' + _HEADING_PREFIX + r'(?:계약방법및)?(?P<below>(?:아래|다음)의)?(?:' +
-    _BID_METHOD + r'(?:[·ㆍ/]' + _BID_METHOD + r'|\(' + _BID_METHOD + r'\))?)?(?:' + ELIG.pattern + r'|견적(?:서)?제출자격)')
+    _BID_METHOD + r'(?:[·ㆍ/]' + _BID_METHOD + r'|\(' + _BID_METHOD + r'\)|및)?)?(?:' + ELIG.pattern + r'|견적(?:서)?제출자격)(?:요건)?')
 _QUALIFICATION_OBLIGATION = (r'(?:갖춘(?:자|업체|사업자)(?:(?:이어야|여야)(?:만)?(?:함|한다|합니다)|에한함)?|'
     r'(?:갖추어야|갖춰야)(?:만)?(?:함|한다|합니다)|갖출것|'
-    r'충족(?:(?:하는|한)(?:자|업체|사업자)(?:에한함)?|(?:하여야|해야)(?:만)?(?:함|한다|합니다))?)')
-_ALL_CONDITIONS = re.compile(r'(?:다음|아래)(?:의)?(?:각호(?:의)?)?(?:입찰참가)?(?:조건|요건|자격|사항|기준)(?:을|를)?모두' +
+    r'(?:충족|만족)(?:(?:하는|한)(?:자|업체|사업자)(?:에한함)?|할것|(?:하여야|해야)(?:만)?(?:함|한다|합니다))?)')
+_ALL_CONDITIONS = re.compile(r'(?:(?:다음|아래)(?:의)?(?:각(?:호|항)(?:의)?)?|각아래)(?:입찰참가)?(?:조건|요건|자격|사항|기준|호)?(?:을|를)?(?:동시에)?모두' +
                              _QUALIFICATION_OBLIGATION + r'(?:[/,]증빙서류(?:要|요|필요))?')
 _ENUMERATED_CONDITIONS = re.compile(r'(?:하기|아래)(?:\d{1,2}\)[,]?){1,10}의자격사항을모두' + _QUALIFICATION_OBLIGATION)
 _QUALIFICATION_REFERENCE = re.compile(r'(?:자세한사항은)?입찰공고(?:문|서)(?:에의함|참조)(?:\(나라장터g2b\))?')
@@ -87,6 +161,7 @@ def heading(n):
         return None
     if n.startswith('【') and n.endswith('】'):
         n = n[1:-1]
+    n = re.sub(r'참가\((?:입찰서|견적서)제출\)자격', '참가자격', n)
     title = _QUALIFICATION_TITLE.match(n)
     if title:
         tail = n[title.end():].lstrip(':：').rstrip('.。')
@@ -97,8 +172,8 @@ def heading(n):
         # text may put that marker inside the heading's parentheses, so unwrap
         # both before and after removing the note.
         def unwrap(value):
-            if value[:1] in ('(', '[') and value.endswith(
-                    ')' if value[0] == '(' else ']'):
+            if value[:1] in ('(', '[', '<') and value.endswith(
+                    {'(':')', '[':']', '<':'>'}[value[0]]):
                 return value[1:-1].rstrip('.。')
             return value
         tail = unwrap(tail)
@@ -106,10 +181,13 @@ def heading(n):
         if title['below']:
             if re.fullmatch(r'을모두' + _QUALIFICATION_OBLIGATION, tail):
                 return 'eligibility'
-        elif (tail in ('', '및조건', '조건', '요건', '및방법', '및선정방법', '에관련공통사항',
+        elif (tail in ('', '및조건', '조건', '요건', '및방법', '및계약방법', '및선정방법', '및등록', '및유의사항', '에관련공통사항',
                        '에관한사항', '에관한공통사항', '모두해당', '모두충족',
                        '일반경쟁입찰', '제한경쟁입찰', '지명경쟁입찰')
               or _ALL_CONDITIONS.fullmatch(tail) or _ENUMERATED_CONDITIONS.fullmatch(tail)
+              or re.fullmatch(r'(?:동시에)?모두' + _QUALIFICATION_OBLIGATION, tail)
+              or re.fullmatch(r'(?:해당|상기)?자격(?:은|을)?계약체결일까지유지(?:되어야|하여야|해야)함', tail)
+              or re.fullmatch(r'(?:공동수급|공동계약)(?:불허|불가)', tail)
               or _QUALIFICATION_REFERENCE.fullmatch(tail)):
             return 'eligibility'
         else:
@@ -121,10 +199,15 @@ def heading(n):
                     and re.search(r'자격을갖춘(?:자|업체)(?:로서)?[,，]?$',
                                   tail[:all_conditions.start()])):
                 return 'eligibility'
+    # Instruction sentences inside a note do not open a submission/scoring
+    # section merely because they mention those words. Short captions remain.
+    if n.startswith('※') and re.search(r'하여야|하시기|바랍니다|합니다|제출시|경우', n):
+        return None
     # A mention in a sanction, registration sentence or verification note is
     # not a header and cannot create a closed section proving absence.
     form = re.search(r'제출서류|구비서류|제출목록|제안서작성|서식\d|붙임\d', n)
-    if len(n)<100 and form and not re.search(r'직접생산.{0,150}(?:소지한|보유한)', n[:form.start()]):
+    if (len(n)<100 and form and not re.search(r'직접생산.{0,150}(?:소지한|보유한)', n[:form.start()])
+            and not re.search(r'제출한(?:자|업체)[.]?$', n)):
         return 'forms'
     if len(n)<90 and re.search(r'배점|평가기준|평가항목|평가방법|정량평가',n) and not re.search(r'각\d+부|자료.{0,15}\d+부',n):return 'scoring'
     if re.fullmatch(_HEADING_PREFIX + r'(?:입찰서|견적서)제출안내', n):
@@ -141,7 +224,7 @@ def heading(n):
 
 def class_set(s):
     s=norm(s)
-    if re.search(r'중소기업|중[·ㆍᆞ․‧・∙･.,-]소기업',s):return {'medium','small','micro'}
+    if re.search(r'중소기업|중[·ㆍᆞ․‧・∙･.,/-]소기업',s):return {'medium','small','micro'}
     allowed=set()
     if '중기업' in s:allowed.add('medium')
     if '소기업' in s:allowed.update(('small','micro'))
@@ -152,6 +235,10 @@ def class_set(s):
 def size_facts(n):
     original=n
     n=mask_laws(n)
+    limit = re.search(_POSTPOSED_SIZE, n)
+    if limit:
+        return {'allowed':sorted(class_set(limit[1])), 'basis':'postposed_bidder_limit',
+                'connective':'single', 'certificate_phrases':[], 'commercial_only':True}
     certificates=list(CERT.finditer(n))
     # The final actual certificate specification can narrow a broad preamble.
     if certificates:
@@ -240,6 +327,7 @@ def extract_inventory(record, *, heading_fn=None):
         table_rows = certificate_rows(t)
         from .qualification_structure import contexts
         roles, doc_sections = contexts(record, di, ls, recognize, norm, evidence)
+        _restore_sibling_roles(ls, roles, recognize)
         sections.extend(doc_sections)
         for li,m in enumerate(ls):
             raw=m.group();n=norm(raw)
@@ -266,20 +354,32 @@ def extract_inventory(record, *, heading_fn=None):
                 for nx in ls[li+1:li+5]:
                     nn=norm(nx.group())
                     if (pipe_separators(nx.group()) or recognize(nn)
-                            or re.match(r'^[가-하][.)]|^[①-⑳]|^\d+(?:[-.]\d+)*[.)]',nn)):break
+                            or (re.match(r'^(?:※|다만|단[,.:]|[-✓])',nn)
+                                and (CERT.search(mask_laws(n)) or DIRECT.search(n)))
+                            or list_marker(nx.group().strip())
+                            or re.match(r'^[ㅇ○〇●□■❍•]', nx.group().lstrip())
+                            # A wrapped 10-digit item code is not a list number.
+                            or re.match(r'^\d{1,3}(?:[-.]\d{1,3})*[.)]',nn)):break
                     if nx.end()-m.start()>900:break
                     end=nx.end();n=norm(t[m.start():end])
                     if END.search(n):break
             ev=evidence(record,di,m.start(),end);masked=mask_laws(n)
             direct='직접생산' in n;sz=size_facts(n)
-            direct_required=bool(re.search(r'직접생산.{0,240}(?:소지한|보유한|소지하여|보유하여|업체이어야)',masked) or
+            direct_required=bool(re.search(r'직접생산.{0,240}(?:'+_HOLDING+'|'+_CONNECTED_HOLDING+r'|업체이어야)',masked) or
                                  re.search(r'직접생산확인기준.{0,150}세부품명.{0,100}소지한',n))
             verified_requirement = direct_verification_requirement(n)
             direct_required |= verified_requirement
             is_certificate=bool(re.search(r'확인서|확인증|직접생산',n))
             operative=role=='eligibility' and bool(END.search(n))
+            if (re.search(r'(?:소지|보유)(?:업체|자)', n)
+                    and re.search(r'예시|작성예|참고용|가점|우대|권장', masked)):
+                operative = False
             note=bool(re.match(r'^(?:※|다만|단[,.:]|[-✓])',n))
-            conditional=bool(re.search(r'특별법인|중소기업으로간주|중소기업자로간주|협동조합|초기중견|중견기업',n))
+            # A mid-size firm listed among the excluded bidders is not an
+            # alternative entity branch of the size condition.
+            conditional=bool(re.search(r'특별법인|중소기업으로간주|중소기업자로간주|협동조합|초기중견',n)
+                             or any(not re.match(r'[^.。]{0,25}?(?:불가|할수없|없습니다|제외|불허|허용하지|허용되지|하지못)',
+                                                  n[m.end():]) for m in re.finditer(r'중견기업',n)))
             permission=bool(re.search(r'(?:확인서|직접생산).{0,60}(?:없어도|불필요|요구하지|제한하지|면제|무관)',n))
             withdrawn=bool(re.search(r'(?:규정|조건|요건|요구사항).{0,20}(?:삭제|철회)',n))
             conditional |= bool(re.search(r'분담.{0,50}(?:구성원|업체)|(?:구성원|업체).{0,50}분담',n))

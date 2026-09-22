@@ -76,11 +76,20 @@ def consume_response(pipe, record, packet, response):
     except (ValueError, TypeError, KeyError) as exc:
         return {'parse_error': None, 'cpu_error': 'CPU: ' + type(exc).__name__ + ': ' + str(exc),
                 'row': None, 'details': None}
+    if row and packet.get('batch') == 'Q10':
+        # Items whose Q10 overlay added untouched-notice firing without organiser hits keep their A10-group
+        # row (precision_analysis/W6_v20_sw_evidence/PREREGISTRATION.md, W7).
+        excluded = getattr(getattr(pipe, 'config', None), 'q10_excluded_items', ())
+        row = {key: value for key, value in row.items()
+               if not (key[:1] in ('v', 'e') and key[1:].isdigit() and int(key[1:]) in excluded)}
     return {'parse_error': None, 'cpu_error': None, 'row': row, 'details': details}
 
 
 def execute_task(pipe, task):
     kind = task['kind']
+    if kind == 'focused_prepare':
+        from .pps.focused_verify import prepare
+        return {'packets': prepare(pipe, task['record'], task['baseline'], task['details'])}
     if kind == 'prepare':
         return prepare_record(pipe, task['record'])
     if kind == 'consume':

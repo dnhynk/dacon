@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.build_submission import CONFIG_FILES, build, source_files, source_payload
+from tools.build_submission import CONFIG_FILES, INDEX_FILE, build, source_files, source_payload
 from tools.create_colab_notebook import SOURCES
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,7 +18,8 @@ def test_submission_allowlist_and_isolated_entrypoint(tmp_path):
     archive = tmp_path / "candidate.zip"
     manifest = build(archive)
     with zipfile.ZipFile(archive) as z:
-        assert set(z.namelist()) == set(source_files())
+        # The text sources plus exactly one binary file: the corpus line index, shipped even while its switch is off.
+        assert set(z.namelist()) == {*source_files(), INDEX_FILE}
         assert z.testzip() is None
         assert all(name.startswith("submission/") or name in {"script.py", "requirements.txt"}
                    for name in z.namelist())
@@ -44,16 +45,18 @@ def test_single_runtime_archive_is_deterministic_and_nonoverwriting(tmp_path):
 
 
 def test_packaging_ignores_research_and_nonallowlisted_files(tmp_path):
-    for name, content in source_payload().items():
+    for name, content in source_payload(with_index=True).items():
         target = tmp_path / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
     for name in ("submission/secrets.env", "submission/answers.csv", "submission/model/labels.json",
+                 "submission/model/other_hashes.u64",
                  "submission/results/hidden.py", "pps/pipeline.py", "experiments/private.py"):
         target = tmp_path / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("must not be packaged", encoding="utf-8")
-    assert source_payload(tmp_path) == source_payload()
+    assert source_payload(tmp_path, with_index=True) == source_payload(with_index=True)
+    assert source_payload(tmp_path) == source_payload() and INDEX_FILE not in source_payload()
 
 
 def test_canonical_imports_cannot_fall_back_to_legacy_packages():
@@ -91,6 +94,7 @@ def test_notebook_code_is_valid_and_embedded_source_matches(tmp_path):
     assert set(scope["SOURCE_FILES"]) == set(SOURCES)
     for name in SOURCES:
         assert (tmp_path / name).read_text(encoding="utf-8") == (ROOT / name).read_text(encoding="utf-8")
-    assert set(SOURCES) == set(source_files())
+    # The notebook embeds text sources only; the binary corpus line index travels in the archive.
+    assert set(SOURCES) == set(source_files()) and INDEX_FILE not in SOURCES
     assert "run_experiments.py" not in json.dumps(notebook)
     assert set(CONFIG_FILES).issubset(SOURCES)
