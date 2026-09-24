@@ -2,7 +2,7 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'submission'))
 
 from pps_c import catalog, judge, record  # noqa: E402
 from pps_c.families import size_words  # noqa: E402

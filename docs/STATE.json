@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_utc": "2026-09-25T02:30Z",
+  "updated_utc": "2026-09-24T23:23Z",
   "competition": "DACON 236754",
   "target_official_macro_f1": 0.85,
   "official_score": 0.7004790415,
@@ -137,9 +137,10 @@
   "active_task": {
     "id": "rebuild_c_20260924",
     "status": "C_adopted_as_base_P3a_best",
+    "next_action": "Current bounded task and owner: docs/LOCAL_HANDOFF.md.",
     "description": "Pipeline C: family reading calls (grammar-bound enums, thinking off) + CPU judge of the item table; built from scratch per the user decision of 2026-09-24. Goal stated by the user: LB 0.8 without construction-trace hacks.",
     "design": "runs/rebuild_c/DESIGN_C.md",
-    "code": "rebuild_c/",
+    "code": "submission/pps_c/ (zip entry submission/script.py; tests tests/test_parsers.py, tests/test_scope_size.py, tests/test_size_reading.py)",
     "package": {
       "path": "artifacts/rebuild_c/C2/submit.zip",
       "sha256": "dc68cd21a685d445a23d8e15f94f6ffff56e4e8de2f33baaf527167581078a92",
@@ -723,12 +724,12 @@
     "current_input_b4": "script.py",
     "runtime_package": "submission/",
     "build": "tools/build_submission.py",
-    "notebook": "notebooks/dacon_colab.ipynb",
-    "b4_validation": "Current canonical source: the build_19 runtime with the track B rules of package P2g integrated and on by default (qualification.py size block, csc_probe.py, semantic_rules.py v9 detector, nine precision gates in model/config.json; tests/test_track_b_rules.py), plus default-off options used only by earlier probes (corpus_seen_filter_items, precision gate v6_local_private_basic, track A stage-1 code). CPU replay of the canonical tree equals the P2g package on dev200 and on the replica (1,853 records): 0 differing v/e cells, 0 errors, 0 model calls. Full suite 5,432 passed plus 37 subtests. See production_candidate for archived official evidence.",
+    "notebook": "runs/rebuild_c/colab/make_colab.py (Colab A100 kit; embeds submission/script.py and submission/pps_c/)",
+    "b4_validation": "Canonical source is pipeline C (submission/pps_c/). tools/build_submission.py rebuilds the LB-best package P3a (artifacts/rebuild_c/P3a_size_private/submit.zip) with the same 18 entries and bytes except one comment line in pps_c/switches.py, and the zip mock run passes; CPU replay of the C2 journals (runs/rebuild_c/gpu/mix_C2/replica) reproduces runs/rebuild_c/lb_replays/P3a_replica.csv byte-for-byte. The track-B runtime is in legacy/submission_b/ (snapshot commit 1e4263c).",
     "historical_b4_entry": "experiments/precision_joined_v1/b4_entry_candidate_20260912/source/script.py",
     "legacy_package": "pps/",
-    "validation_status": "Dev200 unseal and retuning steps 1-5 are complete. Best retained frozen-response replay is 0.8775098. Repaired stream source 36bf3d2e has fresh A100 development200 runs: adaptive policy 0.8587445, fixed tier2 0.8809058, fixed tier3 0.8503043, canonical 8192 0.8587449. Adaptive policy settled at tier3 rather than collapsing to a1_only. Two A100 tier3 extrapolations put 1853 records at 5312-5496s, but the full 1853 run and unseen BGE preparation were not measured. 16384 prefill OOMed; retain 8192. Official unseen score and L40S runtime remain unmeasured. Full pre-GPU suite 4112 passed + 37 subtests; no code changed during the GPU round. Stream executor (build_02, A100-40GB): projection policy settles on tier3 with fresh dev200 F1 0.8587 in 969s/200 records; tier2 fixed 0.8809 but projected 92-273s over 7200s. build_04 sets the default tier ceiling to 2 and adds startup MoE kernel self-tuning (unmeasured on GPU); L40S and the full 1853-record run remain unmeasured.",
-    "executor": "stream (default); --executor cohort keeps the fixed 32-record batches"
+    "validation_status": "Track-B stream-executor and dev200-retuning validation applies to legacy/submission_b/ only.",
+    "executor": "submission/pps_c/main.py (python script.py --help)"
   },
   "canonical_build": {
     "archive": "runs/dev200_unseal_20260917/build_tuned_05/submission.zip",

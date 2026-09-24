@@ -48,17 +48,16 @@ python -B tools/replay_preserved_reference.py --output artifacts/reference_repla
 
 ```text
 python script.py --help
-python tools/build_submission.py --output artifacts/submission.zip
+python tools/build_submission.py <이름>
 ```
 
-루트 `script.py`는 `submission.main.main()`을 부른다. 기본 실행기는 스트리밍이며
-시간 예산 안에서 공고별 호출을 조절한다([계약](docs/RUNTIME_STREAMING.md)).
-이전 32공고 묶음 실행은 `--executor cohort`다. 원래 A 입력, 최고 기록의
-CPU 보정, L19의 v20/e20을 같은 `submission/` 패키지에 통합한다. 검증된 개선은
-이 패키지에 계속 합치며 새 현행 source 브랜치를 만들지 않는다. ZIP과 노트북도
-이 본체를 사용한다. **현재 통합본의 CPU/GPU 검증 상태는 STATE.json을 확인한다.**
+루트 `script.py`는 `submission.main.main()`을 부르고, 본체는 `submission/pps_c/`(파이프라인 C,
+계약 [DESIGN_C.md](runs/rebuild_c/DESIGN_C.md))다. 빌드 도구는 `artifacts/rebuild_c/<이름>/submit.zip`에
+`submission/script.py`·`requirements.txt`·`pps_c/`를 담고, 풀어 낸 ZIP에서 mock 실행으로 확인한다.
+Colab GPU 키트(`runs/rebuild_c/colab/`)도 이 본체를 담는다. 검증된 개선은 이 패키지에 계속 합치며
+새 현행 source 브랜치를 만들지 않는다. **현재 본체의 CPU/GPU 검증 상태는 STATE.json을 확인한다.**
 
-루트 `pps/`, `model/`은 이전 구현이며 제출에서 읽지 않는다. 과거 동결
+루트 `pps/`, `model/`과 `legacy/`(이전 track-B 런타임과 그 테스트·도구)는 제출에서 읽지 않는다. 과거 동결
 `experiments/*/source/`와 응답은 증거·롤백용으로 보존한다.
 `precision_joined_v1/source/script.py`를 직접 실행해도 역사적 B4와 다른 A 입력이
 생긴다. 점수 이름만 보고 실행 파일을 바꾸지 않는다. 새 추론 점수가 떨어지면

@@ -2,7 +2,7 @@ import datetime as dt
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'submission'))
 
 from pps_c import amounts, dates, families as F, judge, regions  # noqa: E402
 
