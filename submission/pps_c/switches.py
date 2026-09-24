@@ -11,3 +11,6 @@ V11_PRIVATE = False
 SIZE_PRIVATE = False
 # "동등 이상" leaves a designation a v9 violation (approved literal default).
 V9_EQUIVALENT_VIOLATION = True
+# J1 per-item judgment thresholds on p1 (j1.py; a CPU 0 of v9 or v1 becomes 1 at p1 >= threshold), e.g. {'v9': 0.9}.
+# Empty = no J1 calls.
+J1_THRESHOLDS = {}

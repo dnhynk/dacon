@@ -78,6 +78,31 @@ class Engine:
             res.append((c.text if c else '', c.finish_reason if c else 'none', len(c.token_ids) if c else 0))
         return res
 
+    def judge(self, batch, top_k=20):
+        """J1 answers. batch: [(token_ids, max_tokens, thinking_budget)] → [(text, finish_reason, output_tokens,
+        positions)], positions = [(sampled token text, [(decoded token, logprob), ...best first])] per output token.
+        No grammar: SamplingParams(logprobs=K) returns the top-K of the model's own distribution, which is all p1 needs."""
+        from vllm import SamplingParams
+        params = []
+        for ids, mt, budget in batch:
+            kw = {'thinking_token_budget': budget, 'skip_special_tokens': False} if self.thinking else {}
+            params.append(SamplingParams(temperature=0.0, seed=SEED, max_tokens=mt + budget, logprobs=top_k, **kw))
+        outs = self.llm.generate([{'prompt_token_ids': req[0]} for req in batch], params, use_tqdm=False)
+        res = []
+        for o in outs:
+            c = o.outputs[0] if o.outputs else None
+            positions = []
+            for tid, entry in zip(c.token_ids if c else [], (c.logprobs or []) if c else []):
+                cands = []
+                for k, v in (entry or {}).items():
+                    tok = getattr(v, 'decoded_token', None)
+                    cands.append((tok if tok is not None else self.tok.decode([k]), float(v.logprob)))
+                cands.sort(key=lambda t: -t[1])
+                sampled = getattr((entry or {}).get(tid), 'decoded_token', None)
+                positions.append((sampled if sampled is not None else self.tok.decode([tid]), cands))
+            res.append((c.text if c else '', c.finish_reason if c else 'none', len(c.token_ids) if c else 0, positions))
+        return res
+
 
 class MockEngine:
     """No model: every request returns an all-불명 answer, so CPU defaults decide (tests and dry runs)."""
@@ -101,3 +126,7 @@ class MockEngine:
                     obj[key] = '불명'
             out.append((json.dumps(obj, ensure_ascii=False), 'stop', 0))
         return out
+
+    def judge(self, batch, top_k=20):
+        """No model: no logprobs, so every J1 p1 is None and the CPU verdicts stand."""
+        return [('', 'stop', 0, []) for _ in batch]

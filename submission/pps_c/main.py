@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import catalog, csvout, facts, families as F, judge, record
+from . import catalog, csvout, facts, families as F, j1, judge, record, switches
 from .runner import Engine, MockEngine, log
 
 # Family order after the first pass: cheap, high-value families first so a deadline cut loses the least.
@@ -35,6 +35,18 @@ class Request:
     max_tokens: int
     budget: int = 0
 
+
+@dataclass
+class JudgeRequest:
+    rec: int
+    item: str
+    lines: list
+    cpu: int
+    token_ids: list
+
+
+# J1 seconds per request before any J1 chunk is measured (prefill only, one answer token); only the deadline check uses it.
+J1_PRIOR_SECONDS = 0.4
 
 THINKING = {'families': (), 'budget': 0}
 
@@ -68,6 +80,51 @@ def first_pass_request(engine, b, k):
     return make_request(engine, b, k, 'inst')
 
 
+def j1_request(engine, b, k, item, verdicts, thinking):
+    lines = j1.candidates(b, item)
+    while True:
+        ids = engine.token_ids(j1.messages(b, item, lines), thinking=thinking)
+        if len(ids) + j1.ANSWER_TOKENS <= min(j1.PROMPT_TOKEN_LIMIT, engine.max_model_len - 64) or len(lines) <= 1:
+            break
+        lines = lines[:max(1, int(len(lines) * 0.75))]
+    return JudgeRequest(k, item, lines, verdicts[item][0], ids)
+
+
+def run_j1(engine, bundles, verdicts, mode, thresholds, args, t0, budget, stats, journal):
+    """Per-item judgments after the family readings; a deadline cut leaves the remaining cells to the CPU verdicts."""
+    thinking = args.j1_thinking_budget > 0
+    queue = [j1_request(engine, b, k, item, v, thinking) for k, (b, v) in enumerate(zip(bundles, verdicts))
+             for item in j1.wanted(b, v, mode, thresholds)]
+    queue.sort(key=lambda r: (r.item, r.rec))    # one item's requests together: its shared prompt head stays cached
+    st = stats['j1'] = {'mode': mode, 'requests': len(queue), 'judged': 0, 'p1_missing': 0, 'skipped_deadline': 0,
+                        'seconds': 0.0}
+    recs, per_req, j0 = {}, None, time.time()
+    for s in range(0, len(queue), args.chunk):
+        chunk = queue[s:s + args.chunk]
+        elapsed = time.time() - t0
+        if elapsed + (per_req or J1_PRIOR_SECONDS) * len(chunk) * 1.2 > budget:
+            st['skipped_deadline'] += len(queue) - s
+            log(f'deadline: {len(queue) - s} J1 requests left to CPU verdicts at {elapsed:.0f}s')
+            break
+        c0 = time.time()
+        outs = engine.judge([(r.token_ids, j1.ANSWER_TOKENS, args.j1_thinking_budget) for r in chunk], top_k=j1.TOP_K)
+        rate = (time.time() - c0) / max(1, len(chunk))
+        per_req = rate if per_req is None else 0.7 * per_req + 0.3 * rate
+        for r, (text, finish, ntok, positions) in zip(chunk, outs):
+            ans = j1.answer_probability(positions, after_reasoning=thinking)
+            b = bundles[r.rec]
+            rec = {'id': b.notice.id, 'item': r.item, 'cpu': r.cpu, 'lines': [ln.i for ln in r.lines],
+                   'in': len(r.token_ids), 'out': ntok, 'finish': finish, 'text': text, **ans}
+            recs.setdefault(b.notice.id, {})[r.item] = rec
+            st['judged'] += 1
+            st['p1_missing'] += ans['p1'] is None
+            if journal is not None:
+                journal.append(rec)
+        log(f'J1 {min(s + args.chunk, len(queue))}/{len(queue)} requests, {time.time() - t0:.0f}s elapsed')
+    st['seconds'] = round(time.time() - j0, 1)
+    return recs
+
+
 def run(args):
     t0 = time.time()
     budget = args.runtime_seconds - args.margin_seconds
@@ -79,11 +136,14 @@ def run(args):
     log(f'CPU facts in {time.time() - t0:.1f}s')
     journal = []
     stats = {'requests': 0, 'answered': 0, 'parse_failed': 0, 'skipped_deadline': 0, 'by_family': {}}
+    engine = None
+    j1_mode = args.j1 or ('apply' if switches.J1_THRESHOLDS else 'off')
     if args.mode != 'cpu':
         THINKING['families'] = tuple(args.thinking_families or ())
         THINKING['budget'] = args.thinking_budget
-        engine = MockEngine() if args.mode == 'mock' else Engine(args.model_dir, max_num_seqs=args.max_num_seqs,
-                                                                 thinking=bool(THINKING['families']))
+        engine = MockEngine() if args.mode == 'mock' else Engine(
+            args.model_dir, max_num_seqs=args.max_num_seqs,
+            thinking=bool(THINKING['families']) or (j1_mode != 'off' and args.j1_thinking_budget > 0))
         first = [first_pass_request(engine, b, k) for k, b in enumerate(bundles)]
         rest = []
         for name in ORDER:
@@ -133,10 +193,16 @@ def run(args):
                     stats['parse_failed'] += 1
         else:
             stats['parse_failed'] += len(retry)
+    verdicts = [judge.judge(b) for b in bundles]
+    j1_journal = [] if args.j1_journal or args.journal else None
+    if engine is not None and j1_mode != 'off':
+        thresholds = dict(switches.J1_THRESHOLDS) if j1_mode == 'apply' else {}
+        by_id = run_j1(engine, bundles, verdicts, j1_mode, thresholds, args, t0, budget, stats, j1_journal)
+        if thresholds:
+            verdicts = [j1.apply(b, v, by_id.get(b.notice.id, {}), thresholds) for b, v in zip(bundles, verdicts)]
     rows = []
-    for rec, b in zip(recs, bundles):
-        verdicts = judge.judge(b)
-        rows.append(csvout.row(rec['id'], verdicts, '\n'.join(d['text'] for d in rec['docs'])))
+    for rec, v in zip(recs, verdicts):
+        rows.append(csvout.row(rec['id'], v, '\n'.join(d['text'] for d in rec['docs'])))
     out_path = str(Path(args.output_dir) / 'submission.csv')
     csvout.write(rows, out_path)
     errs = csvout.validate(out_path, [r['id'] for r in recs])
@@ -147,6 +213,11 @@ def run(args):
             for j in journal:
                 fh.write(json.dumps(j, ensure_ascii=False) + '\n')
         Path(str(args.journal) + '.stats.json').write_text(json.dumps(stats, ensure_ascii=False, indent=1), encoding='utf-8')
+    if j1_journal:
+        dest = args.j1_journal or str(Path(args.journal).with_name('j1.jsonl.gz'))
+        with gzip.open(dest, 'wt', encoding='utf-8') as fh:
+            for j in j1_journal:
+                fh.write(json.dumps(j, ensure_ascii=False) + '\n')
     return 0 if not errs else 1
 
 
@@ -171,6 +242,11 @@ def main(argv=None):
     ap.add_argument('--journal', default=os.environ.get('PPS_C_JOURNAL'))
     ap.add_argument('--thinking-families', nargs='*', default=None, help='families read with the reasoning channel on')
     ap.add_argument('--thinking-budget', type=int, default=256)
+    ap.add_argument('--j1', choices=('off', 'record', 'apply'), default=None,
+                    help='per-item judgment (v9, v1 OR): record = journal p1 only; apply = switches.J1_THRESHOLDS '
+                         '(the default when thresholds are set, else off)')
+    ap.add_argument('--j1-journal', default=None, help='J1 records (default: j1.jsonl.gz beside --journal)')
+    ap.add_argument('--j1-thinking-budget', type=int, default=0, help='>0: J1 reads with the reasoning channel on')
     args = ap.parse_args(argv)
     return run(args)
 
