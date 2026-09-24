@@ -324,9 +324,11 @@ unresolved_scope: 실제 과업의 범위나 동일성이 해결되지 않았으
 
 
 def prompt(record, selection, tokenizer, products, *, explain_contract=False, task_groups=False,
-           q10_variant='current', max_model_len=16384):
+           q10_variant='current', max_model_len=16384, catalog_first=False):
     if q10_variant not in {'current', 'purchase_roles'}:
         raise ValueError('Unknown Q10 variant')
+    if type(catalog_first) is not bool or (catalog_first and q10_variant != 'current'):
+        raise ValueError('Catalog-first order is defined for the current Q10 variant only')
     if q10_variant == 'purchase_roles':
         return purchase_roles_prompt(record, selection, tokenizer, products,
             explain_contract=explain_contract, task_groups=task_groups, max_model_len=max_model_len)
@@ -354,7 +356,11 @@ listed_category는 전체 과업과 같은 whole 관계가 있을 때만 쓴다.
     if explain_contract:
         system += '\n' + output_contract(len(units))
     metadata = json.dumps(record.get('meta', {}), ensure_ascii=False, separators=(',', ':'))
-    user = '등록 정보(원문을 대체하지 않음):\n'+metadata+'\n제공 고시 전체 서비스 목록:\n'+catalog_text+'\n현재 공고 원문:\n'+render(units)
+    if catalog_first:
+        # The supplied catalog is the same for every notice; ahead of the metadata it is a cached prefix.
+        user = '제공 고시 전체 서비스 목록:\n'+catalog_text+'\n등록 정보(원문을 대체하지 않음):\n'+metadata+'\n현재 공고 원문:\n'+render(units)
+    else:
+        user = '등록 정보(원문을 대체하지 않음):\n'+metadata+'\n제공 고시 전체 서비스 목록:\n'+catalog_text+'\n현재 공고 원문:\n'+render(units)
     if type(task_groups) is not bool:
         raise ValueError('Task grouping must be an explicit boolean')
     groups = None
@@ -744,6 +750,30 @@ def unsupported_noncommittal_links(record, links, spans, catalog_by_code):
     return result
 
 
+def _listed_scope_acquittal(obj, by_code, original, record):
+    """v12 acquittal (runs/rebuild_20260924/natural_fp/PROPOSAL.md 4-A): the model's whole-task scope names a
+    listed service whose stated catalog conditions the notice's estimate meets, so a direct-production
+    requirement is lawful even when the consumer withholds its overlay. Returns the condition rows or None.
+    """
+    if obj.get('catalog_relation') != 'listed_category':
+        return None
+    whole = [link for link in obj.get('relationships', []) if link.get('role') == 'whole' and link.get('code') in by_code]
+    if not whole:
+        return None
+    from .qualification import catalog_condition, software_catalog_prices
+    from .prices import project_prices
+    prices = project_prices(record)
+    budget_prices = software_catalog_prices(record, prices['budget'])
+    rows = []
+    for link in whole:
+        row = by_code[link['code']]
+        condition = catalog_condition(row['condition'], original['estimate_won'], original['budget_won'],
+                                      estimate_prices=prices['estimated_price'], budget_prices=budget_prices,
+                                      record=record, product_name=row['name'])
+        rows.append({'code': row['code'], 'name': row['name'], 'condition': condition['status']})
+    return rows if {r['condition'] for r in rows} <= {'met', 'no_stated_condition'} else None
+
+
 def review(record, response, packet, knowledge, baseline=None):
     from .qualification import infer, catalog_condition, software_catalog_prices
     from .prices import project_prices
@@ -759,6 +789,15 @@ def review(record, response, packet, knowledge, baseline=None):
 
     def stop(reason):
         log['gate'] = reason
+        if (getattr(getattr(knowledge, 'config', None), 'v12_listed_scope_acquittal', False)
+                and reason not in ('complete_service_catalog_not_shown', 'q10_variant_contract_violation')):
+            try:  # v12 listed-scope acquittal: a failure keeps the withheld overlay (the run must always write its CSV)
+                acquittal = _listed_scope_acquittal(obj, by_code, original, record)
+            except Exception:
+                acquittal = None
+            if acquittal:
+                log['v12_listed_scope_acquittal'] = acquittal
+                return {'v12': 0, 'e12': ''}, log
         return None, log
 
     shown = packet.get('catalog_scope', {})

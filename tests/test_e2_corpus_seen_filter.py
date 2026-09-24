@@ -102,11 +102,25 @@ def test_absence_v24_and_price_shift_items_are_never_touched():
     assert corpus_lines.apply(rec, negatives, index_of(STOCK)) == [] and negatives['e3'] == STOCK
 
 
-def test_the_switch_is_off_in_code_and_on_in_the_shipped_config():
+def test_the_item_list_limits_the_filter_to_those_items():
+    rec = notice(STOCK)
+    row = row_with(**{f'v{k}': STOCK for k in range(1, 25)})
+    assert corpus_lines.apply(rec, row, index_of(STOCK), (1, 12, 17, 19)) == [1, 12, 17, 19]
+    assert all(row[f'v{k}'] == 1 for k in range(1, 25) if k not in (1, 12, 17, 19))
+    assert Config().corpus_seen_filter_items == ()
+    assert dataclasses.replace(Config(), corpus_seen_filter_items=[1, 12]).corpus_seen_filter_items == [1, 12]
+    for bad in ([1, 1], [0], [25], [24], [16], ['1'], 1):   # 24 and absence items are never filtered
+        with pytest.raises(ValueError):
+            dataclasses.replace(Config(), corpus_seen_filter_items=bad)
+
+
+def test_the_switch_is_off_in_code_and_in_the_shipped_config():
     shipped = Config.load(Path(__file__).resolve().parents[1] / 'submission/model/config.json')
-    assert Config().corpus_seen_filter is False and shipped.corpus_seen_filter is True
+    assert Config().corpus_seen_filter is False and shipped.corpus_seen_filter is False
     assert corpus_lines.load_for(SimpleNamespace(config=Config())) is None
-    assert len(corpus_lines.load_for(SimpleNamespace(config=shipped))) > 0
+    assert corpus_lines.load_for(SimpleNamespace(config=shipped)) is None
+    enabled = dataclasses.replace(shipped, corpus_seen_filter=True)
+    assert len(corpus_lines.load_for(SimpleNamespace(config=enabled))) > 0
     with pytest.raises(ValueError):
         dataclasses.replace(Config(), corpus_seen_filter='yes')
 
@@ -168,6 +182,18 @@ def test_the_executor_applies_the_filter_to_the_final_row_only(tmp_path, shipped
     assert saved['sources']['_corpus_seen_dropped'] == dropped and saved['row']['v6'] == 0
     b3 = csv_rows(tmp_path / 'output/B3.csv')['r1']
     assert all((b3[f'v{k}'], b3[f'e{k}']) == ('1', STOCK) for k in dropped)
+
+
+def test_the_executor_and_replay_honour_the_item_list(tmp_path, shipped_index):
+    stream(tmp_path, SimpleNamespace(**vars(CONFIG), corpus_seen_filter=True, corpus_seen_filter_items=(1, 12, 17, 19)))
+    row = csv_rows(tmp_path / 'output/submission.csv')['r1']
+    assert all(row[f'v{k}'] == ('0' if k in (1, 12, 17, 19) else '1') for k in range(1, 25))
+    rec, index = notice(f'{STOCK}\n{EDITED}'), index_of(STOCK)
+    state = RecordState(0, rec)
+    state.rows['A1'] = {'v1': 1, 'e1': STOCK, 'v6': 1, 'e6': STOCK}
+    expected = StreamingExecutor._assemble(SimpleNamespace(counts=Counter(), corpus_index=index, corpus_filter_items=(1,)), state)
+    actual, _ = cell_reconsume.assemble(rec['id'], state.rows, {}, rec, index, (), (), (1,))
+    assert actual == expected and (actual['v1'], actual['v6']) == (0, 1)
 
 
 def test_the_switch_without_its_index_fails_before_the_engine_loads(tmp_path, monkeypatch):

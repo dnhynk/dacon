@@ -26,8 +26,8 @@ def test_config_accepts_distinct_q10_items_only():
             dataclasses.replace(Config(), q10_excluded_items=bad)
 
 
-def test_shipped_exclusion_is_the_preregistered_item():
-    assert list(Config.load(SHIPPED).q10_excluded_items) == [11]
+def test_shipped_config_excludes_no_item():
+    assert list(Config.load(SHIPPED).q10_excluded_items) == []
 
 
 def test_consume_drops_excluded_cells_from_q10_rows_only():

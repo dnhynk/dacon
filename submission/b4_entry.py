@@ -89,7 +89,8 @@ class B4Pipeline:
     def __init__(self,data_dir,tokenizer,input_strategy=None, *, source_policy=None, encoder=None,
                  specification_review=None, legal_policy=None, catalog_review=None, software_review=None,
                  a10_thinking_budget=None, a_cohort_size=None, a10_question_policy=None,
-                 catalog_source_policy=None, catalog_task_groups=None, focused_verify=None):
+                 catalog_source_policy=None, catalog_task_groups=None, focused_verify=None,
+                 prompt_layout=None, engine_max_model_len=None, a10_budget_profiles=None, a10_attach=None):
         self.config=Config.load(HERE/'model/config.json')
         # Validate the requested combination once. Intermediate replacements can
         # reject a valid preserved control before its other overrides are applied.
@@ -99,7 +100,9 @@ class B4Pipeline:
             ('catalog_review',catalog_review), ('software_review',software_review),
             ('thinking_token_budget',a10_thinking_budget), ('a_cohort_size',a_cohort_size),
             ('a10_question_policy',a10_question_policy), ('catalog_source_policy',catalog_source_policy),
-            ('catalog_task_groups',catalog_task_groups))
+            ('catalog_task_groups',catalog_task_groups), ('prompt_layout',prompt_layout),
+            ('engine_max_model_len',engine_max_model_len), ('a10_budget_profiles',a10_budget_profiles),
+            ('a10_attach',a10_attach))
             if value is not None}
         if focused_verify is not None:
             overrides['focused_verify'] = focused_verify
@@ -107,6 +110,7 @@ class B4Pipeline:
             self.config=dataclasses.replace(self.config,**overrides)
         self.original_config=OriginalConfig.load(HERE/'model/original_a.json')
         self.knowledge=Knowledge(data_dir)
+        self.knowledge.config=self.config   # consumers read opt-in switches from it (v12_listed_scope_acquittal)
         self.original_knowledge=OriginalKnowledge(data_dir)
         self.route=UniformV20Route(data_dir,tokenizer,
                                    audited_config=self.config if self.config.input_strategy=='audited' else None)
@@ -206,7 +210,7 @@ class B4Pipeline:
             spans=[dataclasses.asdict(s) for s in prompt['spans']]
             ids=prompt['token_ids']
             if ids is None:raise ValueError('A fixed local tokenizer is required')
-            if len(ids)+cfg.max_output_tokens+32>cfg.max_model_len:
+            if len(ids)+cfg.max_output_tokens+32>(cfg.engine_context() if 'fixed_prefix_sha256' in prompt else cfg.max_model_len):
                 raise ValueError('Current prompt exceeds the fixed context budget')
             result.append({'request_key':f'{family}:{rid}:{first}','record_id':rid,'family':family,'batch':profile,
                 'items':list(prompt['items']),'messages':prompt['messages'],'token_ids':ids,
@@ -217,10 +221,12 @@ class B4Pipeline:
                 **({'source_search':prompt['source_search']} if prompt.get('source_search') is not None else {}),
                 **({'source_strategy_fallback':prompt['source_strategy_fallback']} if 'source_strategy_fallback' in prompt else {}),
                 **({'source_unitization':prompt['source_unitization']} if 'source_unitization' in prompt else {}),
+                **{key:prompt[key] for key in ('fixed_prefix_sha256','fixed_prefix_tokens','legal_reading') if key in prompt},
                 'generation':{'response_format':cfg.response_format,
                     'thinking_budget':cfg.thinking_budget_for(prompt['items']),'max_output_tokens':cfg.max_output_tokens},
                 'schema_sha256':digest(output_schema(cfg.response_format,len(spans),prompt['items']))})
-        if self.config.legal_source_policy != 'current':
+        if self.config.legal_source_policy != 'current' and 'fixed_prefix_sha256' not in result[1]:
+            # A fixed-prefix packet already reads this legal text in its shared prefix.
             result[1] = self.legal_packet(record, result[1])
         if self.config.a10_question_policy == 'source_questions':
             from .pps.source_questions import prepare
@@ -238,7 +244,19 @@ class B4Pipeline:
                     result.append(specialist)
                     self.specialist_preparation.append({'record_id':record['id'],'status':'prepared',
                         'profile':specialist['batch'],'source_tokens':specialist['source_search']['source_tokens']})
+        if self.config.a10_budget_profiles:
+            # The same A10 request once per thinking budget; a replay keeps exactly one of them.
+            at = next(i for i,p in enumerate(result) if p['batch']=='A10')
+            base = result[at]
+            result[at:at+1] = [{**base,'request_key':f"{base['request_key']}:t{b}",'batch':f'A10_t{b}',
+                                'generation':{**base['generation'],'thinking_budget':b}}
+                               for b in self.config.a10_budget_profiles]
         return result
+
+    def a10_premise(self, record):
+        """Source-only A10 premise score for the stream executor's attachment rule."""
+        from submission.pps.a10_premise import score
+        return score(self.knowledge, record)
 
     def legal_packet(self, record, control):
         """An explicit A10 alternative with the same notice and law token caps."""
@@ -312,7 +330,8 @@ class B4Pipeline:
                 specification_inventory=prompt['specification_inventory']))}
         # The specialist has a separate prompt; shared-A-only annotations must
         # not purport to describe its legal content or finite source layout.
-        for key in ('source_unitization','legal_reading','legal_control','specialist_fallback'):
+        for key in ('source_unitization','legal_reading','legal_control','specialist_fallback',
+                    'fixed_prefix_sha256','fixed_prefix_tokens'):
             packet.pop(key, None)
         self.specialist_preparation.append({'record_id':record['id'], 'status':'prepared',
             'source_tokens':source_tokens, 'candidates':len(prompt['specification_inventory']['candidates'])})

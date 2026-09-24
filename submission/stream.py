@@ -61,6 +61,17 @@ PRIOR_CACHED = {'A1': .11, 'A10': .71, 'A19': .66, 'L19': .01, 'Q10': 0., 'S9': 
 # docs/RUNTIME_STREAMING.md.
 PLAN_PRIORS = {'prefill_seconds_per_token': 133.8e-6, 'decode_seconds_per_token': 1.314e-3,
                'engine_ready_seconds': 320.}
+# config a10_attach: a record the ladder puts at this tier runs at the tier above, whose only
+# extra request is A10 (runs/rebuild_20260924/DESIGN.md 2-4).
+A10_BASE_TIER = 2
+assert set(TIERS[A10_BASE_TIER - 1]['profiles']) == {*TIERS[A10_BASE_TIER]['profiles'], 'A10'}
+# Attachment waits for this many fitted cost windows: the ridge prior then weighs under 3% (about
+# 1/n^2) of the evidence. Earlier fits lean on the prior, so a slower engine would attach A10 that the
+# ladder then pays for with A19; a later start loses no attachment, the unspent time stays in the budget.
+A10_ATTACH_MIN_WINDOWS = 6
+# A request reading fewer cached tokens than its fixed prefix minus this recomputed it; the
+# engine reports cache hits in 32-token steps.
+FIXED_PREFIX_TOLERANCE = 64
 
 
 @dataclasses.dataclass
@@ -460,6 +471,7 @@ class RecordState:
         self.focused_decided = False
         self.focused_preparing = False
         self.focused_proofs = {}
+        self.a10_premise = None    # source-only premise score, prepared when config a10_attach is on
 
 
 class StreamingExecutor:
@@ -508,8 +520,12 @@ class StreamingExecutor:
                                        if getattr(pipeline.config, 'focused_verify', False) else 0.)
         # Loaded here, before the engine: corpus_seen_filter without its index file fails at once.
         self.corpus_index = corpus_lines.load_for(pipeline)
+        self.corpus_filter_items = tuple(getattr(pipeline.config, 'corpus_seen_filter_items', ()) or ())
         self.source_rule_items = tuple(getattr(pipeline.config, 'source_rule_items', ()) or ())
         self.precision_gates = tuple(getattr(pipeline.config, 'precision_gates', ()) or ())
+        self.a10_attach = bool(getattr(pipeline.config, 'a10_attach', False))
+        self.cache_totals = {}      # profile -> exact prompt and cached token totals
+        self.fixed_prefix_ready = {}    # fixed prefix sha256 -> when its first request finished
 
     # ---- preparation -----------------------------------------------------
     def prefeed(self):
@@ -553,6 +569,7 @@ class StreamingExecutor:
                     self.packets_out.write(packet)
                 state.fallback_rows = result['fallback_rows']
                 state.code_only = result.get('code_only', {})
+                state.a10_premise = result.get('a10_premise')
                 for profile in ('Q10', 'W20'):
                     self.stats.observe_presence(profile, profile in state.packets)
             state.prepared = True
@@ -597,9 +614,21 @@ class StreamingExecutor:
             self._finalize(state)
             return
         tier = self.policy.decide(state.index)
+        if tier == A10_BASE_TIER and self.a10_attach and 'A10' in state.packets:
+            self.counts['a10_attach_decisions'] += 1
+            if self._attach_a10(state.index):
+                tier -= 1
+                self.counts['a10_attached'] += 1
+                self.counts['a10_attached_premise_zero'] += state.a10_premise == 0
         state.tier = TIERS[tier]['name']
         profiles = TIERS[tier]['profiles']
-        state.planned = [p for p in SUBMIT_ORDER if p in profiles and p in state.packets]
+        state.planned = []
+        for p in SUBMIT_ORDER:
+            if p == 'A10' and p in profiles:
+                # Budget profiles (config a10_budget_profiles) stand in for the one A10 packet.
+                state.planned += sorted((k for k in state.packets if k.startswith('A10_t')), key=lambda k: int(k[5:]))
+            if p in profiles and p in state.packets:
+                state.planned.append(p)
         if 'S9' in profiles and 'S9' in state.packets:
             state.planned.append('S9')
         for profile in state.planned:
@@ -617,6 +646,49 @@ class StreamingExecutor:
                 continue
             self._submit_request(state, profile, packet, 0)
         self._maybe_finalize(state)
+
+    def _attach_a10(self, index):
+        """A10 for this record when every remaining record at the base tier plus this record's A10 fits
+        the ladder's ascent rule, work <= time left x (1 - reserve), reserve = margin_fraction +
+        upgrade_margin_fraction: attaching A10 lifts this one record a tier. The reserve is a share of the
+        time left, so of the remaining planned work (review round 04). The ladder descends on a noisy
+        per-record cost estimate at margin_fraction; the upgrade margin keeps the attachments out of that
+        band (runs/rebuild_20260924/stage1/precheck/deadline_01). A record whose source-only A10 premise
+        scores 0 needs twice the reserve (review round 05; precheck/premise_attach_01.json).
+        Only well-measured engine costs attach."""
+        view = self.policy.projection(index)
+        if not view['ready'] or view['windows'] < A10_ATTACH_MIN_WINDOWS or A10_BASE_TIER not in view['need']:
+            return False
+        a, b = view['a'], view['b']
+        extra = (self.stats.seconds_per_record(A10_BASE_TIER - 1, a, b)
+                 - self.stats.seconds_per_record(A10_BASE_TIER, a, b))
+        reserve = self.options.margin_fraction + self.options.upgrade_margin_fraction
+        share = 1 - reserve * (2 if self.states[index].a10_premise == 0 else 1)
+        return view['need'][A10_BASE_TIER] + extra <= view['time_left'] * share
+
+    def _observe_cache(self, profile, packet, prompt_tokens, cached, submitted):
+        """Exact cache totals per profile. A request reading less than its fixed prefix from the cache
+        recomputed it, unless no request with that prefix had finished when it was submitted (cold)."""
+        entry = self.cache_totals.setdefault(profile, {'requests': 0, 'prompt_tokens': 0, 'cached_tokens': 0})
+        entry['requests'] += 1
+        entry['prompt_tokens'] += prompt_tokens
+        entry['cached_tokens'] += cached
+        fixed, key = packet.get('fixed_prefix_tokens'), packet.get('fixed_prefix_sha256')
+        if not fixed or not key:
+            return
+        ready = self.fixed_prefix_ready.get(key)
+        if cached < fixed - FIXED_PREFIX_TOLERANCE:
+            self.counts['fixed_prefix_recomputed' if ready is not None and submitted > ready
+                        else 'fixed_prefix_cold'] += 1
+        if ready is None:
+            self.fixed_prefix_ready[key] = self.clock()
+
+    def _preemptions(self):
+        label, counts = getattr(self.runner, 'preemption_counter', None), getattr(self.runner, 'preemptions', None)
+        if counts is None:
+            return None if label is None else {'counter': label, 'total': None}
+        return {'counter': label, 'total': sum(counts.values()), 'requests': len(counts),
+                'request_ids': sorted(counts)[:100]}
 
     def _submit_request(self, state, profile, packet, attempt):
         request_id = f"{packet['request_key']}#{attempt}"
@@ -663,6 +735,7 @@ class StreamingExecutor:
         cached = min(prompt_tokens, native['cached_input_tokens'] or 0)
         new_prefill = prompt_tokens - cached
         decode = response.get('output_tokens', 0)
+        self._observe_cache(profile, packet, prompt_tokens, cached, submitted)
         self.stats.observe_request('FV' if profile.startswith('FV:') else profile,
                                    new_prefill, decode, cached / prompt_tokens if prompt_tokens else None)
         self.model.observe(new_prefill, decode)
@@ -869,7 +942,7 @@ class StreamingExecutor:
                 self.counts['filled_zero_cells'] += len(filled)
         index = getattr(self, 'corpus_index', None)
         if index is not None:
-            dropped = corpus_lines.apply(state.record, result, index)
+            dropped = corpus_lines.apply(state.record, result, index, getattr(self, 'corpus_filter_items', ()))
             if dropped:
                 state.sources['_corpus_seen_dropped'] = dropped
         gates = getattr(self, 'precision_gates', ())
@@ -1059,6 +1132,18 @@ class StreamingExecutor:
                   's9_gate_skips': self.counts['s9_gate_skips'], 'code_only_skips': self.counts['code_only_skips'],
                   'tier_counts': dict(self.tier_counts), 'tier_plan': self.policy.receipt(),
                   'tier_timeline': self.policy.timeline,
+                  'a10_attach': {'enabled': self.a10_attach, 'decisions': self.counts['a10_attach_decisions'],
+                                 'attached': self.counts['a10_attached'],
+                                 'attached_premise_zero': self.counts['a10_attached_premise_zero'],
+                                 'reserve_fraction_of_time_left': round(self.options.margin_fraction
+                                                                        + self.options.upgrade_margin_fraction, 3)},
+                  'prefix_cache': {'by_profile': {p: {**v, 'cached_fraction': round(v['cached_tokens'] / v['prompt_tokens'], 4)
+                                                      if v['prompt_tokens'] else None}
+                                                  for p, v in sorted(self.cache_totals.items())},
+                                   'fixed_prefix_variants': len(self.fixed_prefix_ready),
+                                   'fixed_prefix_recomputed': self.counts['fixed_prefix_recomputed'],
+                                   'fixed_prefix_cold': self.counts['fixed_prefix_cold']},
+                  'engine_preemptions': self._preemptions(),
                   'final_tier': TIERS[self.policy.current]['name'],
                   'measured_tier_decisions': self.policy.measured_decisions,
                   'cost_model': self.model.snapshot(),

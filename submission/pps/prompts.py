@@ -98,9 +98,31 @@ class Config:
     focused_verify_max_input_tokens: int = 3200
     focused_verify_seconds_per_record: float = .1619
     corpus_seen_filter: bool = False
+    corpus_seen_filter_items: tuple = ()
     source_rule_items: tuple = ()
     precision_gates: tuple = ()
     q10_excluded_items: tuple = ()
+    v24_comparison_guard: bool = True
+    # 'fixed_prefix': the three groups' law excerpts and item tables precede the notice, the
+    # service catalog precedes Q10's metadata (runs/rebuild_20260924/DESIGN.md 2-1).
+    # 'fixed_prefix_lean': the same without the law excerpts (L-lean).
+    prompt_layout: str = 'current'
+    # Engine context when it must exceed max_model_len, which keeps sizing every source selection
+    # (fixed_prefix requests are longer than the current layout requests they are sized as).
+    engine_max_model_len: int | None = None
+    # Experimental: one A10 packet per thinking budget, profiles A10_t<budget>; replay keeps one.
+    a10_budget_profiles: tuple = ()
+    # The stream executor adds A10 to a tier-2 record when the budget affords it (DESIGN.md 2-4).
+    a10_attach: bool = False
+    # Measurement only: top-K output logprobs so the verdict tokens' P(1)/(P(0)+P(1)) is journaled
+    # (pps/verdict_confidence.py); 0 leaves every request unchanged.
+    verdict_logprobs: int = 0
+    # Fixed per-item thresholds on that confidence, [[item, threshold], ...]; a model positive below its threshold is
+    # withdrawn before the rules (PROPOSAL.md 4-B). Empty = off. Requires verdict_logprobs.
+    verdict_thresholds: tuple = ()
+    # Q10 consumer: when it withholds its overlay but the model's whole-task scope names a listed service whose
+    # catalog conditions the estimate meets, set v12 to 0 (natural_fp/PROPOSAL.md 4-A). Off = build_19/P2g behavior.
+    v12_listed_scope_acquittal: bool = False
 
     def __post_init__(self):
         if type(self.focused_verify) is not bool or type(self.focused_verify_eligibility) is not bool:
@@ -122,6 +144,11 @@ class Config:
             raise ValueError('rule_anchor_selection must be boolean')
         if type(self.corpus_seen_filter) is not bool:
             raise ValueError('corpus_seen_filter must be boolean')
+        from .corpus_lines import EXCLUDED_ITEMS as CORPUS_EXCLUDED
+        if (not isinstance(self.corpus_seen_filter_items, (tuple, list))
+                or len(set(self.corpus_seen_filter_items)) != len(self.corpus_seen_filter_items)
+                or any(type(k) is not int or not 1 <= k <= 24 or k in CORPUS_EXCLUDED for k in self.corpus_seen_filter_items)):
+            raise ValueError('corpus_seen_filter_items must list distinct filterable item numbers')
         if (not isinstance(self.source_rule_items, (tuple, list)) or len(set(self.source_rule_items)) != len(self.source_rule_items)
                 or any(type(k) is not int or not 1 <= k <= 24 for k in self.source_rule_items)):
             raise ValueError('source_rule_items must list distinct item numbers from 1 to 24')
@@ -132,6 +159,8 @@ class Config:
         if (not isinstance(self.q10_excluded_items, (tuple, list)) or len(set(self.q10_excluded_items)) != len(self.q10_excluded_items)
                 or any(type(k) is not int or not 10 <= k <= 18 for k in self.q10_excluded_items)):
             raise ValueError('q10_excluded_items must list distinct Q10 item numbers from 10 to 18')
+        if type(self.v24_comparison_guard) is not bool:
+            raise ValueError('v24_comparison_guard must be boolean')
         if self.a10_question_policy not in {'current', 'source_questions'}:
             raise ValueError('Unknown A10 question policy')
         if self.a10_question_policy != 'current' and self.input_strategy != 'audited':
@@ -191,6 +220,33 @@ class Config:
             raise ValueError("Selective thinking requires an explicit budget and valid item numbers")
         if self.sme_facts and not self.shared_prefix:
             raise ValueError("The SME fact packet requires shared source prompts")
+        if self.prompt_layout not in {'current', 'fixed_prefix', 'fixed_prefix_lean'}:
+            raise ValueError('Unknown prompt layout')
+        if self.prompt_layout != 'current' and self.legal_context_version != 'v2':
+            raise ValueError('The fixed-prefix layout needs per-group v2 law')
+        if self.engine_max_model_len is not None and (type(self.engine_max_model_len) is not int
+                                                      or self.engine_max_model_len < self.max_model_len):
+            raise ValueError('engine_max_model_len must be an integer of at least max_model_len')
+        if (not isinstance(self.a10_budget_profiles, (tuple, list))
+                or len(set(self.a10_budget_profiles)) != len(self.a10_budget_profiles)
+                or any(type(b) is not int or not 0 <= b < self.max_output_tokens for b in self.a10_budget_profiles)
+                or (self.a10_budget_profiles and not self.enable_thinking)):
+            raise ValueError('a10_budget_profiles must list distinct thinking budgets below max_output_tokens')
+        if type(self.a10_attach) is not bool or (self.a10_attach and self.a10_budget_profiles):
+            raise ValueError('a10_attach must be boolean and excludes budget profiles')
+        if type(self.verdict_logprobs) is not int or not 0 <= self.verdict_logprobs <= 20:
+            raise ValueError('verdict_logprobs must be an integer from 0 to 20')
+        if (not isinstance(self.verdict_thresholds, (tuple, list))
+                or any(not isinstance(p, (tuple, list)) or len(p) != 2 or type(p[0]) is not int or not 1 <= p[0] <= 24
+                       or type(p[1]) not in (int, float) or isinstance(p[1], bool) or not 0 <= p[1] <= 1 for p in self.verdict_thresholds)
+                or len({p[0] for p in self.verdict_thresholds}) != len(self.verdict_thresholds)
+                or (self.verdict_thresholds and not self.verdict_logprobs)):
+            raise ValueError('verdict_thresholds must pair distinct item numbers with thresholds in [0, 1] and needs verdict_logprobs')
+        if type(self.v12_listed_scope_acquittal) is not bool:
+            raise ValueError('v12_listed_scope_acquittal must be boolean')
+
+    def engine_context(self):
+        return self.engine_max_model_len or self.max_model_len
 
     def thinking_budget_for(self, items):
         if self.thinking_items and not set(items).intersection(self.thinking_items):
@@ -485,6 +541,51 @@ def build_software_fact_prompt(rec, knowledge, config, tokenizer, items, source_
                                   'units': len(spans), 'original_source_characters': sum(len(s.text) for s in spans)}}
 
 
+ORDER_LINE = "공고 원문 뒤에 주어진 이번 호출의 항목별 판단 안내와 출력 형식을 따른다."
+FIXED_PREFIX_ORDER_LINE = ("공고 원문 앞에 주어진 항목별 판단 안내와 법령 발췌, "
+                           "공고 원문 뒤에 주어진 이번 호출의 검토 항목과 출력 형식을 따른다.")
+FIXED_PREFIX_LEAN_ORDER_LINE = ("공고 원문 앞에 주어진 항목별 판단 안내, "
+                                "공고 원문 뒤에 주어진 이번 호출의 검토 항목과 출력 형식을 따른다.")
+QUESTION_HEADER = "\n\n[이번 호출의 항목별 판단 안내]\n"
+_FIXED_PROBES = {}
+
+
+def _fixed_group_law(knowledge, rec, items, config, tokenizer, law):
+    """A group's law block in the fixed prefix: the v2 context, except that A10 reads the
+    legal_source_policy dependency text B4Pipeline.legal_packet substitutes in the current layout."""
+    if config.legal_source_policy == 'current' or tuple(items) != tuple(range(10, 19)):
+        return law, None
+    from .legal_query_contract import original_source_tokens
+    baseline = knowledge.legal_context_v2(rec, items, config.legal_chars, return_metadata=True)
+    budget = original_source_tokens(baseline, knowledge.laws, tokenizer) if tokenizer is not None else None
+    reading = knowledge.search_legal_dependencies(config.legal_source_policy, max_chars=config.legal_chars,
+                                                  tokenizer=tokenizer, max_source_tokens=budget)
+    return reading['text'], reading
+
+
+def _fixed_block(groups, laws, instructions):
+    block = ""
+    for items, law, text in zip(groups, laws, instructions):
+        label = f"v{items[0]}~v{items[-1]}"
+        if law:
+            block += f"[{label} 배포 법령 참고 발췌]\n{law}\n\n"
+        block += f"[{label} 항목별 판단 안내]\n{text}\n\n"
+    return block
+
+
+def _fixed_prefix_probe(tokenizer, system, fixed, enable_thinking):
+    """Tokens of the system turn and the fixed block alone; their common prefix with a prompt is its cacheable part."""
+    if tokenizer is None:
+        return None
+    key = (id(tokenizer), system, fixed, enable_thinking)
+    if key not in _FIXED_PROBES:
+        if len(_FIXED_PROBES) >= 8:
+            _FIXED_PROBES.clear()
+        _FIXED_PROBES[key] = token_ids(tokenizer, [{"role": "system", "content": system},
+                                                   {"role": "user", "content": fixed}], enable_thinking)
+    return _FIXED_PROBES[key]
+
+
 def build_shared_prompts(rec, knowledge, config, tokenizer, groups, *, source_selection=None):
     selected_source = verified_search_spans(rec, source_selection, tokenizer) if source_selection is not None else None
     """One source packet per notice; item instructions follow a shared prefix.
@@ -512,6 +613,7 @@ condition=not_met인 후보는 그 고시 숫자조건이 충족되지 않은 �
     product = knowledge.detailed_product_facts(rec) if config.product_facts else knowledge.product_matches(rec)
     sme = compact_sme_prompt(knowledge.sme_record_facts(rec)) if config.sme_facts else None
     suffixes, variant_suffixes, group_legal_diagnostics = [], [], []
+    group_laws, group_instructions, group_variant_instructions, question_starts = [], [], [], []
     for items in groups:
         suffix = "\n\n[이번 호출의 항목별 판단 안내]\n"
         if config.legal_context_version == "v2":
@@ -520,8 +622,12 @@ condition=not_met인 후보는 그 고시 숫자조건이 충족되지 않은 �
                 suffix = "\n\n[이번 항목의 배포 법령 참고 발췌]\n" + group_law + suffix
             group_legal_diagnostics.append(diagnostics)
         else:
+            group_law = ""
             group_legal_diagnostics.append(None)
-        suffix += "\n".join(f"v{k} {knowledge.table[f'v{k}']['항목명']}: {rubric[k]}" for k in items)
+        group_laws.append(group_law)
+        group_instructions.append("\n".join(f"v{k} {knowledge.table[f'v{k}']['항목명']}: {rubric[k]}" for k in items))
+        suffix += group_instructions[-1]
+        question_starts.append(len(suffix) + 1)
         suffix += "\n이번 호출에서 검토할 항목: " + ",".join(f"v{k}" for k in items) + ". 이 항목들만 출력한다.\n"
         if config.response_format == "compact":
             suffix += ("최종 JSON은 {\"v\":[0또는1,...],\"e\":[원문구간번호,...]}이다. "
@@ -551,6 +657,7 @@ condition=not_met인 후보는 그 고시 숫자조건이 충족되지 않은 �
             suffix += V24_FACT_CONTRACT
         suffixes.append(suffix + EVIDENCE_CONTRACT + "위 공고에 대한 지정된 JSON만 출력한다.")
         variant = suffixes[-1]
+        group_variant_instructions.append(group_instructions[-1])
         parts = rubric_parts(config.rubric_variant)
         if parts and tuple(items) in (tuple(range(1, 10)), tuple(range(19, 25))):
             replacements = {k: text for k, text in FACT_JUDGMENT_RUBRIC.items() if f'v{k}' in parts}
@@ -561,7 +668,32 @@ condition=not_met인 후보는 그 고시 숫자조건이 충족되지 않은 �
             if 'consistency' in parts:
                 variant_instructions += "\n" + FACT_JUDGMENT_CONSISTENCY
             variant = variant.replace(current_instructions, variant_instructions, 1)
+            group_variant_instructions[-1] = variant_instructions
         variant_suffixes.append(variant)
+    fixed = fixed_variant = ""
+    readings = [None] * len(groups)
+    sizing_system, sizing_suffixes = system, list(suffixes)
+    lean = config.prompt_layout == 'fixed_prefix_lean'
+    # A notice whose governing law is unresolved carries both laws' alternatives; it keeps the
+    # current layout instead of adding a third fixed prefix (DESIGN.md 2-1). The lean prefix holds
+    # no law, so it is the same for every notice.
+    if lean or (config.prompt_layout == 'fixed_prefix' and len(group_legal_diagnostics[0]['scope']['alternatives']) == 1):
+        # Same law, item-table, question and contract strings; only their order and one
+        # system line change. The law and tables of every group form one prefix per
+        # governing-law reading, cached across notices; this call's items follow the notice.
+        # L-lean (DESIGN.md 2-1, 4-1 failure path) leaves the law excerpts out altogether.
+        if system.count(ORDER_LINE) != 1:
+            raise ValueError('Fixed-prefix layout expects the shared ordering instruction once')
+        system = system.replace(ORDER_LINE, FIXED_PREFIX_LEAN_ORDER_LINE if lean else FIXED_PREFIX_ORDER_LINE)
+        for g, items in enumerate(groups):
+            if lean:
+                group_laws[g] = ""
+            else:
+                group_laws[g], readings[g] = _fixed_group_law(knowledge, rec, items, config, tokenizer, group_laws[g])
+        fixed = _fixed_block(groups, group_laws, group_instructions)
+        fixed_variant = _fixed_block(groups, group_laws, group_variant_instructions)
+        suffixes = [QUESTION_HEADER + suffix[start:] for suffix, start in zip(suffixes, question_starts)]
+        variant_suffixes = list(suffixes)
     budget = config.document_chars
     while True:
         spans = selected_source if selected_source is not None else index.select(budget, items=all_items, mode=config.mode,
@@ -585,29 +717,52 @@ condition=not_met인 후보는 그 고시 숫자조건이 충족되지 않은 �
         common += "\n\n[분석할 공고 및 첨부 원문 구간]\n"
         common += "".join(f"\n[S{n}|{s.doc_type}|문서{s.doc_index}|{s.start}:{s.end}]\n{s.text}\n"
                           for n,s in enumerate(spans, 1))
+        comparisons = [('\n\n[공고·첨부·등록정보의 동일 필드 대조 보조사실]\n' + json.dumps(
+            prompt_packet(comparison, spans, rec=rec), ensure_ascii=False, separators=(',', ':'))
+            if comparison is not None and 24 in items else '') for items in groups]
+        fits = True
+        if fixed and tokenizer is not None:
+            # The source is chosen exactly as the current layout chooses it: by its own requests
+            # against max_model_len. The same source then only moves (DESIGN.md 2-1).
+            fits = max(len(token_ids(tokenizer, [{"role": "system", "content": sizing_system},
+                                                 {"role": "user", "content": common + text + suffix}], config.enable_thinking))
+                       for text, suffix in zip(comparisons, sizing_suffixes)) + config.max_output_tokens + 32 <= config.max_model_len
+        limit = config.engine_context() if fixed else config.max_model_len
         prompts = []
-        for items,suffix,legal_diagnostics in zip(groups,suffixes,group_legal_diagnostics):
-            comparison_text = ('\n\n[공고·첨부·등록정보의 동일 필드 대조 보조사실]\n' + json.dumps(
-                prompt_packet(comparison, spans, rec=rec), ensure_ascii=False, separators=(',', ':'))
-                if comparison is not None and 24 in items else '')
-            messages = [{"role":"system","content":system}, {"role":"user","content":common+comparison_text+suffix}]
+        for items,suffix,legal_diagnostics,comparison_text in zip(groups,suffixes,group_legal_diagnostics,comparisons):
+            if not fits:
+                break
+            messages = [{"role":"system","content":system}, {"role":"user","content":fixed+common+comparison_text+suffix}]
             ids = token_ids(tokenizer,messages,config.enable_thinking) if tokenizer is not None else None
             prompts.append({"messages":messages,"token_ids":ids,"spans":spans,"coverage":coverage,
                             "document_budget":budget,"items":list(items), "legal_diagnostics":legal_diagnostics,
                             "comparison_facts": comparison if 24 in items else None})
             if source_selection is not None:
                 prompts[-1]['source_search'] = selected_search
-        if tokenizer is None or max(len(p["token_ids"]) for p in prompts)+config.max_output_tokens+32 <= config.max_model_len:
+        if fits and fixed and tokenizer is not None and max(len(p["token_ids"]) for p in prompts)+config.max_output_tokens+32 > limit:
+            # Not expected: a moved request is its sized request plus the other groups' tables. Should it
+            # happen, the source shrinks further like any request over its context; it never fails preparation.
+            fits = False
+        if fits and (tokenizer is None or max(len(p["token_ids"]) for p in prompts)+config.max_output_tokens+32 <= limit):
             # Size/select the source using today's suffix even for the variant.
             # A rubric experiment must never expand or shrink the document block.
             for prompt, suffix, variant in zip(prompts, suffixes, variant_suffixes):
-                if suffix != variant:
+                if suffix != variant or fixed != fixed_variant:
                     user = prompt['messages'][1]['content']
-                    prompt['messages'][1]['content'] = user[:-len(suffix)] + variant
+                    prompt['messages'][1]['content'] = fixed_variant + user[len(fixed):-len(suffix)] + variant
                     if tokenizer is not None:
                         prompt['token_ids'] = token_ids(tokenizer, prompt['messages'], config.enable_thinking)
-                        if len(prompt['token_ids']) + config.max_output_tokens + 32 > config.max_model_len:
+                        if len(prompt['token_ids']) + config.max_output_tokens + 32 > limit:
                             raise ValueError('Rubric variant exceeds model context without changing the shared source')
+            if fixed:
+                probe = _fixed_prefix_probe(tokenizer, system, fixed_variant, config.enable_thinking)
+                for prompt, reading in zip(prompts, readings):
+                    prompt['fixed_prefix_sha256'] = hashlib.sha256((system + fixed_variant).encode()).hexdigest()
+                    prompt['fixed_prefix_tokens'] = (None if probe is None else
+                                                     next((n for n, (a, b) in enumerate(zip(probe, prompt['token_ids']))
+                                                           if a != b), min(len(probe), len(prompt['token_ids']))))
+                    if reading is not None:
+                        prompt['legal_reading'] = reading
             shared = None
             if tokenizer is not None:
                 shared = 0

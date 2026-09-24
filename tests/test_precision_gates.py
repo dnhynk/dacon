@@ -139,6 +139,30 @@ def test_v20_applicability_clears_v20_in_a_private_contract_notice_only():
     assert 'v20_applicability' not in SET_RULES
 
 
+LOCAL_PRIVATE = {'적용계약법': '지방계약법', '계약방법': '수의계약', '지역제한여부': 'Y',
+                 '제한지역코드목록': '[등록지역:r1|단위=기초|광역=강원특별자치도]'}
+BASIC_ADDRESS = '주소 : 강원특별자치도 [지역:r1|단위=기초|광역=강원특별자치도] 중앙로 1'
+BASIC_CLAUSE = '나. 주된 영업소가 [지역:r1|단위=기초|광역=강원특별자치도]에 소재한 업체'
+
+
+def test_v6_local_private_basic_sets_v6_for_a_local_private_contract_with_a_basic_region_code():
+    row = row_with()
+    rec = notice(FILLER + [BASIC_ADDRESS, BASIC_CLAUSE], **LOCAL_PRIVATE)
+    assert precision_gates.apply(rec, row, ('v6_local_private_basic',)) == [(6, 'v6_local_private_basic')]
+    assert (row['v6'], row['e6']) == (1, BASIC_CLAUSE)     # the restricting line is preferred over the address
+    assert 'v6_local_private_basic' in SET_RULES
+    for change in ({'적용계약법': '국가계약법'}, {'계약방법': '제한경쟁'}, {'지역제한여부': 'N'},
+                   {'제한지역코드목록': '[등록지역:r1|단위=광역|광역=강원특별자치도]'}):
+        row = row_with()
+        assert precision_gates.apply(notice(FILLER + [BASIC_CLAUSE], **{**LOCAL_PRIVATE, **change}), row,
+                                     ('v6_local_private_basic',)) == [] and row['v6'] == 0
+    row = row_with(v6=BASIC_CLAUSE)
+    assert precision_gates.apply(rec, row, ('v6_local_private_basic',)) == [] and row['e6'] == BASIC_CLAUSE
+    row = row_with()
+    assert precision_gates.apply(notice(FILLER, **LOCAL_PRIVATE), row, ('v6_local_private_basic',)) == [(6, 'v6_local_private_basic')]
+    assert (row['v6'], row['e6']) == (1, '')                # no token line in the text: the metadata alone decides
+
+
 def placeholder(lines, meta=NEGOTIATED, **cells):
     """Run briefing_placeholder alone on a notice with `lines`; return (changes, v22, e22, v23)."""
     row = row_with(**cells)
@@ -187,9 +211,12 @@ def test_set_and_cleared_pairs_report_in_gate_order():
     assert (row['v16'], row['v20'], row['v22'], row['e22']) == (0, 0, 1, DEFERRED)
 
 
-def test_shipped_config_enables_all_gates():
-    assert tuple(Config.load(SHIPPED).precision_gates) == GATES
-    assert {'v20_applicability', 'briefing_placeholder'} <= set(GATES) and SET_RULES <= set(GATES)
+def test_shipped_config_enables_the_replica_positive_gates():
+    shipped = ('v20_applicability', 'briefing_placeholder', 'v20_software_project', 'v20_participation_statement',
+               'v23_local_negotiated', 'v21_minimum_share', 'v24_amount_permutation', 'v9_designation', 'v2_price_band',
+               'local_private_exception', 'v8_region_required')
+    assert tuple(Config.load(SHIPPED).precision_gates) == shipped
+    assert set(shipped) <= set(GATES) and SET_RULES <= set(GATES)
 
 
 def stream_one(tmp_path, monkeypatch, config):
@@ -207,8 +234,11 @@ def stream_one(tmp_path, monkeypatch, config):
 
 
 def test_the_executor_gates_the_final_row_only(tmp_path, monkeypatch):
-    # The synthetic model answers 1 everywhere without quotes: the registration and v24 gates act.
-    row, saved, b3 = stream_one(tmp_path, monkeypatch, SimpleNamespace(**vars(CONFIG), precision_gates=GATES))
+    # The synthetic model answers 1 everywhere without quotes: the registration and v24 gates act. The track B gates
+    # have their own cases in tests/test_track_b_rules.py.
+    gates = ('v16_size_registration', 'v18_size_registration', 'v24_non_method_witness', 'v2_amount', 'long_line',
+             'v20_applicability', 'briefing_placeholder', 'v6_local_private_basic')
+    row, saved, b3 = stream_one(tmp_path, monkeypatch, SimpleNamespace(**vars(CONFIG), precision_gates=gates))
     assert (row['v16'], row['v18'], row['v24']) == ('1', '0', '0')
     assert all(row[f'v{k}'] == '1' for k in range(1, 25) if k not in (18, 24))
     assert saved['sources']['_precision_gates'] == [[18, 'v18_size_registration'], [24, 'v24_non_method_witness']]

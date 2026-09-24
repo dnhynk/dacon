@@ -124,4 +124,6 @@ def test_unavailable_reference_blocks_new_absence_positive_in_actual_consumer():
     row, details = knowledge.qualification_decisions(rec, {'v16': '0', 'e16': ''})
     assert details['product']['status'] == 'general'
     assert not details['qualification']['no_size']
-    assert row['v16'] == '0' and row['e16'] == '' and 'v16' not in details['decisions']
+    assert 'v16' not in details['decisions']
+    # The general size block (DESIGN_B 1-2) reads only an observed size bound, not an unavailable reference.
+    assert (row['v16'], row['e16']) == ('1', '')

@@ -72,15 +72,16 @@ def seen(index, lines):
     return bool((index[at] == wanted).all())
 
 
-def apply(record, row, index):
+def apply(record, row, index, items=()):
     """Clear each quoted positive whose overlapped lines are all in the index; return the cleared item numbers.
 
     A quote that cannot be located, or that overlaps only lines shorter than
-    MIN_LINE_CHARS, leaves its cell unchanged.
+    MIN_LINE_CHARS, leaves its cell unchanged. A non-empty ``items`` (config
+    ``corpus_seen_filter_items``) limits the filter to those item numbers.
     """
     dropped = []
     for k in range(1, 25):
-        if k in EXCLUDED_ITEMS or row[f'v{k}'] != 1 or not row[f'e{k}']:
+        if k in EXCLUDED_ITEMS or (items and k not in items) or row[f'v{k}'] != 1 or not row[f'e{k}']:
             continue
         lines = quoted_lines(record, row[f'e{k}'])
         if lines and seen(index, lines):

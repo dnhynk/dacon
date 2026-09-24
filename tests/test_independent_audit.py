@@ -66,7 +66,10 @@ def test_unlisted_unbound_code_cannot_invent_general_product_obligations():
     result, facts = infer(rec, {'v17': '0', 'e17': ''}, pf)
     assert facts['product']['status'] == 'unknown'
     assert 'unlisted_code_is_not_proof_of_general_purchase' in facts['product']['uncertainty']
-    assert result['v17'] == '0'
+    assert 'v17' not in facts['decisions']
+    # The general size block (DESIGN_B 1-2) counts an unresolved service identity without competition evidence as
+    # general: 2천만~1억 with medium firms allowed is v17.
+    assert result['v17'] == '1'
 
 
 @pytest.mark.parametrize('title,expected', [

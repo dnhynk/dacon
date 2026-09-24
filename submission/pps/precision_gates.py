@@ -1,8 +1,8 @@
 """Precision gates (config switch ``precision_gates``, default ``()``).
 
 Each enabled gate clears a positive cell (v=0, e='') that lacks the edit signal
-measured in runs/harness_improve_20260919/precision_analysis/; the one rule in
-``SET_RULES`` instead sets a zero cell to 1 on positive edit evidence. The
+measured in runs/harness_improve_20260919/precision_analysis/; the rules in
+``SET_RULES`` instead set a zero cell to 1 on positive evidence. The
 definitions are those of the analysis scripts named below and must stay
 identical to them:
 
@@ -31,6 +31,13 @@ identical to them:
   참석/불참/미참석, no 상관없음-style negation). e22 is that line (at most 500
   characters). v23 is never set: a placeholder does not prove its schedule shortfall.
 
+- ``v6_local_private_basic`` (set rule; runs/replica_20260922/recovery_02/REPORT.md
+  official-exception probe): in a 지방계약법 수의계약 notice whose meta registers a
+  regional restriction (지역제한여부 Y) with a basic-level (기초) region code, set a
+  zero v6 to 1. The item table remarks "지방 + 소액수의 가능" for v6, so this rule
+  measures whether the organizer applies that exception; e6 is the first notice
+  line carrying a basic-level region token (at most 500 characters), else empty.
+
 The quoted gates skip a positive without a quote, and a quote that cannot be
 located leaves its cell unchanged.
 """
@@ -39,8 +46,11 @@ from __future__ import annotations
 import re
 
 GATES = ('v16_size_registration', 'v18_size_registration', 'v24_non_method_witness', 'v2_amount', 'long_line',
-         'v20_applicability', 'briefing_placeholder')
-SET_RULES = frozenset({'briefing_placeholder'})
+         'v20_applicability', 'v20_software_project', 'v20_participation_statement', 'v23_local_negotiated',
+         'v21_minimum_share', 'v24_amount_permutation', 'v2_price_band', 'local_private_exception', 'v8_region_required',
+         'v9_designation', 'briefing_placeholder', 'v6_local_private_basic')
+SET_RULES = frozenset({'briefing_placeholder', 'v6_local_private_basic', 'v21_minimum_share', 'v24_amount_permutation',
+                       'v9_designation'})
 
 # A: registrations in meta 조항호내용 (signals.META_SME for v16, signals.META_SMALL for v18).
 _SIZE_REGISTRATION = re.compile(r'중기업|소기업|소상공인|중소기업자|중기간\s*경쟁|지정\s*[.·]?\s*고시한\s*제품|지정\s*공고한\s*물품')
@@ -214,6 +224,54 @@ def _placeholder_attendance_clause(record):
     return None
 
 
+# Track B A19 family (items/a19/REPORT.md). Each rule restates an item-table condition on the source text or meta.
+_PARTICIPATION_STATEMENT = re.compile(
+    r'대기업.{0,40}(참여|참가).{0,20}제한|참여\s*제한.{0,30}(대기업|중견|하한)|중소\s*소프트웨어\s*사업자'
+    r'|대기업인\s*소프트웨어사업자|소프트웨어\s*진흥법\s*제48조|사업금액.{0,30}(대기업|중견)')
+_NOTICE_AMOUNT = re.compile(r'(\d{1,3}(?:,\d{3})+|\d{5,})\s*원')
+_JOINT_SHARE = re.compile(r'(지분|출자\s*비율|참여\s*비율|분담\s*비율|지분율).{0,40}?(\d{1,2}(?:\.\d+)?)\s*%\s*(이상|미만)')
+
+
+def _notice_docs(record):
+    return [doc.get('text', '') for doc in record.get('docs', []) if doc.get('type') == '공고문']
+
+
+def _line_of(text, start, end):
+    """The source line holding text[start:end], a substring of the document (at most 500 characters)."""
+    lo = text.rfind('\n', 0, start) + 1
+    hi = text.find('\n', end)
+    line = text[lo:len(text) if hi < 0 else hi].strip()
+    return line if len(line) <= 500 else text[start:end]
+
+
+def _amount_permutation(record):
+    """A 공고문 amount whose digits permute a registered amount (배정예산금액, 입찰추정가격) but differ from it (v24)."""
+    meta = record.get('meta', {})
+    registered = {str(int(v)) for v in (meta.get('배정예산금액'), meta.get('입찰추정가격'))
+                  if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0}
+    for text in _notice_docs(record):
+        for m in _NOTICE_AMOUNT.finditer(text):
+            digits = m.group(1).replace(',', '')
+            if any(len(digits) == len(r) and digits != r and sorted(digits) == sorted(r) for r in registered):
+                return _line_of(text, m.start(), m.end())
+    return None
+
+
+def _low_joint_share(record):
+    """A stated joint-contract minimum share below 10% (국가계약법) or 5% (지방계약법), outside 분담이행 (v21)."""
+    from .legal_context import applicable_law
+    threshold = {'국가계약법': 10, '지방계약법': 5}.get(applicable_law(record))
+    if threshold is None:
+        return None
+    for text in _notice_docs(record):
+        if re.search(r'분담\s*이행', text):
+            return None
+        for m in _JOINT_SHARE.finditer(text):
+            if m.group(3) == '이상' and float(m.group(2)) < threshold:
+                return _line_of(text, m.start(), m.end())
+    return None
+
+
 def apply(record, row, enabled):
     """Apply the enabled gates in GATES order and return the changed (item, name) pairs in that order.
 
@@ -246,9 +304,100 @@ def apply(record, row, enabled):
     meta = record.get('meta', {})
     if 'v20_applicability' in enabled and row['v20'] == 1 and meta.get('계약방법') == '수의계약':
         clear(20, 'v20_applicability')
+    try:  # gate 'v20_software_project': a failure skips this gate only (the run must always write its CSV)
+        if 'v20_software_project' in enabled and row['v20'] == 1:
+            # v20 applies only to software projects (소프트웨어 진흥법 제2조, organizer notice).
+            from .csc_probe import software_project
+            if not software_project(record):
+                clear(20, 'v20_software_project')
+    except Exception:
+        pass
+    try:  # gate 'v20_participation_statement': a failure skips this gate only (the run must always write its CSV)
+        if 'v20_participation_statement' in enabled and row['v20'] == 1:
+            # v20 is the absence of the participation-limit statement; a notice that states it is not v20.
+            if _PARTICIPATION_STATEMENT.search(chr(10).join(doc.get('text', '') for doc in record.get('docs', []))):
+                clear(20, 'v20_participation_statement')
+    except Exception:
+        pass
+    try:  # gate 'v23_local_negotiated': a failure skips this gate only (the run must always write its CSV)
+        if 'v23_local_negotiated' in enabled and row['v23'] == 1:
+            # v23 covers only 지방계약법 negotiated contracts (national notices are 0).
+            from .legal_context import applicable_law
+            if not (applicable_law(record) == '지방계약법' and meta.get('낙찰방법') == '협상에의한계약'):
+                clear(23, 'v23_local_negotiated')
+    except Exception:
+        pass
+    try:  # gate 'v21_minimum_share': a failure skips this gate only (the run must always write its CSV)
+        if 'v21_minimum_share' in enabled and row['v21'] == 0:
+            clause = _low_joint_share(record)
+            if clause:
+                row['v21'], row['e21'] = 1, clause
+                changed.append((21, 'v21_minimum_share'))
+    except Exception:
+        pass
+    try:  # gate 'v24_amount_permutation': a failure skips this gate only (the run must always write its CSV)
+        if 'v24_amount_permutation' in enabled and row['v24'] == 0:
+            clause = _amount_permutation(record)
+            if clause:
+                row['v24'], row['e24'] = 1, clause
+                changed.append((24, 'v24_amount_permutation'))
+    except Exception:
+        pass
+    try:  # gate 'v2_price_band': a failure skips this gate only (the run must always write its CSV)
+        if 'v2_price_band' in enabled and row['v2'] == 1:
+            # v2 applies only below the 2.3억 notice amount (item table; organizer notice keeps 2.3억 for v2).
+            from .performance import project_prices as performance_prices
+            estimate = meta.get('입찰추정가격') or (performance_prices(record).get('estimated_price') or {}).get('value_won')
+            if isinstance(estimate, (int, float)) and estimate >= 230_000_000:
+                clear(2, 'v2_price_band')
+    except Exception:
+        pass
+    try:  # gate 'local_private_exception': a failure skips this gate only (the run must always write its CSV)
+        if 'local_private_exception' in enabled and meta.get('계약방법') == '수의계약':
+            # Official exception: a local-law private contract may restrict by record and region (항목표 '지방 + 소액수의 가능'
+            # on v2, v6, v7, v8; build_21 LB confirmed it for v6).
+            from .legal_context import applicable_law
+            if applicable_law(record) == '지방계약법':
+                for k in (2, 6, 7, 8):
+                    if row[f'v{k}'] == 1:
+                        clear(k, 'local_private_exception')
+    except Exception:
+        pass
+    try:  # gate 'v8_region_required': a failure skips this gate only (the run must always write its CSV)
+        if 'v8_region_required' in enabled and row['v8'] == 1 and meta.get('지역제한여부') != 'Y':
+            # v8 needs a region restriction together with the record restriction.
+            from .performance import performance_facts
+            if not performance_facts(record, consumer=True)['operative_regions']:
+                clear(8, 'v8_region_required')
+    except Exception:
+        pass
+    try:  # gate 'v9_designation': a failure skips this gate only (the run must always write its CSV)
+        if 'v9_designation' in enabled and row['v9'] == 0:
+            # v9: a specification that names the manufacturer or model (제조사·모델명·상표 label with a named value, or a
+            # brand + model + 시리즈). Numeric spec values, '동등' and maintenance of existing equipment are excluded.
+            from .semantic_rules import v9_lines
+            found = v9_lines(record)
+            if found:
+                row['v9'], row['e9'] = 1, found[0][1].lstrip('=+@ ')
+                changed.append((9, 'v9_designation'))
+    except Exception:
+        pass
     if 'briefing_placeholder' in enabled and row['v22'] == 0 and meta.get('낙찰방법') == '협상에의한계약':
         clause = _placeholder_attendance_clause(record)
         if clause is not None:
             row['v22'], row['e22'] = 1, clause
             changed.append((22, 'briefing_placeholder'))
+    if ('v6_local_private_basic' in enabled and row['v6'] == 0 and meta.get('적용계약법') == '지방계약법'
+            and meta.get('계약방법') == '수의계약' and meta.get('지역제한여부') == 'Y'
+            and '기초' in str(meta.get('제한지역코드목록') or '')):
+        row['v6'], row['e6'] = 1, _basic_region_line(record)
+        changed.append((6, 'v6_local_private_basic'))
     return changed
+
+
+def _basic_region_line(record):
+    """The first notice line carrying a basic-level region token, trimmed to 500 characters; '' when none."""
+    lines = [line.strip() for doc in record.get('docs', []) for line in str(doc.get('text') or '').splitlines()
+             if '단위=기초' in line and line.strip()]
+    restricting = [line for line in lines if re.search(r'소재|영업소|본점|제한', line)]
+    return (restricting or lines or [''])[0][:500]

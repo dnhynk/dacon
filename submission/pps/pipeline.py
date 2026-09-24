@@ -174,8 +174,14 @@ def _fill_missing_evidence(rec, row, response, items):
 
 def _response_row(rec, response, prompt, items, config, knowledge, final_items):
     values, evidence = parse_output(response["text"], prompt["spans"], items, rec=rec)
-    row = make_row(rec, values, evidence)
     rule_details = []
+    thresholds = getattr(config, 'verdict_thresholds', ())
+    if thresholds:  # fixed per-item confidence thresholds (config verdict_thresholds), before the rules
+        from .verdict_confidence import apply_thresholds
+        withdrawn = apply_thresholds(thresholds, response.get('verdict_confidence'), values, items)
+        if withdrawn:
+            rule_details.append({'source': 'verdict_confidence_threshold', 'items': withdrawn})
+    row = make_row(rec, values, evidence)
     if config.source_verified_services and set(items).intersection(range(10, 19)):
         knowledge = knowledge.for_response(rec, response)
         rule_details.append({"source": "automatic_service_identity", "details": knowledge.provider_log})
@@ -188,7 +194,9 @@ def _response_row(rec, response, prompt, items, config, knowledge, final_items):
             comparison = compare(rec)
             rule_details.append({'source': 'cross_source_facts', 'computed_from_current_record': True,
                                  'packet_facts_equal_current': prompt.get('comparison_facts') == comparison})
-        if comparison is not None and 24 in items:
+        # The relation validator only withdraws model v24 positives; off keeps them
+        # (runs/replica_20260922/recovery_02/REPORT.md, 9/24 candidates).
+        if comparison is not None and 24 in items and config.v24_comparison_guard:
             from .comparison import reject_unsupported_comparison_claim
             guard = reject_unsupported_comparison_claim(rec, row, response, comparison)
             if guard is not None:
@@ -276,7 +284,7 @@ class VLLMRunner:
                 reasoning_start_str="<|channel>", reasoning_end_str="<channel|>")
         self.llm = LLM(model=str(model_dir), tokenizer=str(model_dir),
                        quantization=config.quantization, dtype="auto",
-                       max_model_len=config.max_model_len,
+                       max_model_len=getattr(config, 'engine_max_model_len', None) or config.max_model_len,
                        gpu_memory_utilization=config.gpu_memory_utilization,
                        max_num_seqs=config.max_num_seqs, seed=config.seed,
                        max_num_batched_tokens=config.max_num_batched_tokens,
@@ -295,13 +303,16 @@ class VLLMRunner:
                       catalog_roles=p.get('generation', {}).get('catalog_roles'),
                       catalog_fields=p.get('generation', {}).get('catalog_fields'),
                       specification_inventory=p.get('generation', {}).get('specification_inventory')))
+        # Verdict-token logprobs (config verdict_logprobs K): measurement only; K = 0 leaves the request unchanged.
+        logprobs = getattr(self.config, 'verdict_logprobs', 0)    # test doubles may omit the field
+        extra = {'logprobs': logprobs} if logprobs else {}
         return SamplingParams(temperature=0., seed=self.config.seed,
                               max_tokens=p.get('generation', {}).get('max_output_tokens', max_tokens or self.config.max_output_tokens),
                               skip_special_tokens=not self.config.enable_thinking,
                               thinking_token_budget=p.get('generation', {}).get('thinking_budget', self.config.thinking_budget_for(p["items"])),
                               structured_outputs=StructuredOutputsParams(
                                   json=schema,
-                                  disable_any_whitespace=True))
+                                  disable_any_whitespace=True), **extra)
 
     def response_from_native(self, row, prompt):
         """Parse one native vLLM result exactly as the cohort executor does."""
@@ -332,6 +343,14 @@ class VLLMRunner:
                            "thinking_budget": prompt.get('generation', {}).get('thinking_budget', self.config.thinking_budget_for(prompt["items"])),
                            "answer_tokens": len(self.tokenizer.encode(final_text, add_special_tokens=False)),
                            "raw_output_sha256": hashlib.sha256(response.text.encode()).hexdigest()})
+        if getattr(self.config, 'verdict_logprobs', 0) and getattr(response, 'logprobs', None):
+            from .verdict_confidence import verdict_confidence
+            try:
+                diagnostics['verdict_confidence'] = verdict_confidence(
+                    response.token_ids, response.logprobs, self.tokenizer, prompt['items'],
+                    skip_special_tokens=not self.config.enable_thinking)
+            except Exception as exc:  # a journal diagnostic must never fail the run
+                diagnostics['verdict_confidence'] = {'error': f'{type(exc).__name__}: {exc}'[:200]}
         return {"text": final_text, "finish_reason": response.finish_reason,
                 "output_tokens": len(response.token_ids),
                 "cached_input_tokens": getattr(row, "num_cached_tokens", None), **diagnostics}

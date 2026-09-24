@@ -73,4 +73,5 @@ def test_unavailable_forms_stop_new_absence_positive_without_rewriting_a_saved_p
         row, details = knowledge.qualification_decisions(rec, {'v16': existing, 'e16': ''})
         assert details['product']['status'] == 'general'
         assert not details['qualification']['no_size']
-        assert 'v16' not in details['decisions'] and row['v16'] == existing
+        # The general size block (DESIGN_B 1-2) reads only an observed size bound, not an unavailable form.
+        assert 'v16' not in details['decisions'] and row['v16'] == '1'

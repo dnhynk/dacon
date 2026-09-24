@@ -133,6 +133,7 @@ class CanonicalRunner(VLLMRunner):
         if vllm.__version__.split('+')[0] != '0.26.0':
             raise RuntimeError(f'This execution contract requires vLLM 0.26.0; found {vllm.__version__}')
         super().__init__(model_dir, config)
+        self.preemptions, self.preemption_counter = self._count_preemptions()
         engine_config = getattr(self.llm.llm_engine, 'vllm_config', None)
         model_config = getattr(engine_config, 'model_config', None)
         structured = getattr(engine_config, 'structured_outputs_config', None)
@@ -152,6 +153,26 @@ class CanonicalRunner(VLLMRunner):
             'tokenizer_eos_token_id': getattr(self.tokenizer, 'eos_token_id', None),
             'checkpoint_identity': self.checkpoint_identity, 'policy': POLICY,
         })
+
+    def _count_preemptions(self):
+        """Count vLLM preemptions (freed KV, recomputed later) per request id.
+
+        The in-process engine core (VLLM_ENABLE_V1_MULTIPROCESSING=0) exposes its scheduler; every
+        preemption in vLLM 0.26.0 goes through Scheduler._preempt_request. Scheduling is unchanged.
+        """
+        import collections
+        counts = collections.Counter()
+        try:
+            scheduler = self.llm.llm_engine.engine_core.engine_core.scheduler
+            original = scheduler._preempt_request
+        except AttributeError as exc:
+            return None, 'unavailable: ' + str(exc)
+
+        def counted(request, timestamp):
+            counts[request.request_id] += 1
+            return original(request, timestamp)
+        scheduler._preempt_request = counted
+        return counts, 'Scheduler._preempt_request'
 
     def close(self):
         self.llm.llm_engine.engine_core.shutdown()

@@ -45,16 +45,24 @@ def main(argv=None):
                         help='Optional A10 source-fixed judgments and unresolved condition questions')
     parser.add_argument('--focused-verify', action=argparse.BooleanOptionalAction, default=None,
                         help='Optional gated region, size and briefing verification (stream only, default off)')
+    parser.add_argument('--prompt-layout', choices=('current', 'fixed_prefix', 'fixed_prefix_lean'),
+                        help='Experimental: fixed_prefix puts every group\'s law and item table before the notice')
+    parser.add_argument('--engine-max-model-len', type=int,
+                        help='Experimental engine context above max_model_len, which keeps sizing sources (fixed_prefix: 24576)')
+    parser.add_argument('--a10-budget-profiles', type=lambda s: tuple(int(b) for b in s.split(',')),
+                        help='Experimental: comma-separated A10 thinking budgets, each its own profile A10_t<budget>')
+    parser.add_argument('--a10-attach', action=argparse.BooleanOptionalAction, default=None,
+                        help='Add A10 to a tier-2 record when the time budget affords it (stream only)')
     parser.add_argument('--executor', choices=('stream', 'cohort'), default=os.environ.get('PPS_EXECUTOR', 'stream'),
                         help='stream: record-major deadline-aware execution (default); cohort: the fixed 32-record batches')
     parser.add_argument('--tier-ceiling', type=int, default=2, choices=range(len(TIERS)),
                         help='Richest judgment tier the stream executor may run (default 2: A1+A19+Q10; 0 = canonical)')
     parser.add_argument('--tier-floor', type=int, default=len(TIERS) - 1, choices=range(len(TIERS)),
                         help='Cheapest judgment tier the stream executor may fall to')
-    parser.add_argument('--tier-plan', choices=('fixed', 'adaptive'), default='fixed',
-                        help='fixed (default): per-record tiers planned from the record count and fixed L40S priors, '
-                             'so the same input gets the same requests; measured tiers only if the run falls behind '
-                             'the plan. adaptive: measured engine costs choose the tier of every record')
+    parser.add_argument('--tier-plan', choices=('fixed', 'adaptive'), default='adaptive',
+                        help='adaptive (default): measured engine costs choose the tier of every record. fixed: '
+                             'per-record tiers planned from the record count and fixed L40S priors, so the same input '
+                             'gets the same requests; measured tiers only if the run falls behind the plan')
     parser.add_argument('--projection-records', type=int,
                         help='Project the deadline as if this many records had to be processed (development timing runs)')
     parser.add_argument('--runtime-seconds', type=int,
@@ -85,8 +93,9 @@ def main(argv=None):
         parser.error('--limit must be positive')
     if args.tier_ceiling > args.tier_floor:
         parser.error('--tier-ceiling must not exceed --tier-floor')
-    if args.executor == 'cohort' and args.focused_verify:
-        parser.error('Focused verification requires the stream executor')
+    if args.executor == 'cohort' and (args.focused_verify or args.a10_budget_profiles or args.a10_attach
+                                      or args.prompt_layout or args.engine_max_model_len):
+        parser.error('Focused verification and the layout, context and A10 options require the stream executor')
     input_path = args.input or args.data_dir / 'test.jsonl.gz'
     if not input_path.is_file() or not args.data_dir.is_dir() or not args.model_dir.is_dir():
         parser.error('Input file, data directory and local model directory must exist')
@@ -99,7 +108,8 @@ def main(argv=None):
     if args.legal_policy is not None:
         source_options['legal_policy'] = args.legal_policy
     for name in ('catalog_review','catalog_source_policy','catalog_task_groups','software_review',
-                 'a10_thinking_budget','a_cohort_size','a10_question_policy','focused_verify'):
+                 'a10_thinking_budget','a_cohort_size','a10_question_policy','focused_verify',
+                 'prompt_layout','engine_max_model_len','a10_budget_profiles','a10_attach'):
         if getattr(args,name) is not None:
             source_options[name]=getattr(args,name)
     runner_factory = lambda config, journal: CanonicalRunner(args.model_dir, config, journal)

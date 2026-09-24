@@ -115,7 +115,9 @@ def test_readings_that_straddle_a_threshold_leave_it_open(amount_line, estimate)
     row, facts = decide(record)
     assert facts['product']['estimate_won'] is None
     assert band_estimate(facts['product'])[0] is None
-    assert row['v16'] == '0' and row['v18'] == '0'
+    assert 'v16' not in facts['decisions'] and 'v18' not in facts['decisions']
+    # The general size block (DESIGN_B 1-2) then bands the purchase by the registered estimate when there is one.
+    assert (row['v16'], row['v18']) == (('1' if estimate else '0'), '0')
 
 
 @pytest.mark.parametrize('route', [

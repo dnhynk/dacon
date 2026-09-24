@@ -79,3 +79,29 @@ def test_normal_response_consumer_checks_the_claim_then_keeps_independent_positi
         Config(mode='evidence_first',rule_checks=True,cross_source_facts=True),None,(24,))
     assert row['v24']==int(actual_difference)
     assert any(d.get('reason')=='model_compared_statutory_bound_as_literal_price' for d in details)
+
+
+def test_the_guard_switch_off_keeps_the_model_positive_the_validator_would_withdraw():
+    from submission.pps.pipeline import _response_row
+    from submission.pps.prompts import Config, fact_fields
+    from submission.pps.retrieval import Span
+    quote='적격심사 기준 별표4(추정가격 5억원 미만의 용역)를 적용한다.'
+    rec=record(quote)
+    facts=dict.fromkeys(fact_fields((24,)),'확인 불가')
+    facts['본문과메타의동일필드차이']='메타 추정가격과 본문 추정가격 5억원이 상이하다.'
+    observed={'text':json.dumps({'facts':facts,'judgments':{'v24':{'reason':'금액이 다름','v':1,'e':1}}},ensure_ascii=False)}
+    prompt={'spans':[Span(0,'공고문',0,len(quote),quote)]}
+    config=Config(mode='evidence_first',rule_checks=True,cross_source_facts=True,v24_comparison_guard=False)
+    row,details=_response_row(rec,observed,prompt,(24,),config,None,(24,))
+    assert row['v24']==1
+    assert not any(d.get('reason')=='model_compared_statutory_bound_as_literal_price' for d in details)
+
+
+def test_the_guard_switch_is_on_in_code_off_in_the_shipped_config():
+    import dataclasses
+    from pathlib import Path
+    from submission.pps.prompts import Config
+    assert Config().v24_comparison_guard is True
+    assert Config.load(Path(__file__).resolve().parents[1]/'submission/model/config.json').v24_comparison_guard is False
+    with pytest.raises(ValueError):
+        dataclasses.replace(Config(),v24_comparison_guard='off')

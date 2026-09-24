@@ -23,7 +23,7 @@ def test_config_accepts_distinct_item_numbers_only():
 
 
 def test_shipped_items_are_the_measured_set():
-    assert sorted(Config.load(SHIPPED).source_rule_items) == [6, 8, 10, 16, 18, 19, 24]
+    assert sorted(Config.load(SHIPPED).source_rule_items) == [6]
 
 
 def test_the_executor_takes_listed_items_from_the_source_rules(tmp_path):

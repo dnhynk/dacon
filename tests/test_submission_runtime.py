@@ -231,9 +231,9 @@ def test_supported_default_cli_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(main, 'execute_stream', execute_stream)
     main.main([])
     assert observed['executor'] == 'stream' and observed['options'].tier_ceiling == 2
-    assert observed['options'].tier_plan == 'fixed'
-    main.main(['--tier-plan', 'adaptive'])
-    assert observed['options'].tier_plan == 'adaptive' and observed['options'].tier_ceiling == 2
+    assert observed['options'].tier_plan == 'adaptive'
+    main.main(['--tier-plan', 'fixed'])
+    assert observed['options'].tier_plan == 'fixed' and observed['options'].tier_ceiling == 2
     assert Path(observed['input']) == Path('data/test.jsonl.gz')
     assert Path(observed['data']) == Path('data') and Path(observed['output']) == Path('output')
     main.main(['--executor', 'cohort'])

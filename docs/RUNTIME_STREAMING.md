@@ -58,7 +58,9 @@ CPU 준비는 별도 프로세스라 엔진 시간에 포함되지 않는다(`pr
 - `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0`은 환경에 전달됐지만 0.26.0에서 CUDA-graph 메모리 추정(9초)을 막지 못했다. cold 적재의 미귀속 112초(warmup 완료 → CUDA-graph 추정 시작)는 compile 캐시가 있는 warm 실행에서는 1초라 compile 관련이지만 로그에 원인이 없다.
 - 고정 tier2의 실측 wall은 3.67s/건으로 회귀 모델 3.44s보다 7% 크다. 모델은 tier 순서 판단에는 충분하지만 시간 예측은 약 10% 낙관할 수 있다.
 
-## 고정 tier 계획 (`FixedTierPlan`, 기본 `--tier-plan fixed`)
+## 고정 tier 계획 (`FixedTierPlan`, `--tier-plan fixed`)
+
+제출 기본값은 `--tier-plan adaptive`(build_13의 실행기)다. 고정 계획은 A19 호출을 받는 레코드를 바꿔 발화를 잃는다. replica에서 build_18의 고정 계획이 build_13 대비 A19를 뺀 504건만 따로 재면 −0.014였다(`runs/replica_20260922/recovery_02/REPORT.md`).
 
 레코드별 tier는 첫 투입 전에 정해지고, 같은 입력이면 엔진 속도와 무관하게 같은 요청 집합이 나간다. 측정 정책만 쓰면 같은 코드·입력의 두 실행이 A19를 받는 레코드에서 실행 시간에 따라 달라진다. 그러면 리더보드 비교와 수상 재현이 흔들린다.
 

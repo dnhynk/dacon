@@ -62,7 +62,11 @@ def prepare_record(pipe, record):
             from .pps.source_questions import code_only as source_code_only
             row, decision = source_code_only(record, packet, pipe.knowledge)
             code_only[packet['request_key']] = {'row': row, 'decision': decision}
-    return {'packets': packets, 'fallback_rows': fallback, 'code_only': code_only}
+    result = {'packets': packets, 'fallback_rows': fallback, 'code_only': code_only}
+    if getattr(pipe.config, 'a10_attach', False):
+        # The executor's attachment rule reads it (runs/rebuild_20260924/DESIGN.md 4-1, review round 05).
+        result['a10_premise'] = pipe.a10_premise(record)
+    return result
 
 
 def consume_response(pipe, record, packet, response):

@@ -1135,6 +1135,65 @@ def infer(record, baseline, pf, *, product_override=None):
             put(10, 0, 'operative_unqualified_production_verification_present',
                 [v['evidence'] for v in verification])
 
+    # Block guard: on any failure keep the values from before the block (the run must always write its CSV).
+    b_before = {f'{p}{i}': result.get(f'{p}{i}') for i in range(10, 19) for p in ('v', 'e')}
+    try:
+        # Size and competition-family positives added on top of the decisions above
+        # (runs/rebuild_20260924/track_b/DESIGN_B.md).
+        # v15/v16/v18 for general purchases (an unresolved identity without competition evidence counts as
+        # general) that the competition-service classifier does not identify as a catalog service. 'No size
+        # restriction' means no observed size bound, obligation, procedure or explicit medium permission.
+        # Competition family (on): v11 (no size restriction) and v13 (small-only restriction) for
+        # services the classifier identifies as competition services with their catalog condition met, and v10
+        # when no direct-production requirement is observed (the engine's absence reading) or no document of the
+        # notice mentions 직접생산 at all.
+        # General purchases outside those services also get v12 (a direct-production requirement in every branch)
+        # and v14 (estimate at or above 2.3억 with an SME restriction).
+        # Private contracts and records with a commercial exception review are left unchanged; a non-profit
+        # alternative only broadens the bidder set and does not block these commercial-bidder rules.
+        if ordinary and meta.get('계약방법') != '수의계약' and not commercial_size_exception_review:
+            from .csc_probe import classify as classify_competition_service
+            s1_price = estimate if estimate is not None else meta.get('입찰추정가격')
+            s1_service = classify_competition_service(record, getattr(pf, 'products', None))
+            s1_competition_service = s1_service.get('competition') is True
+            # Goods: a direct-production requirement shows the purchaser treats the item as a competition product, so an
+            # unresolved goods identity with that requirement is not general. Services are settled by the classifier.
+            s1_general = product['status'] == 'general' or (product['status'] == 'unknown' and not any(
+                p['condition']['status'] in ('met', 'no_stated_condition') for p in product.get('products', []))
+                and not (meta.get('업무구분') == '물품(내자)' and direct_evidence))
+            # A raw size mention inside the eligibility section is treated as an unparsed restriction: 'no size
+            # restriction' (v11, v16, v18) needs none there. Mentions elsewhere (document lists) do not block.
+            s1_sized = bool(allowed or eligibility['common_size_bound'] or eligibility['ordinary_commercial_size_bound']
+                            or eligibility['entity_qualification_obligations'] or eligibility['operative_procedure_size']
+                            or eligibility['explicit_medium_permissions']
+                            or any(e.get('section_role') == 'eligibility' for e in eligibility.get('raw_size') or []))
+            s1_small_only = bool(allowed) and 'medium' not in allowed and not eligibility['size_conflict']
+            if isinstance(s1_price, (int, float)) and s1_price > 0:
+                if s1_general and not s1_competition_service:
+                    if FLOOR <= s1_price < NOTICE:
+                        if s1_small_only:
+                            result['v15'], result['e15'] = '1', result.get('e15') or quote(size_evidence)
+                        if not s1_sized:
+                            result['v16'], result['e16'] = '1', ''
+                    elif 20_000_000 < s1_price < FLOOR and not s1_sized:
+                        result['v18'], result['e18'] = '1', ''
+                    s1_medium = ('medium' in allowed and not eligibility['size_conflict']) or bool(eligibility['explicit_medium_permissions'])
+                    if s1_price >= NOTICE and (s1_small_only or s1_medium or eligibility['common_size_bound']
+                                               or eligibility['ordinary_commercial_size_bound']):
+                        result['v14'], result['e14'] = '1', result.get('e14') or quote(size_evidence)
+                    if 20_000_000 < s1_price < FLOOR and s1_medium:
+                        result['v17'], result['e17'] = '1', result.get('e17') or quote(size_evidence)
+                    if direct_evidence:
+                        result['v12'], result['e12'] = '1', result.get('e12') or quote(direct_evidence)
+                if s1_competition_service:
+                    if not s1_sized:
+                        result['v11'], result['e11'] = '1', ''
+                    if s1_small_only and not eligibility['quote_evidence']:
+                        result['v13'], result['e13'] = '1', result.get('e13') or quote(size_evidence)
+                    if eligibility['no_direct'] or not re.search(r'직접\s*생산', ' '.join(d.get('text', '') for d in record.get('docs', []))):
+                        result['v10'], result['e10'] = '1', ''
+    except Exception:
+        result.update(b_before)
     return result, {'product': product, 'qualification': eligibility,
                     'contracting_principal': contracting_principal, 'decisions': decisions,
                     'deferred_decisions': deferred,

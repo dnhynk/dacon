@@ -112,8 +112,11 @@ def test_actual_software_delivery_blocks_general_identity_from_metadata():
     rec, pf = software_record('위 패키지를 독립적으로 실행 가능한 SW로 제공하여야 함.\n'
         '정품 S/W만 납품하여야 함.\n본 사업은 소프트웨어 진흥법 제48조 적용 사업임.')
     row, facts = infer(rec, {'v17': '0', 'e17': ''}, pf)
-    assert row['v17'] == '0'
+    assert 'v17' not in facts['decisions']
     assert facts['product']['status'] == 'unknown'
+    # The general size block (DESIGN_B 1-2) does not read the software-delivery uncertainty (no replica or dev record
+    # carries it) and counts this unresolved goods identity without a direct-production requirement as general.
+    assert row['v17'] == '1'
 
 
 def test_software_law_or_bidding_system_reference_does_not_change_purchase():

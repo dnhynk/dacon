@@ -100,9 +100,12 @@ def test_existing_absence_and_exception_guards_remain(change):
     else:
         record = notice(clause='가. 사업자등록을 한 업체\n비영리법인은 입찰에 참여할 수 있습니다.')
     row, facts = decide(record)
-    assert row['v18'] == '0'
+    assert 'v18' not in facts['decisions'] or facts['decisions']['v18']['value'] == 0
     if change == 'exception':
         assert facts['qualification']['exceptions']
+    # The general size block (DESIGN_B 1-2) reads only an observed size bound: incomplete input, an unclosed section
+    # and a non-profit alternative do not stop it.
+    assert row['v18'] == ('0' if change == 'size' else '1')
 
 
 @pytest.mark.parametrize('heading', ['※ 제출서류: 사업자등록증, 기술자격증',
@@ -112,8 +115,10 @@ def test_misclassified_holder_clause_blocks_only_new_route(heading):
                     '\n○ 중·소기업·소상공인 확인서를 소지한 업체')
     row, facts = decide(record)
     assert facts['qualification']['no_size']
-    assert row['v18'] == '0'
+    assert 'v18' not in facts['decisions']
     assert facts['deferred_decisions']['v18']['reason'] == 'meta_priority_route_size_mentions_require_review'
+    # The general size block (DESIGN_B 1-2) blocks only size mentions inside the eligibility section.
+    assert row['v18'] == '1'
 
 
 @pytest.mark.parametrize('clause', ['제출서류\n소기업·소상공인 확인서 1부',

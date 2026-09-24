@@ -74,7 +74,8 @@ def peak_memory_bytes():
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (1 if sys.platform == 'darwin' else 1024)
 
 
-def assemble(record_id, rows, fallback_rows, record=None, corpus_index=None, source_rule_items=(), precision_gates=()):
+def assemble(record_id, rows, fallback_rows, record=None, corpus_index=None, source_rule_items=(), precision_gates=(),
+             corpus_filter_items=()):
     """Mirror StreamingExecutor._assemble; also record the last writer of each cell."""
     result = {'id': record_id, **{f'v{k}': None for k in range(1, 25)},
               **{f'e{k}': '' for k in range(1, 25)}}
@@ -105,7 +106,7 @@ def assemble(record_id, rows, fallback_rows, record=None, corpus_index=None, sou
             update('filled_zero', {f'v{k}': 0, f'e{k}': ''})
     if corpus_index is not None:
         from submission.pps import corpus_lines
-        for k in corpus_lines.apply(record, result, corpus_index):
+        for k in corpus_lines.apply(record, result, corpus_index, corpus_filter_items):
             owners.update({f'v{k}': 'corpus_seen_filter', f'e{k}': 'corpus_seen_filter'})
     if precision_gates:
         from submission.pps.precision_gates import apply as apply_gates
@@ -157,8 +158,11 @@ def manifest(args, ids):
             raise ValueError(f'no {prefix} files in {args.run_dir}')
         paths.extend(files)
     paths.extend(path for path in (args.key, args.ids_file) if path)
-    return {'version': 1, 'ids': ids, 'chunk_size': args.chunk_size,
-            'files': {str(path.resolve()): sha256(path) for path in paths}}
+    result = {'version': 1, 'ids': ids, 'chunk_size': args.chunk_size,
+              'files': {str(path.resolve()): sha256(path) for path in paths}}
+    if getattr(args, 'drop_profiles', ''):
+        result['drop_profiles'] = args.drop_profiles
+    return result
 
 
 def build_index(path, args, ids):
@@ -226,11 +230,15 @@ def build_index(path, args, ids):
     temporary.replace(path)
 
 
-def replay_record(pipe, record, saved, responses, consume, rules, corpus_index=None):
+def replay_record(pipe, record, saved, responses, consume, rules, corpus_index=None, drop=()):
     rows, fallback, errors = {}, {}, []
     counts = Counter()
     for packet, response in responses:
         profile = packet['batch']
+        if profile in drop:          # tier simulation: the executor never sent this packet
+            continue
+        if profile.startswith('A10_t'):     # a kept A10 thinking-budget profile answers the A10 group
+            profile = 'A10'
         if profile in rows:
             raise ValueError(f'duplicate successful profile: {record["id"]} {profile}')
         result = consume(pipe, record, packet, response)
@@ -242,11 +250,12 @@ def replay_record(pipe, record, saved, responses, consume, rules, corpus_index=N
         rows[profile] = result['row']
     source_items = tuple(getattr(getattr(pipe, 'config', None), 'source_rule_items', ()) or ())
     gates = tuple(getattr(getattr(pipe, 'config', None), 'precision_gates', ()) or ())
+    filter_items = tuple(getattr(getattr(pipe, 'config', None), 'corpus_seen_filter_items', ()) or ())
     for profile, items in PROFILE_ITEMS.items():
         if rows.get(profile) is None or set(items) & set(source_items):
             fallback[profile], _ = rules(pipe, record, items)
             counts['rules_only_profiles'] += rows.get(profile) is None
-    row, owners = assemble(record['id'], rows, fallback, record, corpus_index, source_items, gates)
+    row, owners = assemble(record['id'], rows, fallback, record, corpus_index, source_items, gates, filter_items)
     differences = [{'id': record['id'], 'cell': cell, 'saved': saved['row'][cell],
                     'reconsumed': row[cell], 'profile': owners.get(cell)}
                    for cell in COLUMNS[1:] if row[cell] != saved['row'][cell]]
@@ -319,7 +328,7 @@ def run(args):
                                      'SELECT packets.payload, responses.payload FROM responses JOIN packets USING(request_key) '
                                      'WHERE record_id=? ORDER BY request_key', (record_id,)))
                     results.append(replay_record(pipe, record, saved, responses, consume_response, rules_only_row,
-                                                 corpus_index))
+                                                 corpus_index, tuple(p for p in getattr(args, 'drop_profiles', '').split(',') if p)))
                 part = {'manifest_sha256': signature, 'seconds': time.perf_counter() - chunk_began,
                         'peak_memory_bytes': peak_memory_bytes(), 'results': results}
                 atomic_json(part_path, part)
@@ -351,6 +360,10 @@ def main(argv=None):
     parser.add_argument('--ids-file', type=Path, help='UTF-8 text, one exact record ID per line')
     parser.add_argument('--limit', type=int)
     parser.add_argument('--chunk-size', type=int, default=200)
+    parser.add_argument('--drop-profiles', default='',
+                        help='comma-separated packet profiles (A10, A19, Q10, L19, S9, W20, A10_t<budget>) whose saved '
+                             'responses are ignored, as if the executor had not sent them; dropped A groups fall back to '
+                             'source rules; at most one A10 budget profile may remain')
     args = parser.parse_args(argv)
     try:
         run(args)

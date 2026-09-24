@@ -51,6 +51,7 @@ def catalog_packet(pipe, record, control):
         return None
     shared=selection(record,control,pipe.tokenizer)
     policy=getattr(pipe.config,'catalog_source_policy','shared')
+    first=getattr(pipe.config,'prompt_layout','current')!='current'
     grouped=getattr(pipe.config,'catalog_task_groups',False)
     stats=pipe.catalog_source_preparation
     stats['eligible_notices'] += 1
@@ -110,7 +111,7 @@ def catalog_packet(pipe, record, control):
     if policy == 'shared' or not cap:
         body=service_prompt(record,shared,pipe.tokenizer,pipe.knowledge.products,
                     explain_contract=pipe.config.catalog_review=='explicit',
-                    q10_variant=pipe.config.q10_variant,max_model_len=pipe.config.max_model_len)
+                    q10_variant=pipe.config.q10_variant,max_model_len=pipe.config.max_model_len,catalog_first=first)
         stats['source_tokens_total'] += shared['source_tokens']
         stats['seconds'] += time.monotonic()-began
         return packet(record,body,shared,family='Q',profile='Q10',fmt='catalog_scope',
@@ -133,7 +134,7 @@ def catalog_packet(pipe, record, control):
             'scope':'current_notice_only','retrieval_is_not_absence_proof':True}
         body=service_prompt(record,src,pipe.tokenizer,pipe.knowledge.products,
                     explain_contract=pipe.config.catalog_review=='explicit',task_groups=grouped,
-                    q10_variant=pipe.config.q10_variant,max_model_len=pipe.config.max_model_len)
+                    q10_variant=pipe.config.q10_variant,max_model_len=pipe.config.max_model_len,catalog_first=first)
         try:
             result=packet(record,body,src,family='Q',profile='Q10',fmt='catalog_scope',
                           output_tokens=1536,max_model_len=pipe.config.max_model_len)
@@ -158,7 +159,7 @@ def catalog_packet(pipe, record, control):
         'shared_Q_source_token_cap':cap,'attempted_source_budgets':attempted}
     body=service_prompt(record,fallback,pipe.tokenizer,pipe.knowledge.products,
                 explain_contract=pipe.config.catalog_review=='explicit',
-                q10_variant=pipe.config.q10_variant,max_model_len=pipe.config.max_model_len)
+                q10_variant=pipe.config.q10_variant,max_model_len=pipe.config.max_model_len,catalog_first=first)
     stats['shared_fallbacks'] += 1
     stats['source_tokens_total'] += fallback['source_tokens']
     stats['seconds'] += time.monotonic()-began
