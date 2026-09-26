@@ -10,6 +10,8 @@ import json
 import re
 from dataclasses import dataclass, field
 
+from . import regions, switches
+
 UNKNOWN = '불명'
 SECTION_NAME = {'QUAL': '참가자격', 'DOCS': '제출서류', 'JV': '공동계약', 'BRIEF': '설명회', 'OVERVIEW': '개요',
                 'EVAL': '낙찰·평가', 'BID': '입찰·개찰', 'NOTE': '유의사항·기타', 'OTHER': '기타', 'TOP': '머리',
@@ -86,6 +88,12 @@ PLACE = re.compile(r'납품\s*(장소|지)|장\s*소|위\s*치|현\s*장|행사\
 
 
 def region_select(notice):
+    if switches.AUDIT_FIXES3 and switches.FIX3_PROMPTS:
+        # Audit R3-C: a 공고문 qualification clause naming the bidder's location is a candidate even when REGION_ANY misses its
+        # region words ("…본사업장 소재지가 수도권 또는 충청북도인 업체", "…경상북도에 두고 있는 자"). Changes prompts.
+        return pick(notice, REGION_CUE, 12, lambda ln: REGION_ANY.search(ln.text) is not None or '지역제한' in ln.text.replace(' ', '')
+                    or ln.doc_type == '공고문' and ln.sec == 'QUAL' and BIDDER_LOC.search(ln.text) is not None
+                    and bool(regions.mentions(ln.text)['sido']))
     return pick(notice, REGION_CUE, 12, lambda ln: REGION_ANY.search(ln.text) is not None or '지역제한' in ln.text.replace(' ', ''))
 
 
@@ -118,8 +126,22 @@ ORDERER_LIMIT = re.compile(r'공공\s*기관|국가\s*기관|정부\s*(기관|�
 ORDERER_OPEN = re.compile(r'민간|기업체|또는\s*민간|공공\s*(기관)?\s*(또는|및|·)\s*민간|발주처\s*(구분|불문|무관)')
 
 
+# Audit R2-A/R2-E: a firm-subject record requirement without the word 실적 ("…제작 경험이 있는 업체", "…을 수행한 자",
+# "5억원 이상의 동종 용역을 1건 이상 수행한 업체") is a performance requirement too; the firm subject keeps staff careers out.
+PERF_FIRM = re.compile(r'(제\s*작|운\s*영|수\s*행|납\s*품|시\s*공|개\s*발|구\s*축|공\s*급|대\s*행|위\s*탁|이\s*행|준\s*공)\s*(한|하였던)?\s*경\s*험\s*이\s*'
+                       r'(있\s*는|있\s*어\s*야|보\s*유\s*한)\s*(업\s*체|자|법\s*인|사\s*업\s*자|기\s*관)'
+                       r'|을\s*수\s*행\s*한\s*(업\s*체|자|법\s*인)(?!\s*명)'
+                       r'|(억\s*원?|천\s*만\s*원?|\d{1,3}(?:,\d{3}){2,}\s*원)\s*이\s*상[^.。]{0,50}(수\s*행|납\s*품|준\s*공|이\s*행|완\s*료)\s*(한|하였던|된)\s*(업\s*체|자|법\s*인)')
+PERF_CUE_FIX2 = re.compile(PERF_CUE.pattern + '|' + PERF_FIRM.pattern)
+# Audit R3-A: "…컨설팅 유경험 업체" states the firm's experience too (유경험자 alone is staff). Changes prompts.
+FIRM_EXPERIENCE = r'유\s*경\s*험\s*(업\s*체|사\s*업\s*자|법\s*인|기\s*관)'
+
+
 def perf_select(notice):
-    return pick(notice, PERF_CUE, 12)
+    cue = PERF_CUE_FIX2 if switches.AUDIT_FIXES2 else PERF_CUE
+    if switches.AUDIT_FIXES3 and switches.FIX3_PROMPTS:
+        cue = re.compile(cue.pattern + '|' + FIRM_EXPERIENCE)
+    return pick(notice, cue, 12)
 
 
 def perf_default(notice, ln):
@@ -129,7 +151,8 @@ def perf_default(notice, ln):
         role = '제출서류'
     elif ln.sec == 'EVAL' or re.search(r'배점|점수|가점|평가|\|\s*\d+\s*\|', t):
         role = '평가·가점'
-    elif PERF_REQ.search(t) and (ln.sec == 'QUAL' or QUAL_CUE.search(t)):
+    elif (PERF_REQ.search(t) or switches.AUDIT_FIXES2 and PERF_FIRM.search(t)
+          or switches.AUDIT_FIXES3 and switches.FIX3_PROMPTS and re.search(FIRM_EXPERIENCE, t)) and (ln.sec == 'QUAL' or QUAL_CUE.search(t)):
         role = '참가자격'
     else:
         role = '안내·기타'
@@ -259,6 +282,41 @@ def strip_law_titles(text):
     return TITLE_BRACKET.sub(lambda m: ' ' if LAW_SUFFIX.search(re.sub(r'[\s·ㆍ・‧․•･]', '', m.group(1))) else m.group(0), text)
 
 
+# Audit C: 연구소기업 (연구개발특구법) is no enterprise-size class, and a size word inside a preference period
+# ("(단, 소기업·소상공인·창업기업의 경우 7년 이내)") restricts nobody.
+RESEARCH_FIRM = re.compile(r'연\s*구\s*소\s*기\s*업')
+PREFERENCE_PAREN = re.compile(r'[\(（][^)）]{0,40}(소\s*기\s*업|소\s*상\s*공\s*인|창\s*업\s*기\s*업|중\s*소\s*기\s*업)[^)）]{0,30}(의\s*경\s*우|은|는)'
+                              r'[^)）]{0,20}?\d+\s*년[^)）]{0,20}[\)）]')
+
+
+# Audit R2-B/R2-C: typography and titles that restrict nobody. Dot variants (⸱ ∙ ⋅ …) are the middle dot and a space inside
+# 기업 ("중・소기 업") is none; an article title in parentheses ("제2조의2(중소기업자의 우선조달계약)"), the 창업자 definition
+# ("중소기업을 창업하여"), notes on 판단기준일·유효기간 and commas between certificate classes ("중기업,소기 업,소상공인확인서")
+# name no class. The unified certificate "중소기업 ·소기업(소상공인)확인서" is the SME certificate; "중소기업확인서(소기업·
+# 소상공인)" is the small-business one. size_normal is applied to the clause the judge classes (judge.size_class), not to
+# candidate selection.
+DOT_VARIANTS = str.maketrans({c: '·' for c in '⸱∙⋅•‧・･․ㆍ'})
+KI_EOP = re.compile(r'((?:중\s*·?\s*)?소)\s*기\s+업')
+ARTICLE_TITLE = re.compile(r'제\s*\d+\s*조(?:\s*의\s*\d+)?\s*[\(（][^)）]{0,40}[\)）]')
+STARTUP_DEF = re.compile(r'중\s*소\s*기\s*업\s*을\s*창\s*업\s*하')
+NOTE_PAREN = re.compile(r'[\(（][^)）]{0,80}(판\s*단\s*기\s*준\s*일|유\s*효\s*기\s*간)[^)）]{0,80}[\)）]')
+# Audit R3-C: a 판단기준일 note runs up to ≈200 characters ("(입찰참가자격의 판단기준일은 중, 소기업 또는 소상공인 확인서의 경우 …
+# 입니다.)"), and "중, 소기업" is the 중·소기업 of the unified certificate.
+NOTE_PAREN3 = re.compile(r'[\(（][^)）]{0,200}(판\s*단\s*기\s*준\s*일|유\s*효\s*기\s*간)[^)）]{0,200}[\)）]')
+MID_COMMA = re.compile(r'중\s*[,，]\s*(?=소\s*기\s*업)')
+CLASS_COMMA = re.compile(r'(중\s*기\s*업|중\s*·?\s*소\s*기\s*업|소\s*기\s*업|소\s*상\s*공\s*인)\s*[,，]\s*(?=중\s*기\s*업|중\s*·?\s*소\s*기\s*업|소\s*기\s*업|소\s*상\s*공\s*인)')
+SME_CERT2 = re.compile(SME_CERT.pattern + r'|중\s*소\s*기\s*업\s*[·ㆍ]?\s*소\s*기\s*업\s*[\(（]?\s*소\s*상\s*공\s*인\s*[\)）]?\s*확\s*인\s*서')
+# A certificate qualified by its class in parentheses ("중소기업확인서(소기업·소상공인)") is that class's certificate.
+CERT_CLASS_PAREN = re.compile(r'(?:중\s*·?\s*소\s*기\s*업\s*)?확\s*인\s*서\s*[\(（]\s*(소\s*기\s*업\s*[·,]?\s*소\s*상\s*공\s*인|소\s*상\s*공\s*인)\s*[\)）]')
+
+
+def size_normal(text):
+    t = CERT_CLASS_PAREN.sub(r'\1 확인서', text.translate(DOT_VARIANTS))
+    t = KI_EOP.sub(r'\1기업', MID_COMMA.sub('중·', t) if switches.AUDIT_FIXES3 else t)
+    t = (NOTE_PAREN3 if switches.AUDIT_FIXES3 else NOTE_PAREN).sub(' ', STARTUP_DEF.sub(' ', ARTICLE_TITLE.sub(' ', t)))
+    return CLASS_COMMA.sub(r'\1·', t)
+
+
 def size_words(text):
     """The size class a clause restricts to once law, agency and article names are removed: 'sme' (중기업 included),
     'small' (소기업·소상공인 only) or None.
@@ -267,6 +325,8 @@ def size_words(text):
     "확인서" (only 소기업·소상공인 options means small; a 중기업·중소기업 option means the certificate decides
     nothing, since 중·소기업·소상공인 확인서 is issued to every SME); then the entity the clause names."""
     t = SIZE_NAMES.sub(' ', strip_law_titles(text or ''))
+    if switches.AUDIT_FIXES:
+        t = PREFERENCE_PAREN.sub(' ', RESEARCH_FIRM.sub(' ', t))
     if NO_MEDIUM.search(t):
         return 'small'
     small_cert = sme_cert = False
@@ -274,7 +334,8 @@ def size_words(text):
     for m in CERT_WORD.finditer(t):
         lead = t[max(0, m.start() - 30):m.start()]
         # The certificate issued to every SME is named with a list separator too: "중·소기업, 소상공인 확인서".
-        whole = next((c for c in SME_CERT.finditer(t, max(0, m.start() - 30), m.end()) if c.end() == m.end()), None)
+        whole = next((c for c in (SME_CERT2 if switches.AUDIT_FIXES2 else SME_CERT).finditer(t, max(0, m.start() - 30), m.end())
+                      if c.end() == m.end()), None)
         if whole:
             spans.append((whole.start(), m.end()))
             sme_cert = True
@@ -433,6 +494,35 @@ MODEL = Family(
     selector=model_select, default=model_default)
 
 
+# v9 read in two questions (switches.V9_READ2; audit RA): what the named maker or model is in this contract, and how the line
+# asks for it. The one-question 성격 reading took serviced equipment, flights and OS names for designations of the procured item.
+MODEL2_TARGET = Field(
+    '대상', ('납품 물품', '과업용 장비·SW', '기존 장비', '호환 대상', '해당 없음', UNKNOWN),
+    '줄에 적힌 제조사·상표·모델의 고유한 이름(모델 코드 포함)이 이 계약에서 가리키는 것. 납품 물품 = 이 계약으로 사거나 빌리거나 만들어 넘기는 '
+    '물품과 그 부품. 과업용 장비·SW = 용역에서 계약자가 준비해 쓰거나 새로 설치하는 장비·SW. 기존 장비 = 발주기관이 이미 가진 장비·시스템으로 '
+    '이 계약이 유지보수·수리·점검·교정·보험·운영하는 대상. 호환 대상 = 새 물품이 연결·호환되어야 하는 기존 장비·시스템. 해당 없음 = 줄에 그런 '
+    '고유한 이름이 없음(재질·규격·성능·수량, "정품"·"제조사" 같은 일반 말만 있음), 또는 그 이름이 운영체제·오피스 같은 SW 플랫폼, KS·ISO·USB 같은 '
+    '규격, 등급·인증, 항공편·차량번호, 기관·사람 이름, ○○○ 같은 빈칸이거나 값 없는 "모델명:"')
+MODEL2_MANNER = Field(
+    '방식', ('지정', '예시', '현황 목록', UNKNOWN),
+    '지정 = 그 이름의 제품이어야 한다고 요구하거나, 규격표·자격 조건에 납품·설치할 제품의 이름으로 적음. 예시 = "예:", "등", "(참고)"처럼 '
+    '예로만 듦. 현황 목록 = 보유 장비 현황표·기존 시스템 구성표처럼 이미 있는 것을 나열함')
+
+
+def model2_default(notice, ln):
+    r = model_default(notice, ln)
+    target, manner = {'구매 대상의 제조사·모델 지정': ('납품 물품', '지정'), '기존 장비 유지보수·호환': ('기존 장비', UNKNOWN),
+                      '예시·참고': (UNKNOWN, '예시')}.get(r['성격'], ('해당 없음', UNKNOWN))
+    return {'대상': target, '방식': manner, '동등': r['동등']}
+
+
+MODEL2 = Family(
+    name='model2', items=('v9',), title='제조사·모델 표기(대상·방식)',
+    guide='각 줄에 나오는 제조사·모델·상표 이름이 이 계약에서 무엇을 가리키는지, 그 이름을 어떻게 적었는지 분류한다.',
+    fields=(MODEL2_TARGET, MODEL2_MANNER, MODEL.fields[1]),
+    context=3, selector=model_select, default=model2_default, meta_lines=('업무구분', '계약방법', '세부품명번호목록'))
+
+
 # ---------------------------------------------------------------- supply / tech-support pledges (v19)
 PLEDGE_CUE = re.compile(r'확약\s*서|확약|공급\s*(확인|증명|협약)|기술\s*지원\s*(확약|협약|확인|증명)|협약\s*서|딜러|총판|대리점\s*(증명|확인)|제조사\s*(확인|증명|발행|발급)')
 THIRD = re.compile(r'제조사|제조\s*업체|공급사|공급\s*업체|기술\s*지원\s*사|원\s*제조|총판|본사로부터|로부터')
@@ -530,7 +620,15 @@ MUST_ATTEND = re.compile(r'참석(하지|한\s*(자|업체)|업체에\s*한|자�
 OPTIONAL = re.compile(r'참석\s*여부(와|에)?\s*(관계|상관)\s*없|자율\s*참석|선택\s*참석|참석하지\s*않(아도|더라도)')
 
 
+# Audit R2-E: a mandatory site visit ("현장답사에 참석한 업체에 한하여") is the orderer's briefing too (attendance as a
+# qualification); a site visit without a mandatory-attendance expression is not a candidate.
+SITE_VISIT = re.compile(r'현\s*장\s*(답\s*사|확\s*인)')
+BRIEF_CUE_FIX2 = re.compile(BRIEF_CUE.pattern + '|' + SITE_VISIT.pattern)
+
+
 def brief_select(notice):
+    if switches.AUDIT_FIXES2:
+        return pick(notice, BRIEF_CUE_FIX2, 8, lambda ln: BRIEF_CUE.search(ln.text) is not None or MUST_ATTEND.search(ln.text) is not None)
     return pick(notice, BRIEF_CUE, 8)
 
 
@@ -579,7 +677,21 @@ VALUES = Family(
     fields=(), max_lines=14, reason=False, context=0, selector=values_select, default=lambda notice, ln: {},
     meta_lines=('업무구분',))
 
-FAMILIES = {f.name: f for f in (INST, REGION, PERF, SIZE, DP, MODEL, PLEDGE, SW, BRIEF, VALUES)}
+# v9 second stage (switches.V9_STAGE2): asked by main.py only on the lines judge.v9_lines takes from the model family's reading,
+# never selected from the notice. The negative option does not name the field's key noun (a '모델명 아님' option drew real
+# model names in the model2 run).
+MODEL_OBJ = Family(
+    name='v9obj', items=('v9',), title='지정된 제조사·모델의 대상',
+    guide='각 줄에 적힌 제조사·상표·모델 이름이 이 계약에서 무엇의 이름인지 분류한다.',
+    fields=(Field('대상', ('납품 물품', '과업용 장비·SW', '기존 장비', '호환 대상', '해당 없음', UNKNOWN),
+                  '납품 물품 = 이 계약으로 사거나 빌리거나 만들어 넘기는 물품과 그 부품. 과업용 장비·SW = 용역에서 계약자가 준비해 쓰거나 새로 '
+                  '설치하는 장비·SW. 기존 장비 = 발주기관이 이미 가진 장비·시스템으로 이 계약이 유지보수·수리·점검·교정·보험·운영하는 대상. '
+                  '호환 대상 = 새 물품이 연결·호환되어야 하는 기존 장비·시스템. 해당 없음 = 적힌 이름이 제조사·상표·모델이 아님(항공편, '
+                  '운영체제·오피스, KS·ISO 같은 규격, 등급·인증, 기관·사람 이름, ○○○ 같은 빈칸)'),),
+    selector=lambda notice: [], default=lambda notice, ln: {'대상': UNKNOWN})
+
+
+FAMILIES = {f.name: f for f in (INST, REGION, PERF, SIZE, DP, MODEL, PLEDGE, SW, BRIEF, VALUES, MODEL2, MODEL_OBJ)}
 TOP_FIELDS = {'sw': (SW_PROJECT,), 'values': (VALUE_BUDGET, VALUE_ESTIMATE, VALUE_METHOD)}
 
 

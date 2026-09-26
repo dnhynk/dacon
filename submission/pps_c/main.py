@@ -14,11 +14,12 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import catalog, csvout, facts, families as F, judge, record
+from . import catalog, csvout, facts, families as F, judge, record, switches
 from .runner import Engine, MockEngine, log
+from .v24 import stage as v24stage
 
 # Family order after the first pass: cheap, high-value families first so a deadline cut loses the least.
-ORDER = ('size', 'dp', 'region', 'perf', 'pledge', 'brief', 'sw', 'model')
+ORDER = ('size', 'dp', 'region', 'perf', 'pledge', 'brief', 'sw', 'model', 'model2')
 # The 'values' family (stated 예산·추정가격 for v24) is not called: on the organizer sample the model left every amount
 # empty under the digit grammar, so it adds time without a reading.
 PROMPT_TOKEN_LIMIT = 12000
@@ -80,7 +81,7 @@ def run(args):
     journal = []
     stats = {'requests': 0, 'answered': 0, 'parse_failed': 0, 'skipped_deadline': 0, 'by_family': {}}
     if args.mode != 'cpu':
-        THINKING['families'] = tuple(args.thinking_families or ())
+        THINKING['families'] = tuple(switches.THINKING_FAMILIES if args.thinking_families is None else args.thinking_families)
         THINKING['budget'] = args.thinking_budget
         engine = MockEngine() if args.mode == 'mock' else Engine(args.model_dir, max_num_seqs=args.max_num_seqs,
                                                                  thinking=bool(THINKING['families']))
@@ -94,6 +95,8 @@ def run(args):
                     r = make_request(engine, b, k, name)
                     if r is not None:
                         rest.append(r)
+        if switches.V24_PIPELINE and (not args.families or v24stage.FAM in args.families):
+            rest += [r for r in (v24stage.request(engine, b, k, Request) for k, b in enumerate(bundles)) if r is not None]
         queue = [r for r in first if r is not None] + rest
         stats['requests'] = len(queue)
         log(f'{len(queue)} requests ({len(first)} first pass); prompt build {time.time() - t0:.1f}s')
@@ -133,6 +136,31 @@ def run(args):
                     stats['parse_failed'] += 1
         else:
             stats['parse_failed'] += len(retry)
+        if switches.V9_STAGE2 and (not args.families or 'model' in args.families):
+            stage2 = []
+            for k, b in enumerate(bundles):
+                lines = judge.v9_lines(b)
+                if lines:
+                    b.cands['v9obj'] = lines
+                    b.readings['v9obj'] = {ln.i: F.MODEL_OBJ.default(b.notice, ln) for ln in lines}
+                    r = make_request(engine, b, k, 'v9obj')
+                    if r is not None:
+                        stage2.append(r)
+            stats['requests'] += len(stage2)
+            if stage2 and time.time() - t0 + (per_req or 1) * len(stage2) * 1.2 < budget:
+                outs = engine.generate([(r.token_ids, r.schema, r.max_tokens, r.budget) for r in stage2])
+                for r, (text, finish, ntok) in zip(stage2, outs):
+                    ok = consume(bundles[r.rec], r, text)
+                    stats['by_family'].setdefault(r.fam, [0, 0])
+                    stats['by_family'][r.fam][0] += 1
+                    stats['by_family'][r.fam][1] += int(ok)
+                    stats['answered' if ok else 'parse_failed'] += 1
+                    if args.journal:
+                        journal.append({'id': bundles[r.rec].notice.id, 'fam': r.fam, 'lines': [ln.i for ln in r.cands],
+                                        'in': len(r.token_ids), 'out': ntok, 'finish': finish, 'text': text})
+                log(f'v9 second stage: {len(stage2)} requests, {time.time() - t0:.0f}s elapsed')
+            else:
+                stats['skipped_deadline'] += len(stage2)
     rows = []
     for rec, b in zip(recs, bundles):
         verdicts = judge.judge(b)
@@ -151,6 +179,8 @@ def run(args):
 
 
 def consume(b, r, text):
+    if r.fam == v24stage.FAM:
+        return v24stage.consume(b, r.cands, text)
     lines, top = F.parse(text, F.FAMILIES[r.fam], r.cands, r.extra)
     return facts.apply_model(b, r.fam, lines, top)
 

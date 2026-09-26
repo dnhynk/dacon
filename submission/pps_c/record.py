@@ -12,6 +12,8 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
+from . import switches
+
 DOC_ORDER = ('공고문', '규격서', '과업지시서', '제안요청서', '예외공표서')
 
 # Section labels. QUAL = participation qualification (입찰·견적 참가자격), DOCS = documents to submit, JV = joint
@@ -94,6 +96,10 @@ BOX_MARK = re.compile(r'^\s*(?:[□■▣◆◇◈]|【|<\s*\S)')
 COUNT_END = re.compile(r'\d+\s*(부|매|통|식)\s*[\.。)）]?\s*$|\d+\s*부\s*[\(（【]')
 
 
+# Audit C: some 공고문 lay their headings out as table rows "4 | | 입찰참가자격" (number cell, empty cell, title).
+TABLE_HEAD = re.compile(r'^\s*\d{1,2}\s*\|\s*\|\s*([가-힣][^|]{0,38})$')
+
+
 def _named(body, patterns=SECTION_PATTERNS):
     head = re.split(r'[:：|‣]', body, maxsplit=1)[0]
     for label, pat in patterns:
@@ -122,6 +128,10 @@ def heading_label(text, num=None):
     s = text.strip()
     if not s or COUNT_END.search(s):
         return None
+    if switches.AUDIT_FIXES:
+        t = TABLE_HEAD.match(s)
+        if t:
+            return _named(t.group(1)) or 'OTHER'
     m = NUM_MARK.match(s)
     if m and not num.roman:
         n, body = int(m.group(1)), s[m.end():]

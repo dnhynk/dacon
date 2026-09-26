@@ -5,7 +5,7 @@ import datetime as dt
 import re
 from dataclasses import dataclass, field
 
-from . import amounts, regions
+from . import amounts, regions, switches
 
 EOK = 1e8
 NOTICE_AMOUNT = 2.3 * EOK          # 고시금액 for v2, v14–v16 and the national regional threshold
@@ -21,6 +21,9 @@ FIVE_TYPES = ('기초자치단체', '교육청', '교육지원청', '초등학�
 ORG_TOKEN = re.compile(r'\[(?:수요기관|기관)\(([^)\]]+)\)')
 CONSTRUCTION_TECH = re.compile(r'건설\s*기술|설계|감리|엔지니어링|측량|지반\s*조사|타당성\s*조사')
 SAFETY_CHECK = re.compile(r'안전\s*점검|정밀\s*안전\s*진단|안전\s*진단')
+# Audit B: the 1.5억 T is for 시설물안전법 statutory inspections only (organizer T table: "시설물안전법 안전점검·정밀안전진단
+# 용역"); playground or 산업안전 inspections are not.
+SAFETY_CHECK_FIX = re.compile(r'정밀\s*안전\s*진단|시설물\s*(의\s*)?(정기\s*|정밀\s*)?안전\s*점검|안전\s*진단\s*전문\s*기관|시설물\s*안전')
 
 
 def _money(v):
@@ -111,7 +114,7 @@ def threshold(law, work, types, title, license_text):
     if law != '지방':
         return NOTICE_AMOUNT, NOTICE_AMOUNT, 'national'
     subject = f'{title} {license_text or ""}'
-    if work == '용역' and SAFETY_CHECK.search(subject):
+    if work == '용역' and (SAFETY_CHECK_FIX if switches.AUDIT_FIXES or switches.T_SAFETY_STATUTE else SAFETY_CHECK).search(subject):
         return SAFETY_CHECK_T, SAFETY_CHECK_T, 'safety_check_service'
     if work == '용역' and CONSTRUCTION_TECH.search(subject):
         return CONSTRUCTION_TECH_T, CONSTRUCTION_TECH_T, 'construction_tech_service'

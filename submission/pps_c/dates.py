@@ -4,10 +4,14 @@ from __future__ import annotations
 import datetime as dt
 import re
 
+from . import switches
+
 FULL = re.compile(r'(20\d{2})\s*[\.\-/년]\s*(\d{1,2})\s*[\.\-/월]\s*(\d{1,2})\s*일?')
 SHORT = re.compile(r'(?<![\d\.])(\d{1,2})\s*[\.월/]\s*(\d{1,2})\s*[\.일]?\s*(?:\(\s*[월화수목금토일]\s*\)|[월화수목금토일]요일)')
 BARE_SHORT = re.compile(r'(?<![\d\.])(\d{1,2})\.\s*(\d{1,2})\.(?!\d)')
 KOREAN_SHORT = re.compile(r'(?<!\d)(\d{1,2})\s*월\s*(\d{1,2})\s*일')
+# Audit R2-E: "’26. 2. 3." — a two-digit year after an apostrophe — is 2026-02-03.
+YY = re.compile(r'[’\'‘`´]\s*(\d{2})\s*[\.\-/]\s*(\d{1,2})\s*[\.\-/]\s*(\d{1,2})(?!\d)')
 
 
 def _mk(y, m, d):
@@ -25,6 +29,14 @@ def find(text, year=None):
         if d:
             out.append((d, m.start()))
             taken.append((m.start(), m.end()))
+    if switches.AUDIT_FIXES2:
+        for m in YY.finditer(text or ''):
+            if any(a <= m.start() < b for a, b in taken):
+                continue
+            d = _mk(2000 + int(m.group(1)), m.group(2), m.group(3))
+            if d:
+                out.append((d, m.start()))
+                taken.append((m.start(), m.end()))
     if year:
         for pat in (SHORT, KOREAN_SHORT, BARE_SHORT):
             for m in pat.finditer(text or ''):

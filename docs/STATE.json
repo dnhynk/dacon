@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "updated_utc": "2026-09-24T23:23Z",
+  "updated_utc": "2026-09-26T06:20Z",
   "competition": "DACON 236754",
   "target_official_macro_f1": 0.85,
-  "official_score": 0.7004790415,
+  "official_score": 0.7147180317,
   "production_candidate": {
     "status": "official_submission_10_scored_P1g_best",
     "runtime": "submission/",
@@ -175,20 +175,77 @@
       "P3a_size_private_off": 0.7004790415,
       "P3b_v20_min1e8": 0.6961600389,
       "P3c_v11_private": 0.6964054006,
+      "R1_size_reg": 0.6792513676,
+      "Z1_rare_zero": 0.4789657754,
+      "HYG2_bundle": 0.6954928239,
+      "CG_goods": 0.7147180317,
+      "CG10_goods": 0.7077007852,
+      "V9B_broad": 0.7115439434,
+      "AFB_scoped": 0.7013341616,
+      "ZD1_v24_zero": 0.688417638,
+      "ZD2_v2v7_zero": 0.6279238635,
+      "P3a_resubmitted": 0.7004790415,
+      "V24A_fixes": 0.7001992472,
+      "V24B_nomethod": 0.70015049,
+      "ZD4_size_zero": 0.5290379306,
+      "ZD5_qual_zero": 0.6172742115,
       "server_runtime_C2_minutes": 42,
       "replica_to_lb_transfer_C2": 0.29,
-      "decisions": "C2 − P1g +0.0269 → C is the base; P3a adopted (v14–v18 not on 수의계약); P3b, P3c held (defaults kept)"
+      "decisions": "C2 − P1g +0.0269 → C is the base; P3a adopted (v14–v18 not on 수의계약); P3b, P3c held (defaults kept); R1 rejected (−0.0212: the test marks unregistered v16/v18 absences) and HYG2 rejected (−0.0050), so the test labels natural violations by the organizer's logic; Z1 → v3 v5 v6 v21 v22 v23 F1 mean 0.886. 9/26: P3a resubmitted scored identically (C is deterministic on the server and the leaderboard is the full 1,853, so probe deltas are exact and item-disjoint changes add exactly); CG (goods competition products for v10/v11/v13) +0.0142 and V9B (literal v9) +0.0111 adopted; AFB +0.0009 between thresholds (kept off); F1_v24 = 0.2895 (ZD1), v2+v7 mean 0.871 (ZD2)"
     },
     "best_package": {
-      "path": "artifacts/rebuild_c/P3a_size_private/submit.zip",
-      "sha256": "82906ba3d8a3b9a9c4ebc9321f4252398438c405ff927a504b72e2cf9bed704d"
+      "path": "artifacts/rebuild_c/CG_goods/submit.zip",
+      "sha256": "256f1cca283639e3b00d268413d3ea155ea1b6b9925452ffffaa6751b6587f48",
+      "official_score": 0.7147180317
     },
     "preregistration_rows": [
       20,
       21,
       22,
       23
-    ]
+    ],
+    "lb_0926": {
+      "measured_vs_P3a_0.7004790415": {
+        "CG": 0.7147180317,
+        "CG10": 0.7077007852,
+        "V9B": 0.7115439434,
+        "AFB": 0.7013341616,
+        "V24A": 0.7001992472,
+        "V24B": 0.70015049,
+        "ZD4_v14_v18_zero": 0.5290379306,
+        "ZD5_v1_v4_v8_zero": 0.6172742115,
+        "ZD6_v12_v19_v20_zero": 0.62952
+      },
+      "computed_best": {
+        "package": "P3a + CG + V9B + AFB (item-disjoint, exact)",
+        "score": 0.7266381
+      },
+      "group_f1_at_P3a": "v3 v5 v6 v21 v22 v23 mean 0.886; v2+v7 0.871; v14-v18 0.823; v1 v4 v8 0.666; v24 0.2895; v12+v19+v20 sum 1.703; v9+v10+v11+v13 sum 1.650 (2.258 after CG and V9B)",
+      "rejected_today": "V9_READ2 (v9 model2 family) failed preregistered criteria twice on Colab (v9r2, v9r3); v1 necessity route (inst reading does not separate natural lists from organizer plants)"
+    },
+    "probes_0927": {
+      "scheduler": "runs/rebuild_c/submissions/scheduled_0927.py (Windows task dacon_0927, 00:00:30 KST 2026-09-27)",
+      "slots": {
+        "main": "THKA (row 51)",
+        "spare1": "V9SX12 (82)",
+        "spare2": "V20OR (81)",
+        "spare3": "X4OBJ (78)",
+        "spare4": "PRX4X (87)",
+        "spare5": "AFBaR2 (83)",
+        "spare6": "AFBbR8 (84)",
+        "spare7": "REX6 (80)",
+        "spare8": "SZ13X (85)",
+        "spare9": "V24W1PG (86)",
+        "spare10": "SCP (66)"
+      },
+      "basis": "expert audits X1-X7 (practitioner standard, H_def two-sided) and PX (probe cells re-read): runs/rebuild_c/transfer_20260925/audit/expert/",
+      "interaction_check": "all ten spare probes combined on t2500 differ from the additive prediction in 4 of 487 changed cells (v16 2, v18 1: X5 SW exemption x V20_CONTENT; v3 1)",
+      "final_calc": "runs/rebuild_c/transfer_20260925/final_calc.py (items per probe measured on t2500)",
+      "preregistration": "runs/harness_improve_20260919/precision_analysis/PREREGISTRATION.md rows 80-87 (rows 68 69 71 73 74 76 77 79 superseded)",
+      "para_planted_recall": "all probes together 0.890 -> 0.951 (936 plants); the 8 plants some probe loses sit in hosts its rule exempts",
+      "bases": "spare slots stay below 0.75 (user): REX6 V20OR AFBaR2 AFBbR8 PRX4X V24W1PG on P3a; V9SX12 on P3a+V9B; X4OBJ SCP SZ13X on P3a+CG; THKA (main) on P3a+CG+V9B; cells on each probe item equal those on CG+V9B"
+    },
+    "main_slot_plan": "from 2026-09-28 the main slot carries the strongest package, on 9/28 and 9/29 (user); final_calc.py merge builds it"
   },
   "previous_task_harness_improve_20260919": {
     "id": "harness_improve_20260919",
