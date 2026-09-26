@@ -2,7 +2,9 @@
 import hashlib
 import importlib.util
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -98,7 +100,7 @@ def test_new_comparison_does_not_silently_replace_the_standalone_reference():
 
 
 def test_current_document_navigation_has_no_missing_targets():
-    files = [ROOT / "README.md", ROOT / "START_HERE.md", ROOT / "experiments/README.md"]
+    files = [ROOT / "README.md", ROOT / "START_HERE.md"]
     files += [p for p in (ROOT / "docs").glob("*.md") if p.name != "LOCAL_HANDOFF.md"]
     for file in files:
         for target in re.findall(r"\[[^\]]+\]\(([^)]+)\)", file.read_text(encoding="utf-8")):
@@ -131,14 +133,14 @@ def test_newer_standalone_hides_an_older_completed_comparison():
     ]
 
 
-def test_replay_command_help_does_not_start_work():
-    run = subprocess.run([sys.executable, "-B", str(ROOT / "tools/replay_preserved_reference.py"), "--help"],
-                         capture_output=True, text=True)
-    assert run.returncode == 0 and "--output" in run.stdout
-
-
-def test_replay_refuses_output_outside_its_archive(tmp_path):
-    output = tmp_path / "must_not_create"
-    run = subprocess.run([sys.executable, "-B", str(ROOT / "tools/replay_preserved_reference.py"),
-                          "--output", str(output)], capture_output=True, text=True)
-    assert run.returncode != 0 and not output.exists()
+def test_summary_survives_a_console_that_cannot_encode_the_state(tmp_path):
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "docs").mkdir()
+    shutil.copyfile(ROOT / "tools/project_status.py", tmp_path / "tools/project_status.py")
+    state = {"updated_utc": "u", "official_score": 0.5, "target_official_macro_f1": 0.85, "records": [],
+             "active_task": {"status": "s", "next_action": "9/28–9/29"},
+             "entrypoints": {"current_input_b4": "script.py", "b4_validation": "v"}}
+    (tmp_path / "docs/STATE.json").write_text(json.dumps(state), encoding="utf-8")
+    run = subprocess.run([sys.executable, "-B", str(tmp_path / "tools/project_status.py")], capture_output=True,
+                         env=dict(os.environ, PYTHONIOENCODING="cp949"))
+    assert run.returncode == 0 and b"Next: 9/28?9/29" in run.stdout

@@ -884,10 +884,10 @@
     "runtime_package": "submission/",
     "build": "tools/build_submission.py",
     "notebook": "runs/rebuild_c/colab/make_colab.py (Colab A100 kit; embeds submission/script.py and submission/pps_c/)",
-    "b4_validation": "Canonical pipeline C has 24 packaged entries. Final 20260926 audit: 1264 full-suite tests pass; 11 _r0927b ZIPs independently pass source/switch/hash/mock and 3550 saved-response notices each. P3a_default and CG_V9B predictions/evidence/exact local request tokens unchanged on 3550 notices. Runtime snapshot: runs/rebuild_c/code_audit_20260926/joint_frozen_runtime_c.json; final release and scheduler evidence: FINAL_VALIDATION_r0927b_closed.json in that directory. CPU equivalence is not fresh inference or an official score. Legacy track-B validation applies only to legacy/submission_b/.",
+    "b4_validation": "Canonical pipeline C has 24 packaged entries. Final 20260926 audit: 1264 full-suite tests pass; 11 _r0927b ZIPs independently pass source/switch/hash/mock and 3550 saved-response notices each. P3a_default and CG_V9B predictions/evidence/exact local request tokens unchanged on 3550 notices. Runtime snapshot: runs/rebuild_c/code_audit_20260926/joint_frozen_runtime_c.json; final release and scheduler evidence: FINAL_VALIDATION_r0927b_closed.json in that directory. CPU equivalence is not fresh inference or an official score. Legacy track-B validation applies only to legacy/submission_b/ (tag archive/pre-cleanup-20260926).",
     "historical_b4_entry": "experiments/precision_joined_v1/b4_entry_candidate_20260912/source/script.py",
-    "legacy_package": "pps/",
-    "validation_status": "Track-B stream-executor and dev200-retuning validation applies to legacy/submission_b/ only.",
+    "legacy_package": "pps/ (tag archive/pre-cleanup-20260926)",
+    "validation_status": "Track-B stream-executor and dev200-retuning validation applies to legacy/submission_b/ only (tag archive/pre-cleanup-20260926).",
     "executor": "submission/pps_c/main.py (python script.py --help)"
   },
   "canonical_build": {

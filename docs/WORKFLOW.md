@@ -18,9 +18,8 @@ CPU 후처리만 바꾸면 호환되는 저장 응답을 사용할 수 있지만
 새 프롬프트 때문에 기존 응답 재사용이 불가능하면 그 차이를 명시하고 필요한 새
 대조군을 실행한다. 낮아진 기준에서의 상승분을 최고점에 단순 가산하지 않는다.
 
-`tools/evaluate.py --baseline <예측.csv>`를 반복 지정하면 같은 새 예측을 모든
-선언한 기준과 비교한다. 현재 .758950 CPU 후보, .751807 B4, .706466 새 실행을
-누락하지 않는다. 각 기준 대비 항목별 변화와 회복/새 오류를 별도로 남긴다.
+새 예측은 선언한 기준 모두와 비교하고, 각 기준 대비 항목별 변화와 회복/새 오류를
+별도로 남긴다.
 
 기존에 효과가 있는 보정을 유지한다. 금액 역할·자격 논리·행위별 시점·구매 범위 등
 재사용할 판단 관계를 개선하며, 공고 ID나 정답을 적용 조건에 넣지 않는다.
@@ -42,14 +41,15 @@ native 응답 전체와 토큰 ID를 **파싱 전에** 저장한다. 실패 응�
 
 ```text
 python script.py --help
-python tools/build_submission.py --output artifacts/submission.zip
+python tools/build_submission.py <이름> [NAME=VALUE ...]
 ```
 
-개발 실행은 `--input`, `--data-dir`, `--model-dir`, `--output-dir`과 `PPS_STREAM_JOURNAL=1`을 명시한다.
-이 변수가 없으면 패킷·원응답 저널이 남지 않는다(`docs/RUNTIME_STREAMING.md` 기록 절).
+개발 실행은 `--input`, `--data-dir`, `--model-dir`, `--output-dir`과 `--journal <경로.jsonl.gz>`(또는 `PPS_C_JOURNAL`)를 명시한다.
+저널이 없으면 요청별 원응답이 남지 않아 CPU 재판정을 할 수 없다.
 평가 기본 실행은 `python script.py`이며 공식 `PPS_*` 경로 환경변수를 따른다.
-출력 디렉터리에 이전 실행(`started.json`)이 있으면 거부한다. 개발 실행은 새 디렉터리를 쓴다. 빌드는 `script.py`, `requirements.txt`, `submission/`의
-Python·고정 설정만 포함한다. 과거 ZIP은 덮어쓰지 말고 새 결과 경로에 보존한다.
+출력 디렉터리의 `submission.csv`는 덮어쓰이므로 개발 실행은 새 디렉터리를 쓴다. 빌드는 `submission/script.py`, 고정
+`requirements.txt`, `submission/pps_c/`만 담아 `artifacts/rebuild_c/<이름>/submit.zip`을 만들고, 기존 ZIP은 덮어쓰지 않는다.
+탐침 패키지는 `NAME=VALUE`로 `switches.py`의 값만 바꾼다.
 이는 구현 브랜치를 늘리는 것이 아니라 같은 본체의 측정 스냅샷을 남기는 것이다.
 빌드 성공 자체를 새 점수나 L40S 2시간 검증으로 표현하지 않는다.
 
@@ -61,21 +61,20 @@ Windows의 기본 확인:
 ```powershell
 .venv/Scripts/python.exe -B tools/project_status.py
 .venv/Scripts/python.exe -B tools/project_status.py --verify
-.venv/Scripts/python.exe -B -m pytest -q tests/test_project_status.py tests/test_artifacts.py tests/test_ingest.py
+.venv/Scripts/python.exe -B -m pytest -q tests
 ```
 
-마지막 검사는 GPU/모델/대회 원문이 없는 합성 테스트다. 전체 테스트에는 로컬
-제공 지식·토크나이저 의존 검사가 있으므로 실패 원인을 구분한다.
+마지막 검사는 GPU/모델/대회 원문이 없는 합성 테스트다. 비공개 로컬 파일이 필요한 검사는 그 파일이 없으면 건너뛴다.
 
-최고 보존본의 **CPU 재판정**은 별도 명령으로 실행한다. 약48초가 걸렸으며
-원본640응답을 소비한 결과가 기존 CSV 바이트와 같았다. 실행시간은 환경별로 달라진다.
+저장 판독의 **CPU 재판정**은 로컬 `runs/rebuild_c/transfer_20260925/replay_switch.py`로 한다.
+저장 저널을 현행 코드와 스위치 덮어쓰기로 다시 판정하며 GPU·네트워크를 쓰지 않는다.
 
 ```text
-python -B tools/replay_preserved_reference.py --output artifacts/reference_replays/my_new_check
+python -B runs/rebuild_c/transfer_20260925/replay_switch.py <실행폴더> <입력.jsonl.gz> <출력.csv> [NAME=VALUE ...]
 ```
 
-이 명령은 주어진 로컬 원본을 재생할 뿐 GPU·네트워크를 사용하지 않는다.
-출력 경로가 이미 있으면 덮어쓰지 않고 거절한다. 일반 B4 실행기와 혼동하지 않는다.
+기본 스위치의 재판정 결과가 기준 패키지의 저장 예측과 바이트 단위로 같아야 기본 동작이 보존된 것이다.
+재판정 결과를 새 추론 점수로 보고하지 않는다.
 
 ## 자원과 협업
 
@@ -93,7 +92,6 @@ python -B tools/replay_preserved_reference.py --output artifacts/reference_repla
 
 현재 점수/상태는 `docs/STATE.json`, 현지 세션/다음 행동은 `docs/LOCAL_HANDOFF.md`만
 갱신한다. 상세 보고서에는 당시 결과를 남기고, 새 `CURRENT`를 계속 덧붙이지 않는다.
-완료·기각된 라운드는 `docs/EXPERIMENT_HISTORY.md`로 연결한다.
 동결 코드와 원본은 이동/덮어쓰기하지 않는다. 불필요한 로컬 파일은 먼저 경로와
 참조를 확인하고 회수 가능한 보관함으로 옮긴다. 오래된 `finish*`/`checkpoint*`
 스크립트는 상태 문서를 덮어쓸 수 있으므로 재실행하지 않는다.

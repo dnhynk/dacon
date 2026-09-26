@@ -32,16 +32,6 @@ Windows Python은 `.venv/Scripts/python.exe`, Linux에서는 `.venv/bin/python`�
 이 검사는 해시·기록 확인이지 새 추론이나 새 채점이 아니다. 공개 복제본에서는
 비공개 원본이 없다는 오류가 정상이며, 없는 데이터를 임의로 만들지 않는다.
 
-보존된 **640응답을 실제 CPU 판정기에 다시 넣는** 별도 명령:
-
-```text
-python -B tools/replay_preserved_reference.py --output artifacts/reference_replays/my_new_check
-```
-
-2026-09-12 이 명령으로 .751807/FP53/FN24와 CSV 바이트 일치를 다시 확인했다.
-새 빈 출력 경로만 허용한다. 비공개 개발 자료가 필요하며 새 모델 호출은0회다.
-이 명령을 제출 추론이나 .751의 새 GPU 재현으로 사용하지 않는다.
-
 ## 어느 코드를 실행할까?
 
 실행·개선·패키징하는 본체는 하나다:
@@ -57,20 +47,16 @@ python tools/build_submission.py <이름>
 Colab GPU 키트(`runs/rebuild_c/colab/`)도 이 본체를 담는다. 검증된 개선은 이 패키지에 계속 합치며
 새 현행 source 브랜치를 만들지 않는다. **현재 본체의 CPU/GPU 검증 상태는 STATE.json을 확인한다.**
 
-루트 `pps/`, `model/`과 `legacy/`(이전 track-B 런타임과 그 테스트·도구)는 제출에서 읽지 않는다. 과거 동결
-`experiments/*/source/`와 응답은 증거·롤백용으로 보존한다.
-`precision_joined_v1/source/script.py`를 직접 실행해도 역사적 B4와 다른 A 입력이
-생긴다. 점수 이름만 보고 실행 파일을 바꾸지 않는다. 새 추론 점수가 떨어지면
-그 하락을 먼저 처리하고, 낮아진 값을 묵시적으로 새 기준으로 삼지 않는다.
+이전 트랙(track A/B 런타임, 동결 실험 소스, 옛 주석·재현 도구)은 현행 트리에 없고 `archive/pre-cleanup-20260926`
+태그에 있다(`git checkout archive/pre-cleanup-20260926 -- <경로>`). 로컬 `runs/`·`experiments/`의 보존물(응답·예측·
+영수증)은 증거로 그대로 둔다. 새 추론 점수가 떨어지면 그 하락을 먼저 처리하고, 낮아진 값을 묵시적으로 새 기준으로
+삼지 않는다.
 
 ## 이어서 읽을 문서
 
 - [저장소 지도](docs/REPO_MAP.md): 코드·데이터·기록의 위치와 수정 경계.
-- [실행 도구](tools/README.md): 현행 명령과 차단된 legacy 감사·실행 경로.
+- [실행 도구](tools/README.md): 빌드와 상태 도구.
 - [작업 원칙과 실행](docs/WORKFLOW.md): 연구→실측→결정, 원본 보존, GPU·공개 경계.
-- [실험 목록](experiments/README.md): 후보별 역할과 종료 상태.
-- [완료 실험 요약](docs/EXPERIMENT_HISTORY.md): 다시 시작하면 안 되는 과거 라운드.
-- [0.751 재현 진단](docs/REPRODUCTION.md): 보존본 복원, 순서384 대조와 단일 ZIP 신규640의 회복·잔여 손실.
 
 `STATUS.md`와 `HANDOFF.md`는 호환용 안내판만 남긴다. 옛 문서의 `CURRENT`,
 `ACTIVE`, `NEXT`는 당시 기록이지 지금의 실행 지시가 아니다.

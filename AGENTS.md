@@ -9,10 +9,11 @@ Do not load all historical reports into context before choosing the current task
 
 - Root `script.py` calls `submission.main.main()`. `submission/` is the ONE mutable
   submission runtime. Integrate validated improvements here; do not create another
-  active `experiments/*/source` baseline. The build tool (`tools/build_submission.py`) and
+  active submission implementation. The build tool (`tools/build_submission.py`) and
   the Colab kit (`runs/rebuild_c/colab/`) use this same source.
-- Root `pps/` and `model/` are legacy, not imports or packaging inputs for submission.
-  So is `legacy/` (the retired track-B runtime with its tests and tools; `legacy/README.md`).
+- Earlier tracks (the track A/B runtimes, frozen experiment sources, old annotation and
+  replay tools) are not in the tree; they live under the tag `archive/pre-cleanup-20260926`
+  (`git checkout archive/pre-cleanup-20260926 -- <path>`).
 - Historical CPU replay, fresh inference, mixed-response experiments, and official
   scores are different measurements. Do not replace one with another.
 - Historical frozen `source/`, inputs, responses, labels, predictions and receipts

@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import math
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -131,6 +132,8 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="Print machine-readable state")
     parser.add_argument("--history", action="store_true", help="Print every preserved score instead of the current summary")
     args = parser.parse_args()
+    # STATE.json text can fall outside the console code page (cp949 on this Windows machine); print '?' there.
+    sys.stdout.reconfigure(errors="replace")
     state = read_json(ROOT / "docs/STATE.json")
     result = {"state": state}
     if args.verify:

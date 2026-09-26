@@ -29,19 +29,5 @@ tools/create_human_review_html.py
 *.pem
 *.key
 
-# Publish only explicitly selected frozen source trees from this research round.
-experiments/precision_audit_fix_v1/*
-!experiments/precision_audit_fix_v1/source/
-experiments/precision_joined_v1/*
-!experiments/precision_joined_v1/source/
-!experiments/precision_joined_v1/b4_entry_candidate_20260912/
-experiments/precision_joined_v1/b4_entry_candidate_20260912/*
-!experiments/precision_joined_v1/b4_entry_candidate_20260912/source/
-!experiments/precision_joined_v1/b4_entry_candidate_20260912/README.md
-experiments/v20_uniform_route_v1/*
-!experiments/v20_uniform_route_v1/source/
-experiments/precision_audit_fix_v2/*
-!experiments/precision_audit_fix_v2/stages/
-experiments/precision_audit_fix_v2/stages/*
-!experiments/precision_audit_fix_v2/stages/cpu_candidate_source_r3/
-!experiments/precision_audit_fix_v2/stages/typed_candidate_source_r3_768/
+# Frozen experiment trees are local evidence; their last tracked copies are under the tag archive/pre-cleanup-20260926.
+experiments/

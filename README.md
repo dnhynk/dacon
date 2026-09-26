@@ -1,72 +1,50 @@
 # DACON 236754 · 나라장터 공고 법령 위반 탐지
 
-지정 Gemma와 원문 검색·전문 판정·근거 검증을 결합하는 연구 저장소입니다.
+나라장터 입찰공고마다 24개 항목의 위반 여부를 판정하는 제출 런타임(파이프라인 C)입니다.
+지정 Gemma가 후보 줄에서 정해진 사실을 읽고, CPU 규칙(`submission/pps_c/judge.py`)이 항목을 판정합니다.
 새 세션은 **[START_HERE.md](START_HERE.md)**부터 읽으세요.
-현재 수치·실행 경로의 기준은 [docs/STATE.json](docs/STATE.json)입니다.
+현재 점수·상태의 기준은 [docs/STATE.json](docs/STATE.json)입니다.
 
-## 현재 위치
+## 구조
 
-`python -B tools/project_status.py`는 최신 전체 새 추론, 최고 보존 CPU 재판정,
-최신 CPU 재판정과 현재 작업을 구분해 보여줍니다. 전체 점수 이력은 `--history`,
-정확한 소스·예측·검증 경로는 [docs/STATE.json](docs/STATE.json)을 확인하세요.
-이 문서에는 변경되는 최신 점수를 별도로 복제하지 않습니다.
-
-저장 응답 재판정, 일부 새 응답을 결합한 진단, 전체 새 추론과 공식 평가는
-서로 다른 측정입니다. 높은 과거 기준과 원본을 보존하며 새 추론의 하락도
-따로 기록합니다. 평가 시간에는 모델 적재·초기화가 포함되므로, A100 처리량
-외삽만으로 L40S 2시간 제한 충족을 주장하지 않습니다.
+| 경로 | 내용 |
+| --- | --- |
+| `script.py` → `submission/` | 유일한 제출 런타임(`submission/pps_c/`). 탐침 패키지는 `pps_c/switches.py`만 다릅니다 |
+| `tools/build_submission.py` | 제출 ZIP 빌드. 스위치를 지정하고, 풀어 낸 ZIP으로 모의 실행합니다 |
+| `tools/project_status.py` | 점수·현재 작업 요약. `--verify`는 로컬 보존물의 해시를 확인합니다 |
+| `tests/` | 런타임 합성 검사 |
+| `docs/` | 상태 레지스트리와 작업 문서 |
 
 ## 읽을 곳
 
 | 문서 | 내용 |
 | --- | --- |
-| [시작 안내](START_HERE.md) | 3분 안에 현재 작업과 실행 경로 파악 |
-| [저장소 지도](docs/REPO_MAP.md) | 코드·데이터·증거·수정 경계 |
-| [작업/실행 원칙](docs/WORKFLOW.md) | 새 실험, 재현성, 비용, 인계, 공개 |
-| [실행 도구](tools/README.md) | 현행 도구와 종료한 legacy 실행 경로 |
-| [실험 목록](experiments/README.md) | 과거 비교·롤백용 동결 기록 |
-| [완료 실험 요약](docs/EXPERIMENT_HISTORY.md) | 기각·종료된 연구를 다시 시작하지 않기 |
+| [시작 안내](START_HERE.md) | 현재 작업과 실행 경로 |
+| [저장소 지도](docs/REPO_MAP.md) | 코드·데이터·증거의 위치와 수정 경계 |
+| [작업 원칙](docs/WORKFLOW.md) | 실험, 재현성, 비용, 인계, 공개 |
+| [실행 도구](tools/README.md) | 빌드와 상태 도구 |
+| [개발 경과](docs/DEVELOPMENT_NARRATIVE.md) | 방향이 정해진 이유와 남은 가설 |
 
-## 비용 없는 시작
+## 시작
 
 ```text
 python -B tools/project_status.py
-python -B -m pytest -q tests/test_project_status.py tests/test_artifacts.py tests/test_ingest.py
+python -B -m pytest -q tests
+python script.py --help
+python tools/build_submission.py <이름> [NAME=VALUE ...]
 ```
 
-Python3.12 환경을 사용합니다. Windows에서는 `.venv/Scripts/python.exe`,
-Linux에서는 `.venv/bin/python`을 사용할 수 있습니다. 개발 의존성은
-`requirements-dev.txt`, GPU 환경의 버전은 `requirements-gpu.lock`에 있습니다.
+Python 3.12 환경을 사용합니다. Windows에서는 `.venv/Scripts/python.exe`, Linux에서는 `.venv/bin/python`을 씁니다.
+개발 의존성은 `requirements-dev.txt`, GPU 환경의 버전은 `requirements-gpu.lock`에 있습니다.
 합성 검사는 새 추론·점수·제출 검증을 대신하지 않습니다.
 
-실행·개선 경로는 **[script.py](script.py) → submission/** 하나입니다.
-최고 기록의 A 입력·CPU 보정·L19 연결을 이 본체로 통합하며, 다음 개선도 여기에 합칩니다.
-과거 실험과 루트 `pps/`는 기록용이며 제출 ZIP에 들어가지 않습니다.
-
-```text
-python script.py --help
-python tools/build_submission.py --output artifacts/submission.zip
-```
-
-빌드와 노트북은 동일한 제출 본체를 사용합니다. 현재 통합·실측 상태는 STATE.json을
-보세요. ZIP 생성 성공이 최고점 새 추론 재현이나 L40S 2시간 검증을 뜻하지는 않습니다.
+이전 트랙(track A/B 런타임, 동결 실험 소스, 옛 주석·재현 도구와 그 테스트)은 현행 트리에 없습니다.
+`archive/pre-cleanup-20260926` 태그에서 복구합니다: `git checkout archive/pre-cleanup-20260926 -- <경로>`.
 
 ## 공개 범위
 
 소스·설정·합성 테스트·집계 결과만 공개합니다. 제공 원문, 가공 데이터, 라벨,
 저장 응답, 공고별 예측, 가중치, 인증정보, 브라우저/에이전트 로그는 포함하지 않습니다.
 따라서 공개 소스만으로 개발 점수를 재계산할 수 없습니다.
-로컬 자료가 있을 때 `tools/project_status.py --verify`로 원본·동결 소스의 해시와
-점수 기록을 확인할 수 있지만, 이것도 새 추론은 아닙니다.
-
-대회 제공 자료와 지정 모델 `google/gemma-4-26B-A4B-it`
-(revision `4d7ae4984b7db7de8f8457170b3f1a419ee76d52`)을 사용합니다.
-검색 보조 모델은 `BAAI/bge-m3`
-(revision `5617a9f61b028005a4858fdac845db406aefb181`)로 고정합니다.
-BGE-M3 점수는 후보·문맥 검색에만 사용하며 사실의 참·거짓이나 위반 확률로
-해석하지 않습니다. 최종 근거는 항상 현재 공고의 정확한 원문 위치에서 다시 읽습니다.
-실행 중 외부 모델 호출이나 추가 판정모델 학습은 하지 않습니다.
-
-[대회 규칙](https://dacon.io/competitions/official/236754/overview/rules) ·
-[평가 안내](https://dacon.io/competitions/official/236754/overview/evaluation) ·
-[제공 데이터](https://dacon.io/competitions/official/236754/data)
+로컬 자료가 있을 때 `tools/project_status.py --verify`로 보존물의 해시와 점수 기록을 확인할 수 있지만,
+이것도 새 추론은 아닙니다.

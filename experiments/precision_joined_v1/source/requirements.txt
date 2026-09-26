@@ -1,2 +1,0 @@
-# The evaluation image already provides all runtime dependencies.
-# Do not override vllm, torch, transformers, or xgrammar here.

@@ -19,7 +19,7 @@
   - 기본 호출: A1(v1–v9), A10(v10–v18), A19(v19–v24).
   - 보조 호출: L19(v20 법령), Q10(v10–v18 구매 범위 검토), S9(v9 규격 검토).
   - CPU 규칙이 금액·지역·자격·예외를 계산해 모델 판정을 보정한다.
-- **작업 방식:** 당시 개발용 160건(dev160)의 저장 응답을 CPU로 다시 소비해 점수를 올리는 감사를 수십 번 했다. 자격절 계층, 금액 표기, 지역 토큰, 고시 조건, SW 범위 등이다. `docs/EXPERIMENT_HISTORY.md`를 보면 대부분 "F1 변화 없음"이나 "새 추론 미검증"으로 끝났다.
+- **작업 방식:** 당시 개발용 160건(dev160)의 저장 응답을 CPU로 다시 소비해 점수를 올리는 감사를 수십 번 했다. 자격절 계층, 금액 표기, 지역 토큰, 고시 조건, SW 범위 등이다. 태그 `archive/pre-cleanup-20260926`의 `docs/EXPERIMENT_HISTORY.md`를 보면 대부분 "F1 변화 없음"이나 "새 추론 미검증"으로 끝났다.
 - **9-17 V30 결과:** 새 추론으로 dev160 0.858, 같은 응답을 CPU로 재판정하면 0.911이었다.
 
 ### 2.2 9월 17일: 유일한 정직한 측정, 그리고 개봉
@@ -140,9 +140,9 @@
 
 | 자산 | 위치 |
 |---|---|
-| 제출 런타임: 스트리밍 실행기·고정 tier 계획. 공식 조건 재현으로 시간 검증 | `submission/`, `docs/RUNTIME_STREAMING.md` |
+| track B 제출 런타임: 스트리밍 실행기·고정 tier 계획. 공식 조건 재현으로 시간 검증 | 태그 `archive/pre-cleanup-20260926`의 `legacy/submission_b/`, `docs/RUNTIME_STREAMING.md` |
 | 공식 이미지·L40S 재현 환경 | `runs/harness_improve_20260919/l40s_measure_01/modal_app.py` |
-| 저장 응답 보관소와 모델 호출 없는 재판정 도구. 소비기 변경을 GPU 없이 잰다 | `tools/cell_reconsume.py`, GPU 캠페인·합성·자연 300건·dev200 저널 |
+| 저장 응답 보관소와 모델 호출 없는 재판정 도구. 소비기 변경을 GPU 없이 잰다 | 같은 태그의 `legacy/tools/cell_reconsume.py`, GPU 캠페인·합성·자연 300건·dev200 저널 |
 | 코퍼스 분석: 참조 색인, 중복 필터, 제목 태그 지문, 자연 기저율 | `precision_analysis/`, `official_submission_01/diagnosis/` |
 | 합성 세트와 편집 생성기(경보와 메커니즘 분석용이지, 기대값이 아님) | `runs/cell_label_20260919/` |
 | 정직 비율 모형(보정 기준점: build_13을 0.685로 예측, 실제 0.651) | `official_submission_01/diagnosis/item_loss.py`, `precision_analysis/W5/honest.py` |
@@ -211,5 +211,5 @@
 | 제출 기록 | `runs/harness_improve_20260919/official_submission_01/`, `official_submission_02/` |
 | 사전 등록과 S1 사용 기록 | `runs/harness_improve_20260919/precision_analysis/PREREGISTRATION.md`, `S1_SEALED.md` |
 | 정밀도 작업 근거 | `precision_analysis/`의 A·B·C·W1·W3·W5 보고서, `W6_v20_sw_evidence/`, `call_ablation/` |
-| 실행기 계약과 시간 | `docs/RUNTIME_STREAMING.md` |
-| 끝난 옛 실험 목록 | `docs/EXPERIMENT_HISTORY.md` |
+| track B 실행기 계약과 시간 | 태그 `archive/pre-cleanup-20260926`의 `docs/RUNTIME_STREAMING.md` |
+| 끝난 옛 실험 목록 | 같은 태그의 `docs/EXPERIMENT_HISTORY.md` |

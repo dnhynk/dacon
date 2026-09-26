@@ -59,7 +59,6 @@
   - 건설기술 등 용역 3.3억, 안전점검 용역 1.5억
   - v6·v7 항목명의 "고시금액"은 지방계약에서 T를 뜻한다.
   - v2와 v14~v16의 고시금액은 2.3억이다.
-  - 현재 `submission/pps/region_thresholds.py`는 교육청·지방공기업을 3.5억~5억 구간으로 남겨 두는데, 공지대로 5억으로 확정해야 한다.
 - **소액수의 특례**: 항목표 비고 "지방 + 소액수의 가능"(v2·v6·v7·v8)은 적용된다. 근거는 공지, dev 6/6(v6=0), LB(build_21 − build_20 = −0.016)다.
 - **판로지원 예외**: v15~v18은 예외가 문서에 적혀 있을 때만 인정한다. 조항호나 서류 목록은 대신하지 못한다(게시판).
 - **v20**
@@ -112,7 +111,7 @@
   - v23 긴급공고
   - v24 플래그 N 방향과 지역 집합
   - 이런 항목은 LB 프로브 후보로 관리한다.
-- `submission/pps/`의 규칙 코드는 둘로 나뉜다.
+- track B 규칙 코드(태그 `archive/pre-cleanup-20260926`의 `legacy/submission_b/pps/`)는 둘로 나뉜다.
   - 법 근거 [유효]: rules, regions, region_thresholds, performance, eligibility_restrictions, model_exclusivity, qualification, other_checks, temporal, comparison.
   - dev 음성에 맞춘 분기 [편향]:
     - `precision_gates.py`의 v16·v18 규모 등록, v2 금액, long_line, v24 비방법 증인
@@ -219,9 +218,9 @@
   - 편집 호스트 합의 셀에 부작용이 섞인다(v24 편집 20% 대 자연 10%).
   - λ는 모수 하나다.
 - **도구**
-  - `tools/cell_reconsume.py`: 저장 응답을 CPU로 재판정한다. 65,760/65,760셀 재현. `--drop-profiles`로 묶음을 빼면 tier를 흉내 낸다.
+  - 같은 태그의 `legacy/tools/cell_reconsume.py`: 저장 응답을 CPU로 재판정한다. 65,760/65,760셀 재현. `--drop-profiles`로 묶음을 빼면 tier를 흉내 낸다.
   - `runs/replica_20260922/gen/probe_items.py`(가설별 Δ·부트스트랩, `--edited-hosts`), `gap_map.py`(항목별 남은 격차), `slot_plan.py`(잡음과 판별력)
-  - `tools/build_corpus_line_index.py`: 참조 색인에서 채점 표본을 빼고 쓴다.
+  - 같은 태그의 `legacy/tools/build_corpus_line_index.py`: 참조 색인에서 채점 표본을 빼고 쓴다.
   - `runs/harness_improve_20260919/W3_input_stability/drift_audit.py`: 소비기 수정이 모델 입력을 바꾸는지 확인한다.
 - **속은 방식과 지킬 규칙**
   - 표본 내 점수를 믿지 않는다: dev160 0.618→0.752와 0.874→0.931, 합성 +0.05~0.10이 모두 LB로 이어지지 않았다.
