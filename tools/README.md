@@ -3,7 +3,7 @@
 | 도구 | 용도 |
 | --- | --- |
 | `build_submission.py <이름> [NAME=VALUE ...]` | `submission/`으로 제출 ZIP을 만든다 |
-| `project_status.py [--verify] [--json] [--history]` | `docs/STATE.json`의 점수·현재 작업 요약 |
+| `project_status.py [--verify] [--json] [--ledger]` | `docs/STATE.json`의 공식 최고점·대기 제출·다음 행동 |
 
 `build_submission.py`는 `artifacts/rebuild_c/<이름>/submit.zip`을 쓰고 SHA256을 출력한다. 같은 이름의 ZIP이 있으면 거부한다.
 `NAME=VALUE`는 `submission/pps_c/switches.py`에서 정확히 한 번 나오는 대입만 바꾸므로, 탐침 패키지는 기준 패키지와
@@ -14,8 +14,9 @@
 같은 이름으로 복사한다. 런타임은 데이터 폴더에 이 고시 파일이 없을 때 `catalog.csv`를 쓰므로, 빌드는 이 파일이
 없으면 거부한다.
 
-`project_status.py`는 GPU를 잡거나 라벨을 읽지 않는다. `--verify`는 로컬 보존물(예측·원응답·동결 소스)의 해시와
-기록 점수를 대조할 뿐 재판정이나 새 추론이 아니다.
+`project_status.py`는 GPU를 잡거나 라벨을 읽지 않는다. `--ledger`는 모든 공식 제출을 보여 준다. `--verify`는
+로컬 `runs/evidence_manifest.json`에 적힌 보존물(예측·원응답·동결 소스)의 해시와 기록 점수를 대조할 뿐
+재판정이나 새 추론이 아니다. 공개 복제본에는 이 목록이 없어 실패한다.
 
 이전 트랙의 실행·재생·주석 도구는 태그 `archive/pre-cleanup-20260926`의 `tools/`와 `legacy/tools/`에 있다.
 

@@ -14,8 +14,6 @@ runs/
 # Private research, agent state, and generated outputs stay local.
 research/
 docs/LOCAL_HANDOFF.md
-HANDOFF.md
-STATUS.md
 DACON_236754_FriendliAI_Addendum_KR.md
 %SystemDrive%/
 tools/create_cache_replay_cell.py

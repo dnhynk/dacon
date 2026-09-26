@@ -1,7 +1,8 @@
 """Small, read-only cold-start status and preserved-artifact check.
 
 No model, network, label loading, prediction editing or automatic experiment.
---verify requires the private artifacts in the original local workspace.
+--verify checks the local evidence hashes in runs/evidence_manifest.json, which only the
+original workspace has (runs/ is git-ignored).
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+EVIDENCE = "runs/evidence_manifest.json"
 
 
 def read_json(path: Path):
@@ -87,73 +89,39 @@ def verify_state(root: Path, state: dict) -> dict:
             "scope": "Read-only hashes and recorded metrics; not a CPU prediction replay, new inference or score measurement."}
 
 
-def summarized_measurements(state):
-    """Keep a fixed-input policy comparison distinct from a standalone run."""
-    records = state['records']
-    fresh = [r for r in records if r['kind'] == 'fresh_model_inference']
-    cpu = [r for r in records if 'cpu_replay' in r['kind']]
-    comparisons = [r for r in records
-                   if r['kind'] == 'fresh_whole_cohort_policy_comparison']
-    displayed = []
-    if fresh:
-        displayed.append(('Latest standalone whole fresh', fresh[-1]))
-    # A completed comparison remains useful until a newer standalone run
-    # supersedes that research round. Showing an older grid beside a newer
-    # whole-fresh result makes a cold start look as if the grid is still active.
-    latest_fresh_index = max(
-        (i for i, r in enumerate(records) if r['kind'] == 'fresh_model_inference'),
-        default=-1,
-    )
-    latest_comparison_index = max(
-        (i for i, r in enumerate(records)
-         if r['kind'] == 'fresh_whole_cohort_policy_comparison'),
-        default=-1,
-    )
-    if comparisons and latest_comparison_index > latest_fresh_index:
-        current_round = comparisons[-1]['comparison_round']
-        current = [r for r in comparisons if r['comparison_round'] == current_round]
-        # A standalone normal execution also participates in its declared grid.
-        # Excluding it can report a lower diagnostic as that round's best result.
-        current += [r for r in fresh if r.get('comparison_round') == current_round]
-        controls = [r for r in current if r.get('policy') == 'current']
-        if controls:
-            displayed.append(('Latest whole comparison control', controls[-1]))
-        displayed.append(('Best candidate in that whole comparison',
-                          max(current, key=lambda r: r['macro_f1'])))
-    if cpu:
-        displayed.append(('Best recorded CPU', max(cpu, key=lambda r: r['macro_f1'])))
-        displayed.append(('Latest CPU replay', cpu[-1]))
-    return displayed
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--verify", action="store_true", help="Verify locally preserved predictions, raw responses and frozen source manifests")
+    parser.add_argument("--verify", action="store_true", help=f"Verify the local evidence hashes in {EVIDENCE}")
     parser.add_argument("--json", action="store_true", help="Print machine-readable state")
-    parser.add_argument("--history", action="store_true", help="Print every preserved score instead of the current summary")
+    parser.add_argument("--ledger", action="store_true", help="Print every official submission")
     args = parser.parse_args()
     # STATE.json text can fall outside the console code page (cp949 on this Windows machine); print '?' there.
     sys.stdout.reconfigure(errors="replace")
     state = read_json(ROOT / "docs/STATE.json")
     result = {"state": state}
     if args.verify:
-        result["verification"] = verify_state(ROOT, state)
+        manifest = ROOT / EVIDENCE
+        result["verification"] = verify_state(ROOT, read_json(manifest)) if manifest.is_file() else {
+            "ok": False, "checks": 1, "passed": 0,
+            "failures": [{"path": EVIDENCE, "status": "missing_local_artifact"}],
+            "scope": "No local evidence manifest; a public clone has no private artifacts to check."}
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
-        print(f"DACON 236754 | state updated {state['updated_utc']}")
-        print(f"Official score: {state['official_score']} | target: {state['target_official_macro_f1']}")
-        if args.history:
-            displayed = [(record['id'], record) for record in state['records']]
-        else:
-            displayed = summarized_measurements(state)
-        for label, record in displayed:
-            print(f"{label}: {record['macro_f1']:.6f} | FP {record['fp']} / FN {record['fn']} | {record['id']} | {record['kind']}")
-        print(f"Current task: {state['active_task']['status']}")
-        print(f"Next: {state['active_task']['next_action']}")
-        print(f"Single entry: {state['entrypoints']['current_input_b4']}")
-        print(f"Validation: {state['entrypoints']['b4_validation']}")
-        print("Canonical runtime: submission/. Historical experiments are evidence, not alternate active entries.")
+        official, task, runtime = state["official"], state["task"], state["runtime"]
+        best = official["best"]
+        print(f"{state['competition']} | state updated {state['updated_utc']}")
+        print(f"Official best: {best['name']} {best['score']} | goal {state['goal_official_macro_f1']}")
+        if args.ledger:
+            for entry in official["ledger"]:
+                score = "pending" if entry["score"] is None else f"{entry['score']:.10f}"
+                print(f"  {entry['row']:>3} {entry.get('kst', ''):10} {entry['name']:<10} {score:<12} {entry.get('outcome', '')}")
+        pending = [entry["name"] for entry in official["ledger"] if entry["score"] is None]
+        if pending:
+            print(f"Awaiting scores: {', '.join(pending)}")
+        print(f"Task: {task['status']}")
+        print(f"Next: {task['next_action']}")
+        print(f"Entry: {runtime['entry']} -> {runtime['package']} (probe switches: {runtime['switches']})")
         print("Read docs/LOCAL_HANDOFF.md if available before touching a live agent or GPU.")
         if args.verify:
             audit = result["verification"]

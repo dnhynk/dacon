@@ -4,7 +4,7 @@
 
 | 위치 | 역할 | 운영 원칙 |
 | --- | --- | --- |
-| `START_HERE.md`, `docs/STATE.json` | 시작점·현재 상태 | 라운드 종료 시 갱신 |
+| `START_HERE.md`, `docs/STATE.json` | 시작점, 현재 상태(공식 LB 원장·과제·진입점·제약) | 라운드 종료 시 갱신 |
 | `docs/LOCAL_HANDOFF.md` | 로컬 Run·소유권·이어갈 작업 | 비공개, 짧게 유지 |
 | `script.py`, `submission/` | 유일한 실행·개선 본체(`submission/pps_c/`) | 검증된 변경을 여기에 통합. 탐침 패키지는 `pps_c/switches.py`만 다르고, 기본값은 LB로 잰 기준 동작이다 |
 | `tools/`, `tests/` | 빌드·상태 도구, 런타임 합성 검사 | `tools/README.md` 참고 |
