@@ -31,3 +31,7 @@ tools/create_human_review_html.py
 
 # Frozen experiment trees are local evidence; their last tracked copies are under the tag archive/pre-cleanup-20260926.
 experiments/
+
+# Organizer-provided files stay local (README 공개 범위); the build packs these copies from disk.
+submission/pps_c/assets/
+docs/ORGANIZER_NOTICES.md

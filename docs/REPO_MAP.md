@@ -12,6 +12,7 @@
 | 그 밖의 `runs/`, `research/`, 로컬 `experiments/` | 이전 트랙의 실행·검토·동결 증거 | 비공개 역사 자료. 현재 지시 아님 |
 | `artifacts/` | 빌드한 제출 ZIP·로컬 결과 | 비공개. 빌드 도구는 기존 ZIP을 덮어쓰지 않는다 |
 | `data_archive/`, `data_open/`, `models/` | 제공 데이터·모델 | 재배포·불필요한 재다운로드 금지 |
+| `submission/pps_c/assets/`, `docs/ORGANIZER_NOTICES.md` | 제공 자료 사본(경쟁제품 세부품명표·항목표, 주최 공지 원문) | 로컬 전용. git에 올리지 않는다 |
 
 이전 트랙의 코드(track A/B 런타임, 동결 실험 소스, 옛 주석·재현 도구와 그 테스트)는
 `archive/pre-cleanup-20260926` 태그에 있다. 로컬 증거의 상대경로·SHA는 그 코드를 기준으로 기록되어 있으므로

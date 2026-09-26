@@ -58,11 +58,13 @@ def test_conflicting_boolean_settings_are_not_silently_or_ed(calc, monkeypatch):
         calc.merge(['CG', 'V9B'])
 
 
-def builder_fixture(tmp_path, successful=True):
+def builder_fixture(tmp_path, successful=True, catalog=True):
     (tmp_path / 'tools').mkdir()
     shutil.copyfile(ROOT / 'tools/build_submission.py', tmp_path / 'tools/build_submission.py')
     src = tmp_path / 'submission'
-    (src / 'pps_c').mkdir(parents=True)
+    (src / 'pps_c/assets').mkdir(parents=True)
+    if catalog:
+        (src / 'pps_c/assets/catalog.csv').write_text('synthetic\n', encoding='utf-8')
     code = ('import os\nfrom pathlib import Path\np=Path(os.environ["PPS_OUTPUT_DIR"])\n'
             'p.mkdir(parents=True)\n(p/"submission.csv").write_text("id\\n")\n') if successful else 'raise SystemExit(3)\n'
     (src / 'script.py').write_text(code, encoding='utf-8')
@@ -93,3 +95,9 @@ def test_builder_rejects_path_escape(tmp_path):
     done = build(builder_fixture(tmp_path), '../../outside')
     assert done.returncode != 0 and 'must stay under' in done.stderr
     assert not (tmp_path / 'outside/submit.zip').exists()
+
+
+def test_builder_refuses_without_the_local_catalog_copy(tmp_path):
+    done = build(builder_fixture(tmp_path, catalog=False), 'no_catalog')
+    assert done.returncode != 0 and 'catalog.csv' in done.stderr
+    assert not (tmp_path / 'artifacts/rebuild_c/no_catalog/submit.zip').exists()

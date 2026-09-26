@@ -25,6 +25,10 @@ if not out.resolve().is_relative_to((ROOT / 'artifacts/rebuild_c').resolve()):
     raise SystemExit('Build name must stay under artifacts/rebuild_c.')
 if out.exists():
     raise SystemExit(f'Refusing to overwrite preserved archive: {out}. Use a fresh build name.')
+# Organizer-provided data stays out of git; the package carries this local copy as the catalog fallback.
+if not (SRC / 'pps_c/assets/catalog.csv').is_file():
+    raise SystemExit('Missing submission/pps_c/assets/catalog.csv: copy data_open/data/법령패키지/중기부고시/'
+                     '중기부고시_경쟁제품_세부품명.csv there before building.')
 out.parent.mkdir(parents=True, exist_ok=True)
 
 

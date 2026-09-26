@@ -49,7 +49,7 @@
 판정 규칙은 다음에서만 가져온다. 외부 법령 결합은 금지다.
 - `data_open/data/항목표.json`: 항목명, 부재탐지, 근거 조문, 비고.
 - `data_open/data/법령패키지/`
-- `docs/ORGANIZER_NOTICES.md`: 공지 원문.
+- 로컬 `docs/ORGANIZER_NOTICES.md`: 공지 원문. 제공 자료라 git에 없다.
 - `runs/replica_20260922/TALKBOARD_QA.md`: 게시판 문답.
 
 - **지역제한 기준금액 T** (추정가격, 부가세 제외)
