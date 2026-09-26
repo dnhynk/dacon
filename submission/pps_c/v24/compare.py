@@ -86,7 +86,8 @@ def stated(b, items, fields):
                     continue
                 if criteria and not re.search(r'\d,\d{3}', value[start:end]):
                     continue                          # 기준 문구 줄의 한글 숫자 금액대
-                found.append(v)
+                if not any(abs(v - old) <= 1.5 for old in found):
+                    found.append(v)                 # Korean and digit spellings of one copied amount are not two lots
             if any(agree_any(v, (P, B), mults) for v in found):
                 continue
             out.extend((ln, field, label, v) for v in found)
@@ -242,6 +243,15 @@ def region(b, items):
     return None
 
 
+def method_band_ok(value, band, side):
+    if side in ('이하', '초과'):
+        edge = dict(J.BANDS).get(band)
+        if edge is None or value is None:
+            return None
+        return value <= edge if side == '이하' else value > edge
+    return J.band_ok(value, band, side)
+
+
 def method(b, items):
     """제목 괄호 표기(방법·금액대)와 머리 12줄의 방법 표기만 본다(fable_v24 S3: 자연 노출 0). 본문 난 표기는 기존 축이 맡는다.
     수의계약 표기와 소액수의견적·견적 문구(기존 v24_method의 예외, dev DEV-144·191)는 침묵한다."""
@@ -258,7 +268,7 @@ def method(b, items):
             said, band, side = tag.group(1), re.sub(r'\s', '', tag.group(2)), tag.group(3)
             if said != m and not quotation:
                 return ln
-            oks = [J.band_ok(v, band, side) for v in (b.meta.P, b.meta.B) if v is not None]
+            oks = [method_band_ok(v, band, side) for v in (b.meta.P, b.meta.B) if v is not None]
             oks = [o for o in oks if o is not None]
             if oks and not any(oks):
                 return ln

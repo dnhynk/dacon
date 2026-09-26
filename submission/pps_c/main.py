@@ -11,7 +11,7 @@ import json
 import os
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from . import catalog, csvout, facts, families as F, judge, record, switches
@@ -47,14 +47,26 @@ def make_request(engine, b, k, name):
     if not cands and not extra:
         return None
     title = (b.titles[0] if b.titles else '')[:80]
+    notice = b.notice
     think = name in THINKING['families']
     budget = THINKING['budget'] if think else 0
     while True:
-        msgs = F.messages(b.notice, fam, cands, extra, title)
+        msgs = F.messages(notice, fam, cands, extra, title)
         ids = engine.token_ids(msgs, thinking=think)
-        if len(ids) + F.max_tokens(fam, cands, extra) + budget <= min(PROMPT_TOKEN_LIMIT, engine.max_model_len - 64) or len(cands) <= 1:
+        if len(ids) + F.max_tokens(fam, cands, extra) + budget <= min(PROMPT_TOKEN_LIMIT, engine.max_model_len - 64):
             break
-        cands = cands[:max(1, int(len(cands) * 0.75))]
+        if len(cands) > 1:
+            cands = cands[:max(1, int(len(cands) * 0.75))]
+        elif notice is b.notice:
+            # Malformed/unbounded metadata must not defeat the token limit.
+            # Only this overflow path changes the normal prompt; source facts
+            # and the last classification candidate are retained.
+            notice = replace(b.notice, meta={key: None if value is None else F.shown(str(value))
+                                              for key, value in b.notice.meta.items()})
+        elif fam.context:
+            fam = replace(fam, context=0)
+        else:
+            raise ValueError(f'{name}: minimum reading request exceeds the engine token limit')
     return Request(k, name, cands, extra, ids, F.schema(fam, cands, extra), F.max_tokens(fam, cands, extra), budget)
 
 
@@ -63,7 +75,8 @@ def first_pass_request(engine, b, k):
     req = make_request(engine, b, k, 'inst')
     if req is not None:
         return req
-    lines = [ln for ln in b.notice.lines if ln.doc_type == '공고문' and ln.text.strip()][:12]
+    lines = ([ln for ln in b.notice.lines if ln.doc_type == '공고문' and ln.text.strip()]
+             or [ln for ln in b.notice.lines if ln.text.strip()])[:12]
     b.cands['inst'] = lines
     b.readings['inst'] = {ln.i: F.INST.default(b.notice, ln) for ln in lines}
     return make_request(engine, b, k, 'inst')
@@ -132,8 +145,12 @@ def run(args):
             for r, (text, finish, ntok) in zip(retry, outs):
                 if consume(bundles[r.rec], r, text):
                     stats['answered'] += 1
+                    stats['by_family'][r.fam][1] += 1
                 else:
                     stats['parse_failed'] += 1
+                if args.journal:
+                    journal.append({'id': bundles[r.rec].notice.id, 'fam': r.fam, 'lines': [ln.i for ln in r.cands],
+                                    'in': len(r.token_ids), 'out': ntok, 'finish': finish, 'text': text, 'attempt': 2})
         else:
             stats['parse_failed'] += len(retry)
         if switches.V9_STAGE2 and (not args.families or 'model' in args.families):
@@ -181,7 +198,15 @@ def run(args):
 def consume(b, r, text):
     if r.fam == v24stage.FAM:
         return v24stage.consume(b, r.cands, text)
-    lines, top = F.parse(text, F.FAMILIES[r.fam], r.cands, r.extra)
+    fam = F.FAMILIES[r.fam]
+    lines, top = F.parse(text, fam, r.cands, r.extra)
+    # A parseable JSON object is not necessarily a complete grammar response.
+    # Do not mark missing/invalid fields as answered, or partially mutate facts
+    # before a retry. An explicit valid 불명 still retains the CPU default.
+    if lines is None or any(f.name not in top for f in r.extra):
+        return False
+    if fam.fields and any(any(f.name not in lines.get(ln.i, {}) for f in fam.fields) for ln in r.cands):
+        return False
     return facts.apply_model(b, r.fam, lines, top)
 
 

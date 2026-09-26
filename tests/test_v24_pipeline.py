@@ -137,7 +137,7 @@ def test_excerpt_titles_cap_and_request():
     assert r.fam == 'v24p' and len(r.cands) <= select.CAP and r.max_tokens == prompt.MAX_TOKENS
     assert set(r.schema['required']) == set(prompt.FIELD_NAMES)
     text, finish, _ = eng.generate([(r.token_ids, r.schema, r.max_tokens, 0)])[0]
-    assert stage.consume(b, r.cands, text) and all(v == [] for v in b.v24p.values())   # mock '불명' → 빈 목록
+    assert stage.consume(b, r.cands, text) and all(v == [] for v in b.v24p.values())   # schema-valid empty lists
     assert compare.verdict(b) is None
 
 

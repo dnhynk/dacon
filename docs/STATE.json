@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_utc": "2026-09-26T06:20Z",
+  "updated_utc": "2026-09-26T13:44:20.009682+00:00",
   "competition": "DACON 236754",
   "target_official_macro_f1": 0.85,
   "official_score": 0.7147180317,
@@ -136,8 +136,8 @@
   },
   "active_task": {
     "id": "rebuild_c_20260924",
-    "status": "C_adopted_as_base_P3a_best",
-    "next_action": "Current bounded task and owner: docs/LOCAL_HANDOFF.md.",
+    "status": "probes_0927_audit_verified_scheduled",
+    "next_action": "Existing dacon_0927 task starts 2026-09-27 00:00:05 KST, submits from 00:00:30. Collect receipts/actual scores; enter final_calc.py scores, then apply user-approved conditional V9_STAGE2 split, paired thinking main tests and positive-bundle ablations for 9/28–9/29. See LOCAL_HANDOFF.md; no new source/GPU run now.",
     "description": "Pipeline C: family reading calls (grammar-bound enums, thinking off) + CPU judge of the item table; built from scratch per the user decision of 2026-09-24. Goal stated by the user: LB 0.8 without construction-trace hacks.",
     "design": "runs/rebuild_c/DESIGN_C.md",
     "code": "submission/pps_c/ (zip entry submission/script.py; tests tests/test_parsers.py, tests/test_scope_size.py, tests/test_size_reading.py)",
@@ -146,7 +146,8 @@
       "sha256": "dc68cd21a685d445a23d8e15f94f6ffff56e4e8de2f33baaf527167581078a92",
       "bytes": 76772,
       "gpu_checks": "runs/rebuild_c/gpu/c9_0924i: sample 54/54 PASS; fresh dev200 1,081/1,081 parsed, organizer macro 0.8637",
-      "superseded": "C1 (71eb0c0e…, unsubmitted): a merge reintroduced the rejected c5 INST wording, so it did not match its measurements"
+      "superseded": "C1 (71eb0c0e…, unsubmitted): a merge reintroduced the rejected c5 INST wording, so it did not match its measurements",
+      "registry_role": "Historical C2 build/evidence; current best measured package remains best_package, and the 9/27 scheduled set is probes_0927.packages_manifest."
     },
     "replica": {
       "macro_range": [
@@ -167,7 +168,7 @@
     },
     "dev200_organizer_macro": 0.8637,
     "runtime_seconds_replica_1853": 2545,
-    "thinking_mode": "measured per family on replica (t1b_think): no gain, 1.75x time; off",
+    "thinking_mode": "Canonical default remains off. Scheduled main THKA probes eight thinking families; historical seven-family runtime and saturated-prefix evidence are documented separately in the 20260926 audit, not a fresh eight-family result.",
     "preregistration_row": 20,
     "spare_runtime": "measured: no compute sink (thinking, cap lifting, self-consistency, prompt ensembles all ≈0 or negative); margin kept as insurance",
     "lb": {
@@ -191,7 +192,8 @@
       "ZD5_qual_zero": 0.6172742115,
       "server_runtime_C2_minutes": 42,
       "replica_to_lb_transfer_C2": 0.29,
-      "decisions": "C2 − P1g +0.0269 → C is the base; P3a adopted (v14–v18 not on 수의계약); P3b, P3c held (defaults kept); R1 rejected (−0.0212: the test marks unregistered v16/v18 absences) and HYG2 rejected (−0.0050), so the test labels natural violations by the organizer's logic; Z1 → v3 v5 v6 v21 v22 v23 F1 mean 0.886. 9/26: P3a resubmitted scored identically (C is deterministic on the server and the leaderboard is the full 1,853, so probe deltas are exact and item-disjoint changes add exactly); CG (goods competition products for v10/v11/v13) +0.0142 and V9B (literal v9) +0.0111 adopted; AFB +0.0009 between thresholds (kept off); F1_v24 = 0.2895 (ZD1), v2+v7 mean 0.871 (ZD2)"
+      "decisions": "C2 − P1g +0.0269 → C is the base; P3a adopted (v14–v18 not on 수의계약); P3b, P3c held (defaults kept); R1 rejected (−0.0212: the test marks unregistered v16/v18 absences) and HYG2 rejected (−0.0050), so the test labels natural violations by the organizer's logic; Z1 → v3 v5 v6 v21 v22 v23 F1 mean 0.886. 9/26: P3a resubmitted scored identically (this single repeat does not prove every probe or combination deterministic; item-additive estimates require unchanged predictions on unaffected items and the same inference conditions); CG (goods competition products for v10/v11/v13) +0.0142 and V9B (literal v9) +0.0111 adopted; AFB +0.0009 between thresholds (kept off); F1_v24 = 0.2895 (ZD1), v2+v7 mean 0.871 (ZD2)",
+      "audit_correction_20260926": "Official scores are preserved. The earlier blanket exact-additivity claim is corrected; original text is retained in the pre-audit STATE snapshot."
     },
     "best_package": {
       "path": "artifacts/rebuild_c/CG_goods/submit.zip",
@@ -217,8 +219,10 @@
         "ZD6_v12_v19_v20_zero": 0.62952
       },
       "computed_best": {
-        "package": "P3a + CG + V9B + AFB (item-disjoint, exact)",
-        "score": 0.7266381
+        "package": "P3a + CG + V9B + AFB (conditional item-additive estimate; unmeasured combination)",
+        "score": 0.7266381,
+        "measurement_type": "conditional_estimate_not_official_score",
+        "conditions": "Same inference conditions and predictions on unaffected items; structural dependencies may overlap despite zero observed cell overlap."
       },
       "group_f1_at_P3a": "v3 v5 v6 v21 v22 v23 mean 0.886; v2+v7 0.871; v14-v18 0.823; v1 v4 v8 0.666; v24 0.2895; v12+v19+v20 sum 1.703; v9+v10+v11+v13 sum 1.650 (2.258 after CG and V9B)",
       "rejected_today": "V9_READ2 (v9 model2 family) failed preregistered criteria twice on Colab (v9r2, v9r3); v1 necessity route (inst reading does not separate natural lists from organizer plants)"
@@ -240,12 +244,110 @@
       },
       "basis": "expert audits X1-X7 (practitioner standard, H_def two-sided) and PX (probe cells re-read): runs/rebuild_c/transfer_20260925/audit/expert/",
       "interaction_check": "all ten spare probes combined on t2500 differ from the additive prediction in 4 of 487 changed cells (v16 2, v18 1: X5 SW exemption x V20_CONTENT; v3 1)",
-      "final_calc": "runs/rebuild_c/transfer_20260925/final_calc.py (items per probe measured on t2500)",
+      "final_calc": "runs/rebuild_c/transfer_20260925/final_calc.py (conditional estimates; measured bases included; structural dependencies and unscored probes checked)",
       "preregistration": "runs/harness_improve_20260919/precision_analysis/PREREGISTRATION.md rows 80-87 (rows 68 69 71 73 74 76 77 79 superseded)",
       "para_planted_recall": "all probes together 0.890 -> 0.951 (936 plants); the 8 plants some probe loses sit in hosts its rule exempts",
-      "bases": "spare slots stay below 0.75 (user): REX6 V20OR AFBaR2 AFBbR8 PRX4X V24W1PG on P3a; V9SX12 on P3a+V9B; X4OBJ SCP SZ13X on P3a+CG; THKA (main) on P3a+CG+V9B; cells on each probe item equal those on CG+V9B"
+      "bases": "spare slots stay below 0.75 (user): REX6 V20OR AFBaR2 AFBbR8 PRX4X V24W1PG on P3a; V9SX12 on P3a+V9B; X4OBJ SCP SZ13X on P3a+CG; THKA (main) on P3a+CG+V9B; cells on each probe item equal those on CG+V9B",
+      "measurement_note": "The interaction_check and para_planted_recall above are historical pre-audit measurements; not final audited ZIP measurements or fresh inference. See code_audit_20260926 for final provenance.",
+      "packages_manifest": "runs/rebuild_c/code_audit_20260926/claude_manifest_r0927b.json",
+      "manifest_sha256": "255ffd5ff34f0f87090f29ef7b881f38ef214d35a2a4665ce5d98952152cf61c",
+      "audit_status": "VERIFIED_AND_SCHEDULED_NOT_YET_SUBMITTED",
+      "scheduler_sha256": "37524d6c4d05508579bc979d859f330bfc5e5f7a8efdb1a7f4dabad2e2667ef7",
+      "binding_receipt": "runs/rebuild_c/code_audit_20260926/final_schedule_binding_r0927b_docs3.json",
+      "offline_slots_receipt": "runs/rebuild_c/code_audit_20260926/final_slot_dry_run_r0927b.json",
+      "trigger_kst": "2026-09-27T00:00:05+09:00",
+      "submission_target_kst": "2026-09-27T00:00:30+09:00",
+      "preregistration_sha256": "da0c962a2dddafe18966e6dac236ec4b1c580d2c42ea8fb0e59e37cfa821e08b"
     },
-    "main_slot_plan": "from 2026-09-28 the main slot carries the strongest package, on 9/28 and 9/29 (user); final_calc.py merge builds it"
+    "main_slot_plan": "From 9/28 use the strongest supported main package; if THKA is positive, user approved 9/28 and 9/29 paired main measurements of the same package with and without thinking. See approved_followup_0928_0929.",
+    "code_audit_20260926": {
+      "status": "complete_verified_and_scheduled",
+      "updated_utc": "2026-09-26T13:44:20.009682+00:00",
+      "report": "runs/rebuild_c/code_audit_20260926/REPORT.md",
+      "coordination": "runs/rebuild_c/code_audit_20260926/COORDINATION.md",
+      "codex_owned_runtime": "CODE_DONE v5; codex_code_done_v5.json; region_row_functions.json; v24_licence_functions_v2.json",
+      "builder": "Claude term_ec9d8ebc-4884-4ada-ad11-c13093d39770",
+      "verifier": "Codex term_f9588f47-397a-4d0a-bf77-4967757edf2f",
+      "pending": [],
+      "review_only_tests": "1167 passed; proposed date functions installed only in test process, not yet canonical",
+      "fresh_inference": false,
+      "original_scheduled_zips": "All original eleven and first intermediate _r0927 eleven remain hash-identical; first intermediate release was rejected and is not scheduled.",
+      "canonical_integration": "Final source frozen; all 24 runtime entries match joint_frozen_runtime_c.json and verified _r0927b packages except planned per-probe switch overrides. Shared source edits remain uncommitted.",
+      "latest_suite": "1264 passed, 0 failures/errors/skips; claude/claude_final_suite_r0927b_final.xml",
+      "independent_structural_controls": "161 passed; joint_final_frozen_c_controls.xml",
+      "baseline_identity": "PASS; joint_base_identity_c/verification.json; P3a_default and CG_V9B unchanged in predictions/evidence/request intents/exact local token fingerprints on 3550 notices",
+      "final_frozen_source": "runs/rebuild_c/code_audit_20260926/joint_frozen_runtime_c.json",
+      "held_base_changes": "CODE_AUDIT_BASE=False: common estimate/article/date role repairs remain dormant; activation requires separate evidence, not automatically scheduled for 9/28",
+      "first_rebuild_disposition": "_r0927 structural checks passed but release rejected for two REX6 v23 event-role deltas; immutable intermediate evidence retained",
+      "official_submission": false,
+      "report_sha256": "4a05d2cbb0a292a2b523e5520dd58287a9dd9a6073e4bea4cceaf68bde84104f",
+      "release_receipt": "runs/rebuild_c/code_audit_20260926/RELEASE_VERIFIED_r0927b.json",
+      "final_validation": "runs/rebuild_c/code_audit_20260926/FINAL_VALIDATION_r0927b_closed.json",
+      "final_manifest": "runs/rebuild_c/code_audit_20260926/claude_manifest_r0927b.json",
+      "final_manifest_sha256": "255ffd5ff34f0f87090f29ef7b881f38ef214d35a2a4665ce5d98952152cf61c",
+      "packaged_replays": {
+        "notice_counts": {
+          "t2500": 2502,
+          "dev": 200,
+          "para": 848
+        },
+        "probes": 11,
+        "notice_probe_executions": 39050,
+        "changed_cells": {
+          "t2500": 12,
+          "dev": 0,
+          "para": 0
+        },
+        "changed_cells_by_probe": {
+          "V9SX12": 4,
+          "V20OR": 3,
+          "X4OBJ": 3,
+          "REX6": 1,
+          "SZ13X": 1
+        },
+        "request_intent_changes": 0,
+        "exact_local_token_fingerprint_changes": 0,
+        "measurement_type": "saved_response_cpu_comparison_not_accuracy_measurement"
+      },
+      "fuzz": {
+        "configs": 13,
+        "same_unlabeled_notices_per_config": 5000,
+        "exceptions": 0,
+        "records_over_three_seconds": 0,
+        "receipt": "runs/rebuild_c/code_audit_20260926/final_fuzz_receipts_review.json"
+      },
+      "scheduler_binding": "PASS: original slots/team/probe/row/time/interpreter preserved; 11 offline slot dry-runs pass; Windows task Ready",
+      "remaining_generalization_risks": [
+        "V24 empirical amount/rounding/transpose heuristics and guards limited to particular axes",
+        "Finite role/keyword/brand rules and title-wide exemptions",
+        "Candidate caps and truncated excerpts; partially mismatched historical journals/overlays",
+        "THKA thinking-prefix budget saturation; no fresh eight-family runtime/accuracy measurement"
+      ],
+      "next_external_step": "Scheduled official submission receipts and scores; no new score inferred from this audit."
+    },
+    "approved_followup_0928_0929": {
+      "authorization": "User approved all three proposals (전부 승인), relayed by Claude at 2026-09-26 22:42 KST; final prereg rows 51,80,82,83,85",
+      "activation": "Conditional on actual 9/27 scores; no 9/28–9/29 package or schedule created by this audit",
+      "V9SX12_nonpositive": "Split V9_STAGE2 first, then v12/V9_X3B. Historical para result is a hypothesis-prioritization observation, not proof of leaderboard causality.",
+      "THKA_positive": "9/28 and 9/29 main: same strongest supported package once with thinking and once without; retain higher measured score. Preserve all other switches; thinking overlaps every item.",
+      "positive_bundle_ablations_on_0928_spares": {
+        "REX6": [
+          "v19 V19_STAGE + AF1",
+          "v20 V20_CONTENT",
+          "RE audit portion"
+        ],
+        "AFBaR2": [
+          "X2 additions",
+          "X1 v4",
+          "row-71 portion"
+        ],
+        "SZ13X": [
+          "X5 portion",
+          "row-69 portion"
+        ]
+      },
+      "measurement_boundary": "Enter actual scores; conditional estimates do not become official measurements. Existing GPU constraints remain."
+    }
   },
   "previous_task_harness_improve_20260919": {
     "id": "harness_improve_20260919",
@@ -782,7 +884,7 @@
     "runtime_package": "submission/",
     "build": "tools/build_submission.py",
     "notebook": "runs/rebuild_c/colab/make_colab.py (Colab A100 kit; embeds submission/script.py and submission/pps_c/)",
-    "b4_validation": "Canonical source is pipeline C (submission/pps_c/). tools/build_submission.py rebuilds the LB-best package P3a (artifacts/rebuild_c/P3a_size_private/submit.zip) with the same 18 entries and bytes except one comment line in pps_c/switches.py, and the zip mock run passes; CPU replay of the C2 journals (runs/rebuild_c/gpu/mix_C2/replica) reproduces runs/rebuild_c/lb_replays/P3a_replica.csv byte-for-byte. The track-B runtime is in legacy/submission_b/ (snapshot commit 1e4263c).",
+    "b4_validation": "Canonical pipeline C has 24 packaged entries. Final 20260926 audit: 1264 full-suite tests pass; 11 _r0927b ZIPs independently pass source/switch/hash/mock and 3550 saved-response notices each. P3a_default and CG_V9B predictions/evidence/exact local request tokens unchanged on 3550 notices. Runtime snapshot: runs/rebuild_c/code_audit_20260926/joint_frozen_runtime_c.json; final release and scheduler evidence: FINAL_VALIDATION_r0927b_closed.json in that directory. CPU equivalence is not fresh inference or an official score. Legacy track-B validation applies only to legacy/submission_b/.",
     "historical_b4_entry": "experiments/precision_joined_v1/b4_entry_candidate_20260912/source/script.py",
     "legacy_package": "pps/",
     "validation_status": "Track-B stream-executor and dev200-retuning validation applies to legacy/submission_b/ only.",

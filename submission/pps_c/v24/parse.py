@@ -28,28 +28,58 @@ def norm_gate(s):
     return norm(REGION_TOKEN.sub(name, s or ''))
 
 
+NUMBER_CHARS = frozenset('0123456789일이삼사오육칠팔구십백천만억')
+
+
+def number_char(char):
+    return char in NUMBER_CHARS or char.isdecimal()
+
+
+def copied_value_in(source, value):
+    """An exact normalized copy may not start or end inside a number.
+
+    A substring alone would ground 50,000,000 in 150,000,000, or 5억 in
+    3.5억. Punctuation is numeric only when it connects to another digit.
+    """
+    source, value = norm_gate(source), norm_gate(value)
+    if not value:
+        return False
+    start = source.find(value)
+    while start >= 0:
+        end = start + len(value)
+        before = source[start - 1] if start else ''
+        after = source[end:end + 1]
+        left = (number_char(value[0]) and
+                (number_char(before) or before in ',，.' and start >= 2 and source[start - 2].isdecimal()))
+        right = (number_char(value[-1]) and
+                 (number_char(after) or after in (',', '，', '.') and source[end + 1:end + 2].isdecimal()))
+        if not left and not right:
+            return True
+        start = source.find(value, start + 1)
+    return False
+
+
 def money_spans(value):
     """[(금액, 시작, 끝)] — money()와 같은 값에 옮겨진 문자열 안의 위치를 붙인 것."""
     s = (value or '').replace('，', ',')
-    out = []
+    # Parse scaled amounts first. Their digit prefixes are not separate won
+    # amounts (170,000천원 is 170,000,000, not also 170,000).
+    compound = amounts.compound_money(s)
+    out = [(mo.value, mo.start, mo.end) for mo in compound if mo.value >= 1e5]
     for m in DIGIT_AMOUNT.finditer(s):
+        if any(m.start(1) < mo.end and mo.start < m.end(1) for mo in compound):
+            continue
         out.append((float(m.group(1).replace(',', '')), m.start(1), m.end(1)))
-    for mo in amounts.compound_money(s):
-        if mo.value >= 1e5 and not any(abs(mo.value - v) <= 1.5 for v, _, _ in out):
-            out.append((mo.value, mo.start, mo.end))
-    return out
+    return sorted(out, key=lambda item: item[1])
 
 
 def money(value):
     """옮겨진 값에 적힌 금액(원) 목록: 쉼표 숫자(39,730,000 / ₩170,000,000 / \\300,000,000원)와 한글 복합 숫자
     (금일억칠천만원, 3.5억원, 2천5백만원, 170백만원, 일금삼천칠백구십삼만원정)."""
-    s = (value or '').replace('，', ',')
     out = []
-    for m in DIGIT_AMOUNT.finditer(s):
-        out.append(float(m.group(1).replace(',', '')))
-    for mo in amounts.compound_money(s):
-        if mo.value >= 1e5 and not any(abs(mo.value - v) <= 1.5 for v in out):
-            out.append(mo.value)
+    for v, _, _ in money_spans(value):
+        if not any(abs(v - old) <= 1.5 for old in out):
+            out.append(v)
     return out
 
 

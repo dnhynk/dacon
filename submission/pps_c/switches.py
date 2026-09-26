@@ -245,3 +245,6 @@ V24P_ATTACH = False
 # row), a stated amount within 0.01% of the registered one (rounding), a budget line that calls itself an estimate subject to
 # change (개산 note), and a licence code in one item of an "any one of" list (alternative eligibility). False = current behaviour.
 V24P_GUARDS = False
+# Independent code audit: corrected common-base interpretation is measured
+# separately from the 9/27 item probes, whose published baselines stay fixed.
+CODE_AUDIT_BASE = False

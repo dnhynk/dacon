@@ -359,6 +359,11 @@ def classify_service(notice, meta, cat):
             by_title = titled(fam, tpat, head) and not head_conflict(fam, head)
             if not (by_title or (lic and license_text and re.search(lic, license_text)) or placeholder):
                 continue
+            # A certificate requirement must not overrule an explicit other-work
+            # head. Missing a title keyword alone is not conflicting evidence.
+            if (switches.SCOPE_FIXES or switches.CODE_AUDIT_BASE) and not by_title \
+                    and not placeholder_title(head) and head_conflict(fam, head):
+                continue
             if fam == 'cleaning' and (NOT_BUILDING.search(head or '') or water_tank_license(license_text)):
                 continue
             ok = amount_ok(meta.P, limit, basis)

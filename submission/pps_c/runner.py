@@ -89,15 +89,21 @@ class MockEngine:
 
     def generate(self, batch):
         import json
+
+        def unknown(spec):
+            if spec.get('type') == 'object':
+                return {key: unknown(value) for key, value in spec['properties'].items()}
+            if spec.get('type') == 'array':
+                return []
+            if 'enum' in spec:
+                return '불명' if '불명' in spec['enum'] else spec['enum'][0]
+            if spec.get('type') == 'integer':
+                return spec.get('minimum', 0)
+            return '' if 'pattern' in spec else '-'
+
         out = []
         for req in batch:
             schema = req[1]
-            obj = {}
-            for key, spec in schema['properties'].items():
-                if spec.get('type') == 'object':
-                    obj[key] = {k: ('-' if v.get('type') == 'string' and 'enum' not in v else '불명')
-                                for k, v in spec['properties'].items()}
-                else:
-                    obj[key] = '불명'
+            obj = unknown(schema)
             out.append((json.dumps(obj, ensure_ascii=False), 'stop', 0))
         return out

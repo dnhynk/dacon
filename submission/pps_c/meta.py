@@ -135,9 +135,29 @@ def parse_codes(value):
 
 def stated_estimate(notice_lines):
     """추정가격 stated in the notice body when meta has none."""
+    if not switches.CODE_AUDIT_BASE:
+        # Preserve the measured P3a base for item-scoped probes. The corrected
+        # field association below is a separately measurable base change.
+        for ln in notice_lines[:120]:
+            if re.search(r'추\s*정\s*가\s*격', ln.text):
+                vals = [m.value for m in amounts.money(ln.text) if m.value >= 1e5]
+                if vals:
+                    return vals[0]
+        return None
     for ln in notice_lines[:120]:
-        if re.search(r'추\s*정\s*가\s*격', ln.text):
-            vals = [m.value for m in amounts.money(ln.text) if m.value >= 1e5]
+        label = re.search(r'추\s*정\s*가\s*격', ln.text)
+        if label:
+            tail = ln.text[label.end():]
+            # A mixed table row can state the budget before the estimate, and
+            # tax or another field after it. Only read this label's value.
+            for next_label in re.finditer(r'기\s*초\s*금\s*액|추\s*정\s*금\s*액|예\s*산|부\s*가\s*(가\s*치\s*)?세', tail):
+                if (re.sub(r'\s+', '', next_label.group()).startswith('부가')
+                        and re.match(r'\s*[(（]?\s*(제\s*외|별\s*도|미\s*포\s*함|불\s*포\s*함)', tail[next_label.end():])):
+                    continue     # 추정가격(부가세 제외) annotates this field
+                tail = tail[:next_label.start()]
+                break
+            vals = [m.value for m in amounts.money(tail) if m.value >= 1e5
+                    and not re.match(r'\s*(이\s*상|이\s*하|미\s*만|초\s*과)', tail[m.end:])]
             if vals:
                 return vals[0]
     return None
