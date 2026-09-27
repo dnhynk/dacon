@@ -26,7 +26,7 @@ GOSI = {'국가기관': 230_000_000, '준정부기관': 710_000_000, '공기업'
 KW_BUDGET = re.compile(r'(사업예산|예산액|예산금액|배정예산|기초예산|추정예산|기초금액|추정가격|추정금액|사업금액|용역금액|총사업비|사업비|물품금액|구매금액|사업예정총액|예산)')
 HEADLINE_KIND = {'기초금액': '기초금액', '추정가격': '추정가격', '사업금액': '사업금액', '용역금액': '사업금액'}
 VARIABLE_AMOUNT = re.compile(r'에\s*따라\s*(?:변경|변동|조정)|(?:변경|변동)\s*될\s*수')   # '운행 일수에 따라 변경 될수 있음'
-BAND_AMOUNT = re.compile(r'\d[\d,.]*\s*(?:조|억|천만|백만|만)?\s*원?\s*(?:미만|이상|이하|초과)')
+BAND_AMOUNT = re.compile(r'(?:\d[\d,.]*\s*(?:조|억|천만|백만|만|천)?\s*)+원?\s*(?:미만|이상|이하|초과)')   # '1억 5천만원 미만'
 UNIT_PRICE = re.compile(r'단가\s*(?:계약|입찰|견적|금액|총액|공고)|개별\s*단가|단가\s*(?:로|를)\s*투찰|\(\s*단가\s*\)|단가입찰|단가계약')
 PARTIAL = re.compile(r'금차|당해\s*연도|당해년도|금년도분|1차분|차수별|연차별|1차년도|1년차')
 EXCLUDE_AMT_LINE = re.compile(r'실적|규모\s*\(금액|보증금|보험|수수료|위약|지체|채권|배상|과태료|벌금|손해|자본금|매출액|연매출|신용평가|검색|조회')
@@ -71,6 +71,11 @@ GENERIC_TOKENS = {'업', '사업', '사업자', '서비스', '기타', '용역',
 
 def notice_lines(notice):
     return [ln for ln in notice.notice_lines() if ln.text.strip()]
+
+
+def band_values(quote):
+    """Amounts a quote states as band thresholds ('1억원 이상 2억원 미만인 용역' -> 1e8, 2e8)."""
+    return {a for m in BAND_AMOUNT.finditer(quote or '') for a in amounts_in(m.group(0))}
 
 
 def amounts_in(text):
@@ -381,8 +386,8 @@ def consume(b, cands, text):
             continue    # the amount must be written in its own quote
         if VARIABLE_AMOUNT.search(it['quote']):
             continue    # the notice says the amount varies (per days of use etc.), so it is not the contract amount
-        if BAND_AMOUNT.search(it['quote']) and len(stated) == 1:
-            continue    # the only amount in the quote is a band threshold (…원 미만/이상), not the notice's price
+        if any(abs(vals[0] - a) <= max(1, 1e-6 * vals[0]) for a in band_values(it['quote'])):
+            continue    # the quote states this amount as a band threshold (…원 미만/이상), not as the notice's price
         items.append((ln, it['kind'], vals[0], it['vat'], it['scope']))
     pr = obj['participation_restriction']
     sido = {regions.canon_sido(r) or r for r in obj['region']['regions'] if r != '수요기관관내'}

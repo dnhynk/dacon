@@ -256,3 +256,21 @@ def test_malformed_sections_are_invalid_not_exceptions():
             assert st.consume(b, cands, json.dumps(obj, ensure_ascii=False)) is False      # Codex 9/27: KeyError / AttributeError
         obj = {k: v for k, v in good.items() if k != sec}
         assert st.consume(b, cands, json.dumps(obj, ensure_ascii=False)) is False
+
+
+def test_band_amounts_are_skipped_even_among_other_amounts():
+    b = bundle('추정가격 1억원 이상 2억원 미만인 용역의 적격심사 세부기준', '사업예산: 55,000,000원 (추정가격 1억원 미만 심사기준 적용)')
+    cands = [line(b, '적격심사 세부기준'), line(b, '사업예산')]
+
+    def keep(amount, quote):
+        out = json.dumps({'budget': {'stated': '있음', 'items': [{'kind': '사업예산', 'amount': amount, 'vat': '불명', 'scope': '총액',
+                                                                    'quote': quote}]},
+                          'contract_method': {'stated': '없음', 'quote': '-'},
+                          'participation_restriction': {'region': '없음', 'industry': '없음', 'sme': '없음'},
+                          'region': {'regions': [], 'quote': '-'}, 'industry': {'codes': [], 'names': [], 'quote': '-'}}, ensure_ascii=False)
+        assert st.consume(b, cands, out)
+        return len(b.d_input_mismatch['budget'])
+    assert keep('1억원', '추정가격 1억원 이상 2억원 미만인 용역의 적격심사 세부기준') == 0            # Codex 9/27 control 1
+    assert keep('1억원', '사업예산: 55,000,000원 (추정가격 1억원 미만 심사기준 적용)') == 0           # control 2, the band amount
+    assert keep('55,000,000원', '사업예산: 55,000,000원 (추정가격 1억원 미만 심사기준 적용)') == 1     # the real budget stays
+    assert st.band_values('1억 5천만원 미만') == {150000000}
