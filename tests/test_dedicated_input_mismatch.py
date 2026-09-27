@@ -232,7 +232,10 @@ def test_consume_keeps_amounts_stated_in_their_quote_and_not_bands():
 
 
 def test_variable_amounts_and_middle_dot_names():
-    assert st.name_tokens('상ㆍ하수도설비공사업') == st.name_tokens('상하수도설비공사업')
+    ref = st.name_tokens('상하수도설비공사업')
+    for dot in '·ㆍ‧・':                              # Codex 9/27: all dot variants, not only ㆍ
+        assert st.name_tokens('상' + dot + '하수도설비공사업') & ref
+    assert st.name_tokens('창호공사업') & st.name_tokens('실내건축·창호공사업')   # a partial name still meets the full one
     b = bundle('※ 총 예산액 : 54,600,000원(운행 일수에 따라 변경 될수 있음)')
     cands = [line(b, '총 예산액')]
     out = json.dumps({'budget': {'stated': '있음', 'items': [{'kind': '사업예산', 'amount': '54,600,000원', 'vat': '불명', 'scope': '총액',

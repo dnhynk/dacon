@@ -64,6 +64,7 @@ CODE_RE = re.compile(r'업종\s*코드\s*[:：]?\s*(\d{4})(?!\d)|\[\s*업종코�
 IND_CUE = re.compile(r'업종|업으로\s*등록|으로\s*등록한|로\s*등록한|등록을\s*필한|면허|허가를\s*받은|허가를\s*득한|등록증을\s*보유|등록된\s*업체|사업자로\s*등록|입찰\s*참가\s*자격을\s*등록')
 IND_NOISE = re.compile(r'입찰참가자격등록증|이용자\s*등록|변경등록|부정당|사업자등록증|법인등기|등록정보|등록사항')
 EXEMPT = re.compile(r'등록하지\s*않아도|등록하지\s*아니하여도|없이도\s*입찰|면제')
+DOTS = '·ㆍ‧・'     # · ㆍ ‧ ・
 GENERIC_TOKENS = {'업', '사업', '사업자', '서비스', '기타', '용역', '관련', '일반', '전문', '종합', '및', '등', '자유업', '기타자유업'}
 
 
@@ -159,8 +160,12 @@ def meta_codes(meta):
 
 
 def name_tokens(name):
-    name = re.sub(r'[ㆍ‧・]', '', name or '')           # 상ㆍ하수도 = 상하수도 (review 9/27, PPS-D-010043)
-    toks = set(re.findall(r'[가-힣]{2,}', re.sub(r'[·.\s()]', ' ', name)))
+    """Content tokens of a licence name, split at the dots and also with the dots removed, so 상·하수도 / 상ㆍ하수도 /
+    상하수도 all share 상하수도..., while a partial name (창호공사업) still meets 실내건축·창호공사업 (Codex, review 9/27)."""
+    name = name or ''
+    split = re.sub('[' + DOTS + r'.\s()]', ' ', name)
+    joined = re.sub(r'[.\s()]', ' ', re.sub('[' + DOTS + ']', '', name))
+    toks = set(re.findall(r'[가-힣]{2,}', split)) | set(re.findall(r'[가-힣]{2,}', joined))
     return {t for t in toks if t not in GENERIC_TOKENS}
 
 
