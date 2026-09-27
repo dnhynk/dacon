@@ -3543,6 +3543,8 @@ def judge(b):
                 switches.AUDIT_FIXES, switches.AUDIT_FIXES2, switches.AUDIT_FIXES3 = saved
         else:
             hit = RULES[it](b)
+        if hit is None and it in switches.DEDICATED_OR:
+            hit = dedicated.verdict(it, b)
         if hit is None:
             out[it] = (0, '')
             continue

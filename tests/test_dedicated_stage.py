@@ -24,7 +24,7 @@ def fake_stage(verdict):
 
 
 def test_default_uses_the_shared_rules():
-    assert switches.DEDICATED == () and dedicated.active() == []
+    assert switches.DEDICATED == () and switches.DEDICATED_OR == () and dedicated.active() == []
     assert dedicated.by_family('d_fake') is None
 
 
@@ -54,3 +54,13 @@ def test_group_module_decides_each_listed_violation(monkeypatch):
     out = judge.judge(bundle())
     assert out['v10'] == (1, '') and out['v11'] == (0, '')
     assert dedicated.active() == [mod]
+
+
+def test_or_keeps_the_shared_verdict_and_adds_the_stage(monkeypatch):
+    monkeypatch.setattr(switches, 'DEDICATED_OR', ('v12',))
+    for shared, staged, want in ((None, True, (1, '')), (True, None, (1, '')), (None, None, (0, ''))):
+        mod, _ = fake_stage(staged)
+        monkeypatch.setattr(dedicated, 'stage', lambda item: mod)
+        monkeypatch.setitem(judge.RULES, 'v12', lambda b: shared)
+        assert judge.judge(bundle())['v12'] == want
+        assert dedicated.active() == [mod]

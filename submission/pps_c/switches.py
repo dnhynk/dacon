@@ -278,6 +278,8 @@ ZERO_ITEMS = ()
 ONES_ITEMS = ()
 # Items decided by a dedicated stage (pps_c/dedicated) instead of the shared rule; () keeps every item on the shared rule.
 DEDICATED = ()
+# Items that keep the shared verdict and also fire where their dedicated stage fires (OR); () adds nothing.
+DEDICATED_OR = ()
 # Probe (h08 group A): v9 also fires on a line the model read as designating the procured item when it names the maker or
 # model without a Latin model code or label wording — a company written with 사·社·(주)·㈜·Co./Ltd., a "제조사 <name>" table
 # cell, a model code glued to a particle ("DDC400의") or a CPU model ("i5-3550"). False = current behaviour.
