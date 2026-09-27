@@ -1,6 +1,6 @@
 """v24 dedicated stage (pps_c/dedicated/input_mismatch.py, BLUEPRINT.md): per-axis decision rules on hand-written readings (dev
 positives and look-alike negatives), request building with a length-based fake engine, consume of valid / invalid / mock
-outputs, and the verdict from the CPU stand-in when no reading exists. Runs against the copy under impl/submission."""
+outputs, and no verdict without a model reading. Runs against the copy under impl/submission."""
 import json
 import sys
 from pathlib import Path
@@ -76,10 +76,10 @@ def test_budget_axis_dev29_and_look_alikes():
     assert hit(zero, reading(zero, budget=[('기초금액', '기초금액', 103200000, '포함', '총액')])) is None    # no registered amount: nothing to compare
 
 
-def test_clause_ceiling_axis_dev055_dev056_dev114():
+def test_clause_band_is_not_compared_dev055_dev056_dev114():
     clause = '추정가격 1억원 미만 물품·용역(소기업, 소상공인, 벤처기업, 창업자)'
     b = bundle('ㅇ 사업금액 : 총 188,000,000원(부가가치세 포함)', 적용계약법='국가계약법', 배정예산금액=188000000, 입찰추정가격=170909091, 조항호내용=clause)
-    assert hit(b, reading(b, budget=[('사업금액', '사업금액', 188000000, '포함', '총액')])) == 'ㅇ 사업금액 : 총 188,000,000원(부가가치세 포함)'   # DEV-055 = 1
+    assert hit(b, reading(b, budget=[('사업금액', '사업금액', 188000000, '포함', '총액')])) is None   # the 조항호내용 band is outside v24
     twin = bundle('ㅇ 사업금액 : 총 88,000,000원(부가가치세 포함)', 적용계약법='국가계약법', 배정예산금액=88000000, 입찰추정가격=80000000, 조항호내용=clause)
     assert hit(twin, reading(twin, budget=[('사업금액', '사업금액', 88000000, '포함', '총액')])) is None                                        # DEV-056 = 0
     below = bundle('나. 기초금액 : 금19,876,000원 - 부가가치세 포함', 계약방법='수의계약', 낙찰방법='소액수의견적', 배정예산금액=19876000, 입찰추정가격=18069091,
@@ -194,25 +194,38 @@ def test_consume_valid_invalid_and_mock():
     assert b.d_input_mismatch['contract_method'] == ('불명', None) and st.verdict(b) is None      # all-불명 answer decides nothing
 
 
-def test_verdict_without_a_reading_uses_the_standin_and_judge_integration(monkeypatch):
+def test_no_verdict_without_a_reading_and_judge_integration(monkeypatch):
     b = bundle('나. 용역금액: 금37,930,000원(추정가격 34,481,818원, 부가가치세 3,448,182원)', 배정예산금액=39730000, 입찰추정가격=36118183)
     assert not hasattr(b, 'd_input_mismatch')
+    assert st.verdict(b) is None                                   # the CPU stand-in read threshold bands as budgets
+    b.d_input_mismatch = reading(b, budget=[('용역금액', '사업금액', 37930000, '포함', '총액')])
     assert st.verdict(b).text == '나. 용역금액: 금37,930,000원(추정가격 34,481,818원, 부가가치세 3,448,182원)'
-    lic = bundle('출 마감일 전일까지 식품판매업(업종코드: 5210)으로 입찰참가자격을 등', 업종제한여부='Y', 면허업종제한목록='[식품판매업(집단급식소식품판매업)(5246)]')
-    assert st.verdict(lic).text.startswith('출 마감일')
-    meth = bundle('가. 입찰방법 : 제한경쟁입찰(중·소기업, 소상공인, 직접생산업체)', 계약방법='일반경쟁', 낙찰방법='적격심사제')
-    assert st.verdict(meth).text == '가. 입찰방법 : 제한경쟁입찰(중·소기업, 소상공인, 직접생산업체)'
-    slip = bundle('4) 입찰방식 : 일반경쟁입찰 (협상에의한계약)', '기타자유업(행사대행업:업종코드: 9901)으로 입찰참가자격을 등록한 업체',
-                  업종제한여부='Y', 面허업종제한목록='[기타자유업(행사대행업)(9901)]'.replace('面', '면'))
-    assert st.verdict(slip) is None
-    quiet = bundle('나. 사업예산 : 170,000,000원')
-    assert st.verdict(quiet) is None
     shared = judge.judge(b)
     monkeypatch.setattr(switches, 'DEDICATED', ('v24',))
     assert dedicated.by_family(st.FAM) is st
     out = judge.judge(b)
     assert out['v24'] == (1, '나. 용역금액: 금37,930,000원(추정가격 34,481,818원, 부가가치세 3,448,182원)')
     assert {k: v for k, v in out.items() if k != 'v24'} == {k: v for k, v in shared.items() if k != 'v24'}
+    quiet = bundle('나. 사업예산 : 170,000,000원')
     assert judge.judge(quiet)['v24'] == (0, '')
     req = main.Request(0, st.FAM, st.request(LengthEngine(), b, 0, Req).cands, (), [], {}, 16)
     assert main.consume(b, req, model_output()) is True and b.d_input_mismatch['source'] == 'model'
+
+
+def test_consume_keeps_amounts_stated_in_their_quote_and_not_bands():
+    b = bundle('나. 사업예산 : 170,000,000원', '적격심사 세부기준 중 추정가격 2억원 미만인 용역을 적용한다')
+    cands = [line(b, '사업예산'), line(b, '추정가격 2억원')]
+
+    def out(amount, quote):
+        return json.dumps({'budget': {'stated': '있음', 'items': [{'kind': '사업예산', 'amount': amount, 'vat': '불명', 'scope': '총액',
+                                                                    'quote': quote}]},
+                           'contract_method': {'stated': '없음', 'quote': '-'},
+                           'participation_restriction': {'region': '없음', 'industry': '없음', 'sme': '없음'},
+                           'region': {'regions': [], 'quote': '-'}, 'industry': {'codes': [], 'names': [], 'quote': '-'}},
+                          ensure_ascii=False)
+    assert st.consume(b, cands, out('170,000,000원', '사업예산 : 170,000,000원'))
+    assert len(b.d_input_mismatch['budget']) == 1
+    assert st.consume(b, cands, out('190,000,000원', '사업예산 : 170,000,000원'))      # amount not in its quote
+    assert b.d_input_mismatch['budget'] == []
+    assert st.consume(b, cands, out('2억원', '추정가격 2억원 미만인 용역'))              # a band threshold, not the price
+    assert b.d_input_mismatch['budget'] == []

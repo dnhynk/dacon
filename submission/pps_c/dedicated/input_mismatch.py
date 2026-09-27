@@ -25,6 +25,7 @@ GOSI = {'국가기관': 230_000_000, '준정부기관': 710_000_000, '공기업'
 # ---------------------------------------------------------------------------------------------------------- budget
 KW_BUDGET = re.compile(r'(사업예산|예산액|예산금액|배정예산|기초예산|추정예산|기초금액|추정가격|추정금액|사업금액|용역금액|총사업비|사업비|물품금액|구매금액|사업예정총액|예산)')
 HEADLINE_KIND = {'기초금액': '기초금액', '추정가격': '추정가격', '사업금액': '사업금액', '용역금액': '사업금액'}
+BAND_AMOUNT = re.compile(r'\d[\d,.]*\s*(?:조|억|천만|백만|만)?\s*원?\s*(?:미만|이상|이하|초과)')
 UNIT_PRICE = re.compile(r'단가\s*(?:계약|입찰|견적|금액|총액|공고)|개별\s*단가|단가\s*(?:로|를)\s*투찰|\(\s*단가\s*\)|단가입찰|단가계약')
 PARTIAL = re.compile(r'금차|당해\s*연도|당해년도|금년도분|1차분|차수별|연차별|1차년도|1년차')
 EXCLUDE_AMT_LINE = re.compile(r'실적|규모\s*\(금액|보증금|보험|수수료|위약|지체|채권|배상|과태료|벌금|손해|자본금|매출액|연매출|신용평가|검색|조회')
@@ -373,8 +374,12 @@ def consume(b, cands, text):
     for it in obj['budget']['items'][:6]:
         ln = ground(cands, it['quote'])
         vals = amounts_in(it['amount'])
-        if ln is not None and vals:
-            items.append((ln, it['kind'], vals[0], it['vat'], it['scope']))
+        stated = amounts_in(it['quote'])
+        if ln is None or not vals or not any(abs(vals[0] - a) <= max(1, 1e-6 * vals[0]) for a in stated):
+            continue    # the amount must be written in its own quote
+        if BAND_AMOUNT.search(it['quote']) and len(stated) == 1:
+            continue    # the only amount in the quote is a band threshold (…원 미만/이상), not the notice's price
+        items.append((ln, it['kind'], vals[0], it['vat'], it['scope']))
     pr = obj['participation_restriction']
     sido = {regions.canon_sido(r) or r for r in obj['region']['regions'] if r != '수요기관관내'}
     b.d_input_mismatch = {
@@ -440,27 +445,15 @@ def standin(b):
 # ========================================================================================================== decision
 
 def decide(b, r):
-    """The evidence Line of the first axis that fires (예산 → 예산 조항 → 계약방법 → 지역 → 업종), else None."""
+    """The evidence Line of the first axis that fires (예산 → 계약방법 → 지역 → 업종), else None. The 조항호내용 band is
+    not compared: it is outside v24 (organizer Q&A boundary)."""
     meta = b.meta
     B, P = registered_amounts(b)
-    unit = any(scope == '단가' for *_, scope in r['budget'])
+    unit = any(scope == '단가' for *_, scope in r['budget']) or bool(UNIT_PRICE.search(select(b)[2]['text']))
     totals = [it for it in r['budget'] if it[4] in ('총액', '불명') and it[2] >= 1e5]
     # 예산: a stated total equals neither registered amount (1 % rounding, VAT relation and item sums allowed)
     if totals and not unit and (B or P) and not amount_consistent(B, P, [it[2] for it in totals]):
         return totals[0][0]
-    # 예산(조항): the notice's 추정가격 lies above the ceiling of the band 조항호내용 names
-    ceil = clause_ceiling(meta.clause, meta.law, b.notice.meta.get('소관구분'))
-    if ceil and totals and not unit:
-        est_items = [it for it in totals if it[1] == '추정가격']
-        head = [it for it in totals if it[1] in ('기초금액', '사업예산', '사업금액')] or totals
-        if est_items:
-            ln, est = est_items[0][0], est_items[0][2]
-        else:
-            ln, est = head[0][0], (head[0][2] if head[0][3] == '미포함' else head[0][2] / 1.1)
-        high, excl = ceil
-        sane = est <= 20 * max(B or 0, P or 0) if (B or P) else True
-        if sane and (est >= high * 1.01 if excl else est > high * 1.01):
-            return ln
     # 계약방법 (substance: 나라장터 일반경쟁 vs any other statement fires; 제한경쟁 vs 일반경쟁 only without a body restriction)
     stated, mline = r['contract_method']
     pr = r['restriction']
@@ -500,5 +493,6 @@ def decide(b, r):
 
 
 def verdict(b):
+    """Fires only from a model reading. The CPU stand-in stays for diagnostics: it read threshold bands as budgets."""
     reading = getattr(b, 'd_input_mismatch', None)
-    return decide(b, reading if reading is not None else standin(b))
+    return decide(b, reading) if reading is not None else None
