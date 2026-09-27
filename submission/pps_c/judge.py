@@ -3530,7 +3530,7 @@ def segment_of(b):
 # when it ends in a statute or rule word; a bracketed certificate (「중소기업확인서」) keeps its name.
 V13_STAGE_BRACKET = re.compile(r'[「『｢]([^」』｣]*)[」』｣]')
 V13_STAGE_LAW = re.compile(r'(?:법|법률|시행령|시행규칙|규칙|규정|요령|고시|기준|지침|조례|예규|훈령)\s*$')
-V13_STAGE_NAMES = re.compile(r'\([^)]*범위[^)]*\)|중소기업\s*기본법|중소기업\s*범위\s*및\s*확인에\s*관한\s*규정|'
+V13_STAGE_NAMES = re.compile(r'\(\s*중소기업자?의\s*범위\s*\)|중소기업\s*기본법|중소기업\s*범위\s*및\s*확인에\s*관한\s*규정|'
                              r'중[\s·ㆍ‧・]*소기업[\s·ㆍ‧・]*소상공인\s*및\s*장애인기업\s*확인요령|중소기업제품\s*구매촉진\S*|중소기업자\s*간\s*경쟁제품')
 V13_STAGE_MID = re.compile(r'중\s*기업|중\s*[·ㆍ‧・,․]?\s*소\s*기업(?!\s*(?:기본법|제품|청))')
 V13_STAGE_KIND = r'(?:중\s*[·ㆍ‧・․]?\s*소\s*기업|중소\s*기업|중\s*기업|소\s*기업|소\s*상\s*공\s*인|장애인\s*기업)'
