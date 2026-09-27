@@ -114,6 +114,17 @@ def test_item_designation_fires_with_the_original_line_as_evidence():
     assert st.verdict(b) is ln
 
 
+def test_service_notice_supplied_item_names_do_not_fire():
+    b = bundle_of(*SPEC)
+    b.meta.work = '용역'          # 9/27 reading: in service notices these were flight numbers, the app to build, line-ups
+    cands = st.select(b.notice)
+    ln = line_with(b.notice, '제조사·모델명')
+    assert st.consume(b, cands, answer((ln.i, '아크론브라스(Akron Brass) 터보젯(TurboJet)', 'model_or_product_name', 'supplied_item')))
+    assert st.verdict(b) is None
+    assert st.consume(b, cands, answer((ln.i, '아크론브라스(Akron Brass) 터보젯(TurboJet)', 'model_or_product_name', 'supplied_component')))
+    assert st.verdict(b) is ln
+
+
 def test_component_and_performance_equipment_fire():
     b = bundle_of('B.감속기 (Gear Reducer)', '- 제작사 : KGM 또는 동급 이상', '(모델 WKA-167 )')
     cands = st.select(b.notice)

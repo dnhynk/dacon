@@ -419,6 +419,8 @@ def verdict(b):
     if reading is None:
         return cpu_fallback(b.notice)
     for ln, _expr, kind, role in reading.get('designations', ()):
+        if role == 'supplied_item' and b.meta.work == '용역':
+            continue    # in service notices these were flight numbers, the app to build, line-ups (9/27 reading: 9 of 10 not v9)
         if fires(kind, role):
             return ln
     return None
