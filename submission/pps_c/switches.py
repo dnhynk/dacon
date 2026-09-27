@@ -283,8 +283,9 @@ DEDICATED_OR = ()
 # Probe (h08 G1): a v10·v11·v13 firing of the competition-product stage obeys X4's object exclusions (a 급식·간식 basket under a
 # food 세부품명, a product outside the designation's 특이사항), which the shared rule applies under X4_OBJECT. False = current.
 DEDICATED_X4 = False
-# Probe (h08 G1): the competition-product stage fires v13 only when its evidence line limits bidders to 소기업·소상공인; a line
-# that also admits 중기업 or every 중소기업자 (law, regulation and certificate-rule names aside) does not. False = current.
+# Probe (h08 G1): the competition-product stage fires v13 only when its evidence clause names no 중기업, 중·소기업 or
+# 중소기업(자) once statute and rule names and refused certificates are removed; conservative, so a small-only clause that
+# also names 중소기업 in another role is dropped too. False = current.
 V13_STAGE_SMALL_ONLY = False
 # Probe (h08 group A): v9 also fires on a line the model read as designating the procured item when it names the maker or
 # model without a Latin model code or label wording — a company written with 사·社·(주)·㈜·Co./Ltd., a "제조사 <name>" table
