@@ -426,3 +426,6 @@ RTD_SIZE_EXPLICIT_EXCEPTION = False
 # v14-v18: class words split by layout or written with other middle dots (중⋅소기업, 중‧소기업) are normalized before the
 # size class is read, so a whole-SME restriction is not read as small-only. False = current.
 RTD_SIZE_TYPOGRAPHY = False
+# The one retry of a reply that did not parse gets max_tokens x this factor, within the engine context; at temperature 0
+# a reply cut at max_tokens otherwise fails again. 1 = current.
+RETRY_TOKEN_FACTOR = 1

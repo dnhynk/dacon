@@ -71,6 +71,14 @@ def make_request(engine, b, k, name):
     return Request(k, name, cands, extra, ids, F.schema(fam, cands, extra), F.max_tokens(fam, cands, extra), budget)
 
 
+def retry_tokens(engine, r):
+    """RETRY_TOKEN_FACTOR: a longer output budget for the retry of an unparsed reply, within the engine context."""
+    if switches.RETRY_TOKEN_FACTOR <= 1:
+        return r.max_tokens
+    room = engine.max_model_len - 64 - len(r.token_ids) - r.budget
+    return max(r.max_tokens, min(int(r.max_tokens * switches.RETRY_TOKEN_FACTOR), room))
+
+
 def first_pass_request(engine, b, k):
     """Every notice gets one normal model call; the qualification-requirements family serves it."""
     req = make_request(engine, b, k, 'inst')
@@ -145,7 +153,7 @@ def run(args):
             done += len(chunk)
             log(f'{done}/{len(queue)} requests, {time.time() - t0:.0f}s elapsed, chunk {dt_chunk:.1f}s')
         if retry and time.time() - t0 + (per_req or 1) * len(retry) * 1.2 < budget:
-            outs = engine.generate([(r.token_ids, r.schema, r.max_tokens, r.budget) for r in retry])
+            outs = engine.generate([(r.token_ids, r.schema, retry_tokens(engine, r), r.budget) for r in retry])
             for r, (text, finish, ntok) in zip(retry, outs):
                 if consume(bundles[r.rec], r, text):
                     stats['answered'] += 1
