@@ -273,6 +273,9 @@ COMP_MIXED = ()
 V10_FLOOR_PRIVATE_ONLY = False
 # Diagnostic probes only: these item columns are written as 0, so 24 x the score drop is the item's exact F1.
 ZERO_ITEMS = ()
+# Diagnostic probes only: these item columns are written as 1; 24 x (this probe - the same package with the item zeroed)
+# is the F1 of predicting every notice positive, 2P/(P+N), which gives the item's number of test positives P.
+ONES_ITEMS = ()
 # Probe (h08 group A): v9 also fires on a line the model read as designating the procured item when it names the maker or
 # model without a Latin model code or label wording — a company written with 사·社·(주)·㈜·Co./Ltd., a "제조사 <name>" table
 # cell, a model code glued to a particle ("DDC400의") or a CPU model ("i5-3550"). False = current behaviour.

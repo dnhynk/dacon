@@ -20,3 +20,10 @@ def test_zeroed_item_is_written_as_zero(monkeypatch):
     monkeypatch.setattr(switches, 'ZERO_ITEMS', ('v9',))
     row = csvout.row('n1', VERDICTS, '규격: 모델명 A-100')
     assert (row['v9'], row['e9'], row['v10']) == (0, '', 1)
+
+
+def test_ones_item_is_written_as_one(monkeypatch):
+    assert switches.ONES_ITEMS == ()
+    monkeypatch.setattr(switches, 'ONES_ITEMS', ('v12', 'v10'))
+    row = csvout.row('n1', VERDICTS, '규격: 모델명 A-100')
+    assert (row['v12'], row['e12'], row['v10'], row['e10'], row['v9'], row['e9']) == (1, '', 1, '', 1, '모델명 A-100')

@@ -30,6 +30,8 @@ def row(rec_id, verdicts, source_text):
         hit, ev = verdicts.get(it, (0, ''))
         if it in switches.ZERO_ITEMS:
             hit = 0
+        if it in switches.ONES_ITEMS:
+            hit = 1
         ev = unicodedata.normalize('NFC', ev or '').strip()
         if not hit or it in ABSENCE or ev[:1] in ('=', '+', '@') or len(ev) > 500 or (ev and ev not in source_text):
             ev = ''
