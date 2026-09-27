@@ -248,5 +248,36 @@ V24P_GUARDS = False
 # Independent code audit: corrected common-base interpretation is measured
 # separately from the 9/27 item probes, whose published baselines stay fixed.
 CODE_AUDIT_BASE = False
+# Probe (h08 group C, 2026-09-27): v24's region axis also reads, on the CPU, a 공고문 qualification clause naming the bidder's
+# location with a 시·도 that the region family never returned (its selector families.REGION_ANY misses a full 시·도 name followed
+# by a particle: "경상남도에 둔 자", "충청북도인 업체"; t2500 195 of 1,181 location restrictions, dev DEV-049) and compares that
+# 시·도 set with 나라장터 제한지역. False = current behaviour.
+V24_REGION_CPU = False
+# Probe (h08 group C): v19 also fires on a third-party pledge demanded at the 적격심사 stage ("적격심사 시 제출", "낙찰자 결정
+# 전까지 제출"; X6 stage class QUAL_STAGE), which V19_STAGE leaves out as the ordinary award procedure. False = current behaviour.
+V19_QUAL_STAGE = False
+# Probes (2026-09-27 literal sweep B: v10·v11·v13), each default = current behaviour.
+# v13 also takes a 소기업·소상공인 restriction the model read as 참가자격 제한 outside the qualification section (a BID·EVAL
+# declaration or an attachment clause), as the absence items do, when the qualification section states no class.
+V13_ANY_SECTION = False
+# v13 takes a 나라장터 조항호 registration of the small class ("소기업,소상공인제한") when no text clause states a class.
+V13_REGISTERED = False
+# v13 judged on 수의계약 too (as V10_PRIVATE / V11_PRIVATE).
+V13_PRIVATE = False
+# Items for which a 나라장터 조항호 registration of a 중기간 경쟁제품 designation (catalog.DESIGNATED_REGISTRATION) makes a notice with no
+# catalog or title match a competition-product bid, without the AUDIT_FIXES scope change; () = current behaviour.
+COMP_REGISTERED = ()
+# Items also judged on goods lists with at least one listed 세부품명 (scope goods:mixed); () = current behaviour.
+COMP_MIXED = ()
+# v10: the 1천만원 floor (판로지원법 제9조①: 수의계약 1천만원 이상) applies to 수의계약 only; a competitive bid is judged at any amount.
+V10_FLOOR_PRIVATE_ONLY = False
 # Diagnostic probes only: these item columns are written as 0, so 24 x the score drop is the item's exact F1.
 ZERO_ITEMS = ()
+# Probe (h08 group A): v9 also fires on a line the model read as designating the procured item when it names the maker or
+# model without a Latin model code or label wording — a company written with 사·社·(주)·㈜·Co./Ltd., a "제조사 <name>" table
+# cell, a model code glued to a particle ("DDC400의") or a CPU model ("i5-3550"). False = current behaviour.
+V9_MAKER = False
+# Probe (h08 group A): v12 does not follow the model's "과업과 같은 종류" reading when an informative title names the procured
+# object with none of the cited product's own words (judge.V12_PRODUCT_WORDS), the clause names the 직접생산확인 certificate and
+# offers no licence or supply route in its place. False = current behaviour.
+V12_OBJECT_VOCAB = False

@@ -1236,14 +1236,51 @@ def v9_read2(b):
     return None
 
 
+# Probe (switches.V9_MAKER): a maker or model the line names without a Latin model code or a label — a company written with
+# 사·社·(주)·㈜·Co./Ltd. ("스위스 노드만사 동등이상", "스파이렉스사코(주) 동등이상품", "MITSUBISHI社", "Giga Computing Technology Co.,
+# Ltd."), a "제조사 <name>" table cell, a model code glued to a particle ("MICOM DDC400의": LATIN_MODEL's \b never matches
+# before a Korean letter) or a CPU model ("Core i5-3550"). Only lines the model read as designating the procured item; a
+# maker named as the issuer of a certificate or pledge ("원제조사(KULTHORN KIRBY社)에서 발행하는 제조자증명서", dev DEV-152 = 0) is none.
+MAKER_STOP = {'제조', '공급', '납품', '발주', '주관', '시행', '계약', '입찰', '참가', '수요', '운영', '관리', '전문', '협력', '대행', '용역',
+              '검사', '시험', '인증', '감리', '설계', '통신', '건설', '보험', '동일', '해당', '특정', '외부', '국내', '외국', '지정', '판매',
+              '제작', '생산', '유통', '수입', '수출', '개발', '기술', '지원', '위탁', '조사', '연구', '평가', '심사', '감독', '경비', '청소',
+              '전기', '기계', '소방', '자동', '정보', '방송', '회원', '이용', '사용', '구매', '조달', '물류', '운송', '택배', '보증', '무역',
+              '요구', '시공', '카드', '증권', '항공', '여행', '제약', '출판', '인쇄', '광고', '언론', '신문', '낙찰', '수급', '협약', '보수',
+              '선정', '참여', '대표', '구성', '주간', '도급', '관계', '자회', '모회', '계열', '경쟁', '상대', '주식', '유한', '금융', '통신'}
+MAKER_SUFFIX = re.compile(r'(?<![가-힣])([가-힣]{2,8})(?:사|社)(?![가-힣])|(?<![가-힣])([A-Za-z]{2,})社')
+MAKER_COMPANY = re.compile(r'[㈜]\s*[가-힣A-Za-z]{2,}|[가-힣A-Za-z]{2,}\s*[㈜]|[(（]\s*주\s*[)）]\s*[가-힣A-Za-z]{2,}|[가-힣A-Za-z]{2,}\s*[(（]\s*주\s*[)）]'
+                           r'|\b[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*\s*(?:Co\.|Ltd\.?|Inc\.?|Corp\.?|GmbH|Corporation|Limited)(?![A-Za-z])')
+MAKER_CELL = re.compile(r'^\W{0,3}(?:제\s*조\s*(?:사|원|회\s*사|업\s*체)|모\s*델\s*명?)\s+([가-힣A-Za-z][가-힣A-Za-z0-9\-]{1,30})\s*$')
+MAKER_GLUED_CODE = re.compile(r'(?<![A-Za-z0-9])[A-Z]{2,}-?\d{2,}[A-Za-z0-9\-]*(?=[가-힣])|(?<![A-Za-z0-9])[A-Z][a-z]+-?\d{3,}[A-Za-z0-9\-]*(?=[가-힣])')
+MAKER_CPU_CODE = re.compile(r'(?<![A-Za-z0-9])i[3579]-\d{4,5}[A-Za-z]{0,2}(?![A-Za-z0-9])')
+MAKER_ISSUER = re.compile(r'확\s*약\s*서|증\s*명\s*(서|원)|인\s*증\s*서|발\s*행|발\s*급')
+MAKER_CELL_BLANK = re.compile(r'^(?:[○◯〇●＊*ㅇoOxX]{2,}|기재|작성|기록|입력|명기|미정|없음|해당없음|별도|동일|성적서|정품|시험|확인|증명|보증|기준)')
+
+
+def maker_named(text):
+    t = text.strip()
+    if PLACEHOLDER_LABEL.search(t) or BRAND_NONPRODUCT.search(t) or MAKER_CONDITION.search(t) or MAKER_ISSUER.search(t):
+        return False
+    for m in MAKER_SUFFIX.finditer(t):
+        word = (m.group(1) or m.group(2) or '').rstrip('회')
+        if len(word) >= 2 and word not in MAKER_STOP and not any(word.endswith(s) for s in MAKER_STOP):
+            return True
+    if MAKER_COMPANY.search(t) or MAKER_GLUED_CODE.search(t) or MAKER_CPU_CODE.search(t):
+        return True
+    cell = MAKER_CELL.match(t)
+    return bool(cell) and not MAKER_CELL_BLANK.match(cell.group(1))
+
+
 def v9_lines(b):
     """Every line v9 fires on from the model family's reading, in order."""
     return [ln for ln in lines_where(b, 'model', 성격='구매 대상의 제조사·모델 지정')
              if not (switches.V9_NOISE and V9_EMPTY_LABEL.search(ln.text.strip()))
-             and (DESIGNATION.search(v9_text(ln.text)) or switches.V9_BROAD and model_code(v9_text(ln.text)))
+             and (DESIGNATION.search(v9_text(ln.text)) or switches.V9_BROAD and model_code(v9_text(ln.text))
+                  or switches.V9_MAKER and maker_named(ln.text))
              and (switches.V9_EQUIVALENT_VIOLATION or b.read('model', ln).get('동등') != '동등 이상 허용')
              and not (switches.AUDIT_FIXES and (LISTED_STANDARD.search(ln.text) or SAME_MAKER.search(ln.text)))
-             and not (switches.AUDIT_FIXES2 and not (v9_designates(b, ln) or switches.V9_BROAD and v9_code_designates(b, ln)))]
+             and not (switches.AUDIT_FIXES2 and not (v9_designates(b, ln) or switches.V9_BROAD and v9_code_designates(b, ln)
+                                                    or switches.V9_MAKER and maker_named(ln.text)))]
 
 
 # Expert audit X3 (switch V9_X3; runs/rebuild_c/transfer_20260925/audit/expert/X3/REPORT.md): a practitioner marks a v9 line
@@ -1879,6 +1916,13 @@ def competitive_service(b, item=None):
         return False
     if switches.X4_OBJECT and item in ('v10', 'v11', 'v13') and (food_basket(b) or designation_excluded(b)):
         return False
+    # Sweep B: the orderer's own 나라장터 registration of a designated product (판로지원법 제6조) decides the object when the catalog and the
+    # title found nothing (as classify does under AUDIT_FIXES), and a goods list with a listed 세부품명 buys that product too.
+    if item in switches.COMP_REGISTERED and b.scope.basis in ('service:none', 'goods:no_code') \
+            and catalog.DESIGNATED_REGISTRATION.search(str(b.meta.clause or '')):
+        return True
+    if item in switches.COMP_MIXED and b.scope.basis == 'goods:mixed':
+        return True
     if b.meta.work == '물품' and item in switches.COMPETITIVE_GOODS:
         return b.scope.competitive is True
     return b.meta.work == '용역' and (b.scope.competitive is True or certified_as_listed(b))
@@ -1888,7 +1932,7 @@ def v10(b):
     if not competitive_service(b, 'v10') or competition_exception(b) or (b.meta.private and not switches.V10_PRIVATE) \
             or switches.X4_OBJECT and exception_anydoc(b):
         return None
-    if b.meta.P is not None and b.meta.P < 1e7:
+    if b.meta.P is not None and b.meta.P < 1e7 and not (switches.V10_FLOOR_PRIVATE_ONLY and not b.meta.private):
         return None
     return None if dp_present(b) else True
 
@@ -1977,6 +2021,78 @@ def v12_object_overrides(b, clause, cat):
                                   for p in catalog.cited_products(clause, cat) if catalog.admits(p, b.meta.P))
 
 
+# Probe (switches.V12_OBJECT_VOCAB; talkboard: v12 is judged by the procured object; dev DEV-053 수련활동 with an event
+# certificate and DEV-056 연구 with an internet-development certificate are 1): the certificate clause cites a listed product,
+# but an informative title names the procured object with none of that product's own words, so the object is another
+# (general) product and the 직접생산확인 demand restricts it. Each entry: the product's 세부품명 pattern and the title words that
+# show the object is that product; a product with no entry uses the chunks of its own name. A title that is a table header
+# or a placeholder decides nothing; a clause that names no certificate, or offers a licence route "또는" the certificate, or
+# another supply route, or the certificate in a list of capability proofs ("직접생산확인증, GR, 단체표준 등"), keeps the
+# current reading; so does a title naming any listed product's words (the object is then a competition product).
+V12_PRODUCT_WORDS = (
+    (r'전시|박람회|실물모형|전시물|홍보관|부스', r'전\s*시|박람회|엑스포|EXPO|페어|기획전|부\s*스|홍보관|모형|전시물|조형|쇼케이스'),
+    (r'행사|축제|회의|국제', r'행\s*사|축\s*제|페스티벌|페스타|기념식|시상식|개막|폐막|공연|대회|회의|포럼|컨퍼런스|세미나|심포지엄|워크숍|워크샵|경진'
+                          r'|시장개척단|박람회|전\s*시|잔치|설명회|발표회|캠프|토론회|교류회|콘서트|이벤트|런칭|장터|마켓|의식|식전|시연회|간담회|대전(?!광역|시)'),
+    (r'동영상|영상', r'영\s*상|비디오|촬영|애니메이션|다큐|방송|유튜브|미디어'),
+    (r'디자인', r'디자인|design|BI|CI|캐릭터|편집|시각|그래픽|아이덴티티'),
+    (r'정기간행물', r'간행물|소식지|기관지|잡지|뉴스레터|회보|웹진|매거진|사보|신문|정기간행'),
+    (r'소프트웨어|정보시스템|인터넷|데이터|공간정보|DB|시스템|전산|홈페이지|패키지|정보인프라|정보보호|보안',
+     r'시스템|소프트웨어|S/?W(?![A-Za-z])|홈페이지|누리집|웹|포털|플랫폼|정보망|데이터|DB|빅데이터|인공지능|AI(?![A-Za-z])|어플리케이션|애플리케이션|앱(?![가-힣])|챗봇'
+     r'|ERP|그룹웨어|LMS|클라우드|서버|솔루션|(?<![가-힣])전산|정보화|인터넷|온라인|디지털|스마트|IT(?![A-Za-z])|ICT|전자지도|GIS|지도\s*(구축|제작)|입력|원서접수|정보\s*(보호|보안)|보안'),
+    (r'청소', r'청\s*소|미화|위생|세척'),
+    (r'경비', r'경\s*비|보안|안전관리'),
+    (r'명판|번호판|안내판|간판|현판|표지판', r'명판|번호판|안내판|간판|현판|표지판|사인|표지'),
+    (r'인쇄|출판|책자', r'인\s*쇄|출판|발간|책자|교재|리플릿|팜플렛|팸플릿|브로슈어|홍보물|인쇄물'),
+    (r'급식|도시락|김치|식품|음식|반찬', r'급\s*식|식자재|식재료|도시락|김치|반찬|음식|식품'),
+    (r'여객|운송|버스|통학', r'통학|통근|버스|차량|운송|수송|셔틀|임차'),
+    (r'승강기', r'승강기|엘리베이터|에스컬레이터'),
+    (r'지질', r'지질|지반|시추'),
+    (r'우편', r'우편|발송|우송'),
+    (r'유수율', r'유수율|누수|상수도'),
+    (r'조경|수목|잔디|식재', r'조경|수목|나무|잔디|녹지|정원|공원'),
+    (r'교육훈련장비|교구', r'교구|실습|교육\s*장비|훈련\s*장비'),
+)
+V12_PRODUCT_WORDS = tuple((re.compile(p), re.compile(w, re.I)) for p, w in V12_PRODUCT_WORDS)
+V12_NAME_SPLIT = re.compile(r'및|기타|서비스|기획|대행|설치|디자인|제작|운영|지원|개발|도입|관리|유지|구축|처리|용')
+V12_TABLE_TITLE = re.compile(r'\(\s*원\s*\)|\(\s*일\s*\)|\||마감\s*일시|^\s*세부\s*내역\s*$|^\s*(용역|사업|계약|납품|과업)\s*(기간|개요|내용|범위)\s*$')
+V12_ALT_LIST = re.compile(r'직\s*접\s*생\s*산\s*확\s*인\s*증(\s*명\s*서)?\s*[,，、·]\s*(GR|단체\s*표준|KS|환경\s*마크|품질|ISO)', re.I)
+V12_ALT_ROUTE = re.compile(r'(건설산업기본법|전문건설업|공사업|면허|등록증|업\s*등록|등록한\s*(업체|자)|사업자로\s*등록)[^.。]{0,80}또는[^.。]{0,80}직\s*접\s*생\s*산')
+
+
+def v12_informative_title(b):
+    tagged = [ln.text for ln in [x for x in b.notice.lines if x.doc_type == '공고문'][:60] if catalog.BAND_TAG.search(ln.text)]
+    for t in list(b.titles[:2]) + tagged:
+        m = catalog.BAND_TAG.search(t)
+        head = V12_TOKEN.sub(' ', t[:m.start()] if m else t).strip()
+        if head and not catalog.placeholder_title(head) and not V12_TABLE_TITLE.search(head):
+            return head
+    return ''
+
+
+def v12_words_name(prod, words, title):
+    """The title names this product family (건물청소 only for buildings: 도로·차량·저수조 cleaning is other work)."""
+    return bool(words.search(title)) and not (prod.pattern == r'청소' and catalog.NOT_BUILDING.search(title))
+
+
+def v12_product_named(p, title):
+    name = re.sub(r'\s', '', p.name)
+    for prod, words in V12_PRODUCT_WORDS:
+        if prod.search(name):
+            return v12_words_name(prod, words, title)
+    chunks = [c for c in V12_NAME_SPLIT.split(name) if len(c) >= 2]
+    return any(c in re.sub(r'\s', '', title) for c in chunks)
+
+
+def v12_vocab_overrides(b, clause, cat):
+    if not DP_CERT.search(clause) or V12_ALT.search(clause) or V12_ALT_ROUTE.search(clause) or V12_ALT_LIST.search(clause):
+        return False
+    title = v12_informative_title(b)
+    if not title or any(v12_words_name(prod, words, title) for prod, words in V12_PRODUCT_WORDS):
+        return False          # the title names some listed product's words: the object is no general product
+    prods = [p for p in catalog.cited_products(clause, cat) if catalog.admits(p, b.meta.P)]
+    return bool(prods) and not any(v12_product_named(p, title) for p in prods)
+
+
 def v12(b):
     """v12 is judged by the procured object (talkboard): a certificate for a listed competition product that the model
     reads as the procured work itself shows the purchase is that product, whatever our title families say."""
@@ -1991,7 +2107,8 @@ def v12(b):
         t = clause if switches.AUDIT_FIXES else ln.text
         if b.read('dp', ln).get('인증 품목') == '과업과 같은 종류' and catalog.cites_listed(clause, cat, b.meta.P) \
                 and not (switches.V12_TITLE_OBJECT and catalog.title_names_other_work(b.titles, clause, cat)) \
-                and not (switches.V12_TITLE_OBJECT2 and v12_object_overrides(b, clause, cat)):
+                and not (switches.V12_TITLE_OBJECT2 and v12_object_overrides(b, clause, cat)) \
+                and not (switches.V12_OBJECT_VOCAB and v12_vocab_overrides(b, clause, cat)):
             continue
         if DP_VERIFY.search(t) and not DP_POSSESS.search(t) or DP_CONDITIONAL.search(t):
             continue
@@ -2030,13 +2147,25 @@ def evidence_sentence(clause, line):
     return line
 
 
+# Sweep B (V13_REGISTERED): the 나라장터 조항호 registers the small class ("[판로지원법 시행령] 소기업,소상공인제한"); the 제7조의2 form is X4_REG72.
+V13_REG_SMALL = re.compile(r'(?<!중기업,)(?<!중기업, )(?<!중기업 )소\s*기업\s*[,·ㆍ]?\s*소상공인\s*(제한|간)')
+
+
 def v13(b):
-    if not competitive_service(b, 'v13') or b.meta.private or competition_exception(b) \
+    if not competitive_service(b, 'v13') or (b.meta.private and not switches.V13_PRIVATE) or competition_exception(b) \
             or switches.X4_OBJECT and X4_REG72.search(str(b.meta.clause or '')):
         return None
     state, lines, _ = size_state(b, positive=True)
     if state == 'small':
         return next(ln for ln in lines if size_class(b, ln) == 'small')
+    # Sweep B: with no class in the qualification section, a small-only clause the model read as 참가자격 제한 anywhere in the
+    # 입찰공고 (a BID·EVAL declaration, an attachment) restricts the bid as it does for v11; then the registered class.
+    if switches.V13_ANY_SECTION and state != 'sme':
+        state, lines, _ = size_state(b)
+        if state == 'small':
+            return next(ln for ln in lines if size_class(b, ln) == 'small')
+    if switches.V13_REGISTERED and state not in ('small', 'sme') and V13_REG_SMALL.search(str(b.meta.clause or '')):
+        return True
     return None
 
 
@@ -2513,6 +2642,16 @@ def x6_pledge_violation(b, ln):
     return bool(X6_PLEDGE.search(t))
 
 
+# Probe (switch V19_QUAL_STAGE): a third-party pledge demanded at the 적격심사 stage ("적격심사 시 제출", "낙찰자 결정 전까지 제출";
+# x6_pledge_stage QUAL_STAGE) is demanded before the award (항목명 "입찰 시 제출", 비고 "표현 다양"); the practitioner standard
+# (V19_STAGE) leaves it as the ordinary award procedure. Capability wording and the lawful 제5조의3 regime stay out.
+def x6_qual_stage_demand(b, ln):
+    t = clause_text(b.notice, ln)
+    if x6_pledge_stage(b, ln) != 'QUAL_STAGE' or X6_CAPABILITY.search(t) or X6_LAWFUL.search(t):
+        return False
+    return bool(X6_PLEDGE.search(t))
+
+
 def v19(b):
     if not switches.V19_PRIVATE and b.meta.private:
         return None
@@ -2524,13 +2663,16 @@ def v19(b):
         # "입찰참가업체는 … 보유해야 한다", a bid-document list) is timed although the model read no time (013890, 000155).
         if not timed and switches.V19_CPU_TIMED and x6_pledge_stage(b, ln) in ('PRE', 'PRE_LIST'):
             timed = True
+        qual = switches.V19_QUAL_STAGE and x6_qual_stage_demand(b, ln)
+        if not timed and qual:
+            timed = True
         if (not timed and switches.AUDIT_FIXES2 and switches.V19_LIST_STAGE and r.get('시점', '') in ('불명', '')
                 and (ln.doc_type == '공고문' and ln.sec == 'QUAL' or pre_award_list(b, ln))):
             timed = True
         if str(r.get('발급 주체', '')).startswith('제3자') and timed and pledge_demanded(ln) \
                 and not ((switches.AUDIT_FIXES2 or switches.V19_PLEDGE_FIXES) and not pledge_document(b, ln)) \
                 and not ((switches.AUDIT_FIXES3 or switches.V19_PLEDGE_FIXES) and not pledge_sentence(b, ln)) \
-                and not (switches.V19_STAGE and not x6_pledge_violation(b, ln)):
+                and not (switches.V19_STAGE and not (x6_pledge_violation(b, ln) or qual)):
             return ln
     return None
 
@@ -3011,6 +3153,27 @@ JV_PARTNER = re.compile(r'(면\s*허|자\s*격)\s*보\s*완|업\s*체\s*와\s*(�
 JV_PARTNER3 = re.compile(JV_PARTNER.pattern + r'|(자|업\s*체|사)\s*와\s*(의\s*)?(분\s*담\s*이\s*행|공\s*동\s*(도\s*급|수\s*급|이\s*행))')
 
 
+# Probe (switch V24_REGION_CPU): the region family's selector never returns a qualification clause whose full 시·도 name is
+# followed by a particle ("…본점 소재지를 경상남도에 둔 자", "…소재지가 충청북도인 업체": families.REGION_ANY needs a space or
+# punctuation after 도), so the clause is unread (t2500: 195 of 1,181 notices stating a location restriction; dev DEV-049).
+# v24's region axis then reads such clauses on the CPU: a 공고문 qualification line with a bidder-location cue
+# (families.BIDDER_LOC) naming a 시·도, outside a no-restriction note and a partner's location.
+def v24_cpu_region(b):
+    from . import families
+    lines, sido = [], set()
+    for ln in b.notice.lines:
+        if ln.doc_type != '공고문' or not qual_section(ln, b.notice) or not families.BIDDER_LOC.search(ln.text):
+            continue
+        t = region_clause_text(b.notice, ln)
+        if REGION_NONE.search(t) or JV_PARTNER3.search(t):
+            continue
+        m = regions.mentions(ln.text)['sido']
+        if m:
+            lines.append(ln)
+            sido |= m
+    return lines, sido
+
+
 def v24_region(b):
     if b.meta.region_flag != 'Y' or not b.meta.region_sido:
         return None
@@ -3024,6 +3187,8 @@ def v24_region(b):
             sido |= regions.mentions(region_clause(b, ln))['sido']
         if lines and sido and len(b.meta.region_sido) >= 2 and sido <= set(b.meta.region_sido):
             sido = set(b.meta.region_sido)
+    if switches.V24_REGION_CPU and not sido:
+        lines, sido = v24_cpu_region(b)
     if lines and sido and sido != b.meta.region_sido:
         return lines[0]
     return None
