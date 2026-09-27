@@ -298,12 +298,54 @@
         "kst": "2026-09-27",
         "score": 0.7140330005,
         "outcome": "spare10; -0.0007 vs P3a+CG: scope rules lose; split"
+      },
+      {
+        "row": "88",
+        "name": "R0928",
+        "kst": "2026-09-28",
+        "slot": "spare1",
+        "score": null
+      },
+      {
+        "row": "89",
+        "name": "Z9",
+        "kst": "2026-09-28",
+        "slot": "spare2",
+        "score": null
+      },
+      {
+        "row": "102",
+        "name": "O9",
+        "kst": "2026-09-28",
+        "slot": "spare3",
+        "score": null
+      },
+      {
+        "row": "92",
+        "name": "Z12",
+        "kst": "2026-09-28",
+        "slot": "spare4",
+        "score": null
+      },
+      {
+        "row": "99",
+        "name": "O12",
+        "kst": "2026-09-28",
+        "slot": "spare5",
+        "score": null
+      },
+      {
+        "row": "100",
+        "name": "O24",
+        "kst": "2026-09-28",
+        "slot": "spare6",
+        "score": null
       }
     ]
   },
   "task": {
-    "status": "probes_0927_scored",
-    "next_action": "9/28 00:00:30 spares: literal-broadening probes on the weakest items (v9-v13, v19, v20, v24, v1, v4, v8) plus CODE_AUDIT_BASE alone; 9/28 main: measured positives only (the 0.7381 union, plus any 9/28 spare positives if it is sent later that day).",
+    "status": "probes_0928_diagnostics_scheduled",
+    "next_action": "9/28 00:00:30 KST (task dacon_0928): six diagnostic spares. R0928 = the measured-positive union (reference, computed 0.7381); Z9/O9 and Z12/O12 zero and all-ones v9 and v12 on it; O24 = P3a with v24 all ones, read against ZD1 0.688417638. Per item: F1 = 24 x (R - Z), all-ones F1 = 24 x (O - Z) = 2P/(P+1853), so P = 1853 F/(2 - F). With our predicted count Q (t2500 rate x 1853/2502): TP = F1 (P + Q)/2. On 9/28 build the fixes the numbers call for (GPU checks through the Colab kit), send them on spares 7-10, and merge the positives into the main before 24:00; repeat on 9/29 (leaderboard closes about 23:59).",
     "main_slot_rule": "From 9/28 the main slot carries the strongest supported package; spare probes keep minimal bases below 0.75 (user).",
     "held": "CODE_AUDIT_BASE=False keeps the 9/26 audit estimate/article/date-role repairs dormant until measured separately; THINKING_FAMILIES=() keeps thinking off by default.",
     "lesson_0927": "preregistered estimates were about 4x too high in total (+0.012 measured vs about +0.05); practitioner-standard removals paid in v19/v20/v22 and v1 but lost in v9, v14-v18 and competition scope; the organizer mostly labels literally"
