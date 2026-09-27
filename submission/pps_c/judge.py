@@ -1855,7 +1855,7 @@ def notice_size_lines(b, lines, primary):
 SIZE_TAG = re.compile(r'대\s*기\s*업\s*\(\s*\)|국\s*내\s*입\s*찰\s*/|제\s*한\s*경\s*쟁\s*[_(（]\s*(중|소)')
 
 
-def size_state(b, positive=False):
+def size_state(b, positive=False, gate_normal=False):
     """('small' | 'sme' | 'unknown' | None, restriction lines, exception stated).
 
     positive=True (v13–v15, v17: the restriction's class is the violation) counts only the qualification section;
@@ -1881,7 +1881,7 @@ def size_state(b, positive=False):
     primary = [ln for ln in lines if not size_condition(ln)] or lines
     if switches.AUDIT_FIXES3 and positive:
         lines, primary = notice_size_lines(b, lines, primary)
-    classes = [size_class(b, ln) for ln in primary]
+    classes = [(size_class_for_gate(b, ln) if gate_normal else size_class(b, ln)) for ln in primary]
     if 'small' in classes:
         if switches.AUDIT_FIXES and 'sme' in classes and sibling_options(b, primary, classes):
             return 'sme', lines, exc
@@ -2666,7 +2666,7 @@ def _general(b):
 def v14(b):
     if not _general(b) or b.meta.P < NOTICE_AMOUNT:
         return None
-    state, lines, _ = size_state(b, positive=True)
+    state, lines, _ = size_state(b, positive=True, gate_normal=switches.RTD_SIZE_TYPOGRAPHY)
     state, lines = x5_declared(b, state, lines)
     if x5_positive_off(b, lines):
         return None
@@ -2676,12 +2676,12 @@ def v14(b):
 def v15(b):
     if not _general(b) or not (EOK <= b.meta.P < NOTICE_AMOUNT):
         return None
-    state, lines, _ = size_state(b, positive=True)
+    state, lines, _ = size_state(b, positive=True, gate_normal=switches.RTD_SIZE_TYPOGRAPHY)
     state, lines = x5_declared(b, state, lines)
     if x5_positive_off(b, lines):
         return None
     if state == 'small':
-        return next(ln for ln in lines if size_class(b, ln) == 'small')
+        return next(ln for ln in lines if size_class_for_gate(b, ln) == 'small')
     return None
 
 
@@ -2697,18 +2697,26 @@ def size_registered(b):
     return bool(SIZE_REGISTERED.search(c)) and not COMPETITION_REGISTERED.search(c)
 
 
-def v16(b):
+def _rtd_v16_base(b):
     if not _general(b) or not (EOK <= b.meta.P < NOTICE_AMOUNT):
         return None
     if switches.SIZE_ABSENCE_NEEDS_REG and not size_registered(b):
         return None
     if x5_absence_off(b):
         return None
-    state, lines, exc = size_state(b)
+    state, lines, exc = size_state(b, gate_normal=switches.RTD_SIZE_TYPOGRAPHY)
     if switches.X5_METHOD_STATEMENT and method_only(b, lines):
         state = None
     return (True if state is None and not exc and not designated_class_limit(b)
             and not (switches.AUDIT_FIXES and sme_certificate_required(b)) else None)
+
+
+def v16(b):
+    hit = _rtd_v16_base(b)
+    if not switches.RTD_SIZE_EXPLICIT_EXCEPTION:
+        return hit
+    from .rtd_size_exception import filter_hit
+    return filter_hit(b, hit)
 
 
 # 판로지원법 시행령 제2조의2 ①1 단서: below 1억 the restriction may widen to all SMEs when the 소기업·소상공인 bid failed (유찰)
@@ -2743,24 +2751,32 @@ def v17(b):
         return None
     if switches.REG_CONSISTENCY and sme_registered(b):
         return None
-    state, lines, _ = size_state(b, positive=True)
+    state, lines, _ = size_state(b, positive=True, gate_normal=switches.RTD_SIZE_TYPOGRAPHY)
     state, lines = x5_declared(b, state, lines)
     if x5_positive_off(b, lines) or switches.X5_V17_CLASS and small_with_companions(lines):
         return None
     return lines[0] if state == 'sme' else None
 
 
-def v18(b):
+def _rtd_v18_base(b):
     if not _general(b) or b.meta.P >= EOK:
         return None
     if switches.SIZE_ABSENCE_NEEDS_REG and not size_registered(b):
         return None
     if x5_absence_off(b):
         return None
-    state, lines, exc = size_state(b)
+    state, lines, exc = size_state(b, gate_normal=switches.RTD_SIZE_TYPOGRAPHY)
     if switches.X5_METHOD_STATEMENT and method_only(b, lines):
         state = None
     return True if state is None and not exc and not designated_class_limit(b) else None
+
+
+def v18(b):
+    hit = _rtd_v18_base(b)
+    if not switches.RTD_SIZE_EXPLICIT_EXCEPTION:
+        return hit
+    from .rtd_size_exception import filter_hit
+    return filter_hit(b, hit)
 
 
 # ---------------------------------------------------------------- pledges, software, joint contracts, briefings
@@ -4230,3 +4246,10 @@ def evidence(text):
     while t and t[0] in '=+@':
         t = t[1:].lstrip()
     return t
+
+
+def size_class_for_gate(b, ln):
+    if not switches.RTD_SIZE_TYPOGRAPHY:
+        return size_class(b, ln)
+    from .rtd_size_typography import class_of
+    return class_of(b, ln)

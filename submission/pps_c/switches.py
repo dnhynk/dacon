@@ -418,3 +418,11 @@ V12_GOODS_OBJECT = False
 # Probe (red team B2): a v12 firing of the dedicated stage is dropped when its evidence is a document-list entry, a DOCS
 # line, a certificate name with no holder or possession wording, or a verification-only note. False = current.
 DED_V12_REQ_ONLY = False
+
+# v16/v18: an absence is no violation when the notice itself states that the SME-priority rule does not apply to it or that
+# its exception is applied (item table: 판로지원 예외 명시). False = current.
+RTD_SIZE_EXPLICIT_EXCEPTION = False
+
+# v14-v18: class words split by layout or written with other middle dots (중⋅소기업, 중‧소기업) are normalized before the
+# size class is read, so a whole-SME restriction is not read as small-only. False = current.
+RTD_SIZE_TYPOGRAPHY = False

@@ -82,11 +82,11 @@ def test_v17_small_class_companions_and_tag_only(monkeypatch):
     assert not judge.tag_only([Line('중소기업자로서 확인서를 소지한 자')])
     b = service('가. 용역명: 청사 시설물 유지관리 용역')
     venture = Line('소기업·소상공인·벤처기업·창업기업으로서 확인서를 소지한 자')
-    monkeypatch.setattr(judge, 'size_state', lambda b, positive=False: ('sme', [venture], False))
+    monkeypatch.setattr(judge, 'size_state', lambda b, positive=False, **kw: ('sme', [venture], False))
     off, on = toggle(monkeypatch, 'X5_V17_CLASS', b, judge.v17)
     assert off is venture and on is None
     tag = Line('(국내입찰/규격가격동시/제한경쟁_중소기업)', sec='TOP')
-    monkeypatch.setattr(judge, 'size_state', lambda b, positive=False: ('sme', [tag], False))
+    monkeypatch.setattr(judge, 'size_state', lambda b, positive=False, **kw: ('sme', [tag], False))
     off, on = toggle(monkeypatch, 'X5_TAG_NOT_POSITIVE', b, judge.v17)
     assert off is tag and on is None
 
