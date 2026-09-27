@@ -3536,7 +3536,10 @@ V13_STAGE_MID = re.compile(r'중\s*기업|중\s*[·ㆍ‧・,․]\s*소\s*기업
 V13_STAGE_KIND = r'(?:중\s*[·ㆍ‧・․]?\s*소\s*기업|중소\s*기업|중\s*기업|소\s*기업|소\s*상\s*공\s*인|장애인\s*기업)'
 V13_STAGE_CERT = re.compile(V13_STAGE_KIND + r'(?:\s*[·ㆍ‧・․,/]?\s*(?:또는|및)?\s*' + V13_STAGE_KIND
                             + r')*\s*(?:\([^)]{0,20}\))?\s*확\s*인\s*서')
-V13_STAGE_DENY = re.compile(r'\s*(?:은|는|의\s*경우|로는)?\s*(?:인정하지\s*않|인정되지\s*않|불인정|제외|불가|허용하지\s*않|해당되지\s*않)')
+# A refusal follows the certificate after particles only (는, 를, 의 경우는, 로는 …); a verb between them (…를 제출하지 않을 경우)
+# makes it a requirement, not a refusal.
+V13_STAGE_DENY = re.compile(r'\s*(?:\([^)]{0,10}\))?\s*(?:은|는|를|을|의\s*경우(?:에는|는|에도)?|(?:으)?로는|만으로는|도)?\s*'
+                            r'(?:인정하지\s*않|인정되지\s*않|인정\s*불가|불인정|허용하지\s*않|허용되지\s*않|해당되지\s*않|제외)')
 V13_STAGE_CLAUSE_END = re.compile(r'(?:다|함|음|됨|임|요|니다)\s*[\.。]?\s*$|[\.。]\s*$')
 
 
