@@ -25,6 +25,7 @@ GOSI = {'국가기관': 230_000_000, '준정부기관': 710_000_000, '공기업'
 # ---------------------------------------------------------------------------------------------------------- budget
 KW_BUDGET = re.compile(r'(사업예산|예산액|예산금액|배정예산|기초예산|추정예산|기초금액|추정가격|추정금액|사업금액|용역금액|총사업비|사업비|물품금액|구매금액|사업예정총액|예산)')
 HEADLINE_KIND = {'기초금액': '기초금액', '추정가격': '추정가격', '사업금액': '사업금액', '용역금액': '사업금액'}
+VARIABLE_AMOUNT = re.compile(r'에\s*따라\s*(?:변경|변동|조정)|(?:변경|변동)\s*될\s*수')   # '운행 일수에 따라 변경 될수 있음'
 BAND_AMOUNT = re.compile(r'\d[\d,.]*\s*(?:조|억|천만|백만|만)?\s*원?\s*(?:미만|이상|이하|초과)')
 UNIT_PRICE = re.compile(r'단가\s*(?:계약|입찰|견적|금액|총액|공고)|개별\s*단가|단가\s*(?:로|를)\s*투찰|\(\s*단가\s*\)|단가입찰|단가계약')
 PARTIAL = re.compile(r'금차|당해\s*연도|당해년도|금년도분|1차분|차수별|연차별|1차년도|1년차')
@@ -153,13 +154,14 @@ def meta_codes(meta):
 
 
 def name_tokens(name):
-    toks = set(re.findall(r'[가-힣]{2,}', re.sub(r'[·.\s()]', ' ', name or '')))
+    name = re.sub(r'[ㆍ‧・]', '', name or '')           # 상ㆍ하수도 = 상하수도 (review 9/27, PPS-D-010043)
+    toks = set(re.findall(r'[가-힣]{2,}', re.sub(r'[·.\s()]', ' ', name)))
     return {t for t in toks if t not in GENERIC_TOKENS}
 
 
 def meta_name_tokens(meta):
     toks = set()
-    for m in re.finditer(r'([가-힣·.\s]+?)(?:\(([^()]*)\))?\((\d{4})\)', str(meta.license or '')):
+    for m in re.finditer(r'([가-힣·ㆍ‧・.\s]+?)(?:\(([^()]*)\))?\((\d{4})\)', str(meta.license or '')):
         toks |= name_tokens(m.group(1))
         if m.group(2):
             toks |= name_tokens(m.group(2))
@@ -345,8 +347,8 @@ def valid(obj):
         if not isinstance(obj.get(sec), dict) or obj[sec].get(key) not in values:
             return False
     for sec in ('contract_method', 'region', 'industry'):
-        if not isinstance(obj[sec].get('quote'), str):
-            return False
+        if not isinstance(obj.get(sec), dict) or not isinstance(obj[sec].get('quote'), str):
+            return False    # a malformed section is an invalid reading (retry), never an exception
     items = obj['budget'].get('items')
     if not isinstance(items, list):
         return False
@@ -377,6 +379,8 @@ def consume(b, cands, text):
         stated = amounts_in(it['quote'])
         if ln is None or not vals or not any(abs(vals[0] - a) <= max(1, 1e-6 * vals[0]) for a in stated):
             continue    # the amount must be written in its own quote
+        if VARIABLE_AMOUNT.search(it['quote']):
+            continue    # the notice says the amount varies (per days of use etc.), so it is not the contract amount
         if BAND_AMOUNT.search(it['quote']) and len(stated) == 1:
             continue    # the only amount in the quote is a band threshold (…원 미만/이상), not the notice's price
         items.append((ln, it['kind'], vals[0], it['vat'], it['scope']))

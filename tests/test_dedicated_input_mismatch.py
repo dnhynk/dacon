@@ -229,3 +229,30 @@ def test_consume_keeps_amounts_stated_in_their_quote_and_not_bands():
     assert b.d_input_mismatch['budget'] == []
     assert st.consume(b, cands, out('2억원', '추정가격 2억원 미만인 용역'))              # a band threshold, not the price
     assert b.d_input_mismatch['budget'] == []
+
+
+def test_variable_amounts_and_middle_dot_names():
+    assert st.name_tokens('상ㆍ하수도설비공사업') == st.name_tokens('상하수도설비공사업')
+    b = bundle('※ 총 예산액 : 54,600,000원(운행 일수에 따라 변경 될수 있음)')
+    cands = [line(b, '총 예산액')]
+    out = json.dumps({'budget': {'stated': '있음', 'items': [{'kind': '사업예산', 'amount': '54,600,000원', 'vat': '불명', 'scope': '총액',
+                                                                'quote': '※ 총 예산액 : 54,600,000원(운행 일수에 따라 변경 될수 있음)'}]},
+                      'contract_method': {'stated': '없음', 'quote': '-'},
+                      'participation_restriction': {'region': '없음', 'industry': '없음', 'sme': '없음'},
+                      'region': {'regions': [], 'quote': '-'}, 'industry': {'codes': [], 'names': [], 'quote': '-'}}, ensure_ascii=False)
+    assert st.consume(b, cands, out) and b.d_input_mismatch['budget'] == []   # PPS-D-007879: a variable amount is not compared
+
+
+def test_malformed_sections_are_invalid_not_exceptions():
+    b = bundle('나. 사업예산 : 170,000,000원')
+    cands = [line(b, '사업예산')]
+    good = {'budget': {'stated': '불명', 'items': []}, 'contract_method': {'stated': '불명', 'quote': '-'},
+            'participation_restriction': {'region': '불명', 'industry': '불명', 'sme': '불명'},
+            'region': {'regions': [], 'quote': '-'}, 'industry': {'codes': [], 'names': [], 'quote': '-'}}
+    assert st.consume(b, cands, json.dumps(good, ensure_ascii=False)) is True
+    for sec in ('region', 'industry', 'contract_method'):
+        for bad in (None, [], 0, 'x'):
+            obj = dict(good, **{sec: bad})
+            assert st.consume(b, cands, json.dumps(obj, ensure_ascii=False)) is False      # Codex 9/27: KeyError / AttributeError
+        obj = {k: v for k, v in good.items() if k != sec}
+        assert st.consume(b, cands, json.dumps(obj, ensure_ascii=False)) is False
