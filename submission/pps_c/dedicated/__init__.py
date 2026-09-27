@@ -7,7 +7,9 @@ Modules are imported only when their item is switched on, so the default runtime
 """
 import importlib
 
-MODULES = {'v9': 'model_name', 'v12': 'general_dp', 'v24': 'input_mismatch'}
+MODULES = {'v9': 'model_name', 'v12': 'general_dp', 'v24': 'input_mismatch', 'v19': 'pledge', 'v20': 'sw_participation',
+           'v10': 'competition_product:A', 'v11': 'competition_product:B', 'v13': 'competition_product:C',
+           'v1': 'qualification:A', 'v4': 'qualification:B', 'v8': 'qualification:C'}
 
 
 def stage(item):
