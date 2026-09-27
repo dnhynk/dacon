@@ -17,6 +17,7 @@ from pathlib import Path
 from . import catalog, csvout, facts, families as F, judge, record, switches
 from .runner import Engine, MockEngine, log
 from .v24 import stage as v24stage
+from . import dedicated
 
 # Family order after the first pass: cheap, high-value families first so a deadline cut loses the least.
 ORDER = ('size', 'dp', 'region', 'perf', 'pledge', 'brief', 'sw', 'model', 'model2')
@@ -110,6 +111,9 @@ def run(args):
                         rest.append(r)
         if switches.V24_PIPELINE and (not args.families or v24stage.FAM in args.families):
             rest += [r for r in (v24stage.request(engine, b, k, Request) for k, b in enumerate(bundles)) if r is not None]
+        for st in dedicated.active():
+            if not args.families or st.FAM in args.families:
+                rest += [r for r in (st.request(engine, b, k, Request) for k, b in enumerate(bundles)) if r is not None]
         queue = [r for r in first if r is not None] + rest
         stats['requests'] = len(queue)
         log(f'{len(queue)} requests ({len(first)} first pass); prompt build {time.time() - t0:.1f}s')
@@ -198,6 +202,9 @@ def run(args):
 def consume(b, r, text):
     if r.fam == v24stage.FAM:
         return v24stage.consume(b, r.cands, text)
+    st = dedicated.by_family(r.fam)
+    if st is not None:
+        return st.consume(b, r.cands, text)
     fam = F.FAMILIES[r.fam]
     lines, top = F.parse(text, fam, r.cands, r.extra)
     # A parseable JSON object is not necessarily a complete grammar response.

@@ -9,6 +9,7 @@ import re
 
 from . import amounts, catalog, dates, record, regions, switches
 from .v24 import compare as v24p_compare
+from . import dedicated
 from .meta import EOK, NOTICE_AMOUNT
 
 ITEMS = [f'v{k}' for k in range(1, 25)]
@@ -3529,7 +3530,9 @@ def judge(b):
     """{item: (0|1, evidence text)}; evidence is an exact source line (≤500 chars) or '' for absence items."""
     out = {}
     for it in ITEMS:
-        if it in switches.AF_ITEMS or it in switches.AF1_ITEMS or it in switches.AF3_ITEMS:
+        if it in switches.DEDICATED:
+            hit = dedicated.stage(it).verdict(b)
+        elif it in switches.AF_ITEMS or it in switches.AF1_ITEMS or it in switches.AF3_ITEMS:
             saved = switches.AUDIT_FIXES, switches.AUDIT_FIXES2, switches.AUDIT_FIXES3
             switches.AUDIT_FIXES = True
             switches.AUDIT_FIXES2 = saved[1] or it in switches.AF_ITEMS or it in switches.AF3_ITEMS
