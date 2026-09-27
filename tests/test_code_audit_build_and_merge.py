@@ -48,6 +48,7 @@ def test_structural_dependencies_are_not_limited_to_observed_cells(calc):
 
 
 def test_unscored_probe_cannot_masquerade_as_zero_gain(calc):
+    score(calc, 'V20OR', None)
     with pytest.raises(ValueError, match='unscored'):
         calc.predict(['V20OR'])
 

@@ -5,19 +5,16 @@
   "goal_official_macro_f1": 0.8,
   "official": {
     "best": {
-      "name": "CG",
-      "score": 0.7147180317,
-      "zip": "artifacts/rebuild_c/CG_goods/submit.zip",
-      "zip_sha256": "256f1cca283639e3b00d268413d3ea155ea1b6b9925452ffffaa6751b6587f48"
+      "name": "THKA",
+      "score": 0.7253205225,
+      "zip": "artifacts/rebuild_c/THKA_think8_r0927b/submit.zip",
+      "zip_sha256": "dfb2ebf17948ec0c687c946ad0f6ef008f5980543c21032e78e7c32fdea5a0b6"
     },
-    "adopted_overrides": {
-      "COMPETITIVE_GOODS": "('v10', 'v11', 'v13')",
-      "V9_BROAD": "True"
-    },
+    "adopted_overrides": "union of the switch overrides of CG V9B REX6 AFBbR8 PRX4X V24W1PG X4OBJ AFBaR2 V20OR (runs/rebuild_c/transfer_20260925/final_calc.py merge)",
     "combined_estimate": {
-      "package": "P3a + CG + V9B",
-      "score": 0.7257829,
-      "kind": "conditional item-additive estimate, not an official score"
+      "package": "P3a + CG + V9B + REX6 + AFBbR8 + PRX4X + V24W1PG + X4OBJ + AFBaR2 + V20OR",
+      "score": 0.7381417,
+      "kind": "conditional item-additive estimate, not an official score; items shared by several probes may interact"
     },
     "preregistration": "runs/harness_improve_20260919/precision_analysis/PREREGISTRATION.md",
     "receipts": "runs/rebuild_c/submissions/official_submission_<name>.json",
@@ -229,86 +226,87 @@
         "row": "51",
         "name": "THKA",
         "kst": "2026-09-27",
-        "slot": "main",
-        "score": null
+        "score": 0.7253205225,
+        "outcome": "main; -0.0005 vs P3a+CG+V9B (0.7257829): thinking on 8 families does not pay"
       },
       {
         "row": "82",
         "name": "V9SX12",
         "kst": "2026-09-27",
-        "slot": "spare1",
-        "score": null
+        "score": 0.7111348944,
+        "outcome": "spare1; -0.0004 vs P3a+V9B: X3 v9 removals lose; split per row rule"
       },
       {
         "row": "81",
         "name": "V20OR",
         "kst": "2026-09-27",
-        "slot": "spare2",
-        "score": null
+        "score": 0.7006749663,
+        "outcome": "spare2; +0.0002 vs P3a: v20 orderer scope adopted"
       },
       {
         "row": "78",
         "name": "X4OBJ",
         "kst": "2026-09-27",
-        "slot": "spare3",
-        "score": null
+        "score": 0.715498058,
+        "outcome": "spare3; +0.0008 vs P3a+CG: adopted"
       },
       {
         "row": "87",
         "name": "PRX4X",
         "kst": "2026-09-27",
-        "slot": "spare4",
-        "score": null
+        "score": 0.7019831181,
+        "outcome": "spare4; +0.0015 vs P3a: adopted"
       },
       {
         "row": "83",
         "name": "AFBaR2",
         "kst": "2026-09-27",
-        "slot": "spare5",
-        "score": null
+        "score": 0.7007864553,
+        "outcome": "spare5; +0.0003 vs P3a: adopted"
       },
       {
         "row": "84",
         "name": "AFBbR8",
         "kst": "2026-09-27",
-        "slot": "spare6",
-        "score": null
+        "score": 0.7032978477,
+        "outcome": "spare6; +0.0028 vs P3a: adopted"
       },
       {
         "row": "80",
         "name": "REX6",
         "kst": "2026-09-27",
-        "slot": "spare7",
-        "score": null
+        "score": 0.7061871631,
+        "outcome": "spare7; +0.0057 vs P3a: adopted"
       },
       {
         "row": "85",
         "name": "SZ13X",
         "kst": "2026-09-27",
-        "slot": "spare8",
-        "score": null
+        "score": 0.7133783646,
+        "outcome": "spare8; -0.0013 vs P3a+CG: X5 exemptions and/or SZ13F lose; split"
       },
       {
         "row": "86",
         "name": "V24W1PG",
         "kst": "2026-09-27",
-        "slot": "spare9",
-        "score": null
+        "score": 0.7015234738,
+        "outcome": "spare9; +0.0010 vs P3a: adopted"
       },
       {
         "row": "66",
         "name": "SCP",
         "kst": "2026-09-27",
-        "slot": "spare10",
-        "score": null
+        "score": 0.7140330005,
+        "outcome": "spare10; -0.0007 vs P3a+CG: scope rules lose; split"
       }
     ]
   },
   "task": {
-    "status": "probes_0927_submitted_awaiting_scores",
-    "next_action": "Enter the 9/27 official scores in official.ledger and in the SCORES table of runs/rebuild_c/transfer_20260925/final_calc.py, then apply the approved 9/28-9/29 rules: PREREGISTRATION rows 51 (THKA positive: the same package with and without thinking), 82 (V9SX12 not positive: split V9_STAGE2 first) and 80/83/85 (REX6/AFBaR2/SZ13X positive: leave-one-component-out).",
+    "status": "probes_0927_scored",
+    "next_action": "9/28 00:00:30 spares: literal-broadening probes on the weakest items (v9-v13, v19, v20, v24, v1, v4, v8) plus CODE_AUDIT_BASE alone; 9/28 main: measured positives only (the 0.7381 union, plus any 9/28 spare positives if it is sent later that day).",
     "main_slot_rule": "From 9/28 the main slot carries the strongest supported package; spare probes keep minimal bases below 0.75 (user).",
-    "held": "CODE_AUDIT_BASE=False keeps the 9/26 audit estimate/article/date-role repairs dormant until measured separately; THINKING_FAMILIES=() keeps thinking off by default."
+    "held": "CODE_AUDIT_BASE=False keeps the 9/26 audit estimate/article/date-role repairs dormant until measured separately; THINKING_FAMILIES=() keeps thinking off by default.",
+    "lesson_0927": "preregistered estimates were about 4x too high in total (+0.012 measured vs about +0.05); practitioner-standard removals paid in v19/v20/v22 and v1 but lost in v9, v14-v18 and competition scope; the organizer mostly labels literally"
   },
   "runtime": {
     "entry": "script.py",

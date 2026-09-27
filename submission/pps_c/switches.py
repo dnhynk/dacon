@@ -248,3 +248,5 @@ V24P_GUARDS = False
 # Independent code audit: corrected common-base interpretation is measured
 # separately from the 9/27 item probes, whose published baselines stay fixed.
 CODE_AUDIT_BASE = False
+# Diagnostic probes only: these item columns are written as 0, so 24 x the score drop is the item's exact F1.
+ZERO_ITEMS = ()
