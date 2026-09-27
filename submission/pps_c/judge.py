@@ -3541,6 +3541,14 @@ V13_STAGE_CERT = re.compile(V13_STAGE_KIND + r'(?:\s*[·ㆍ‧・․,/]?\s*(?:�
 V13_STAGE_DENY = re.compile(r'\s*(?:\([^)]{0,10}\))?\s*(?:은|는|를|을|의\s*경우(?:에는|는|에도)?|(?:으)?로는|만으로는|도)?\s*'
                             r'(?:인정하지\s*않|인정되지\s*않|인정\s*불가|불인정|허용하지\s*않|허용되지\s*않|해당되지\s*않|제외)')
 V13_STAGE_CLAUSE_END = re.compile(r'(?:다|함|음|됨|임|요|니다)\s*[\.。]?\s*$|[\.。]\s*$')
+# An explicit small-only restriction; 소기업 inside 중소기업 or 중·소기업 is not one.
+V13_STAGE_SMALL_RULE = re.compile(r'(?<!중)(?<!중[·ㆍ‧・․])소\s*기업\s*(?:[·ㆍ‧・․,/]|및|또는|과|와)?\s*(?:소\s*상\s*공\s*인)?\s*'
+                                  r'(?:으로\s*확인된\s*(?:업체|자)\s*만|(?:인\s*)?(?:업체|자)\s*만|만\s*(?:참가|참여|입찰)|'
+                                  r'으로\s*(?:제한|한정)|에\s*한(?:함|한다|하여|정))')
+# 중기업 listed just before it in the same enumeration (중기업·소기업·소상공인만) makes the restriction admit 중기업.
+V13_STAGE_MID_BEFORE = re.compile(r'중\s*(?:소\s*)?기업\s*(?:자\s*)?[·ㆍ‧・․,/]?\s*(?:또는|및|과|와)?\s*$')
+# Certificates required together: …확인서 및 …확인서를 모두 소지한.
+V13_STAGE_ALL = re.compile(r'[^.。]{0,12}?모두')
 
 
 def v13_stage_clause(b, ln):
@@ -3566,16 +3574,22 @@ def v13_stage_clause(b, ln):
 
 
 def v13_stage_admits_mid(text):
-    """The certificates a clause accepts decide (a 중기업·중소기업 확인서 admits 중기업, a 소기업·소상공인 확인서 does not); a
+    """Whether the clause establishes an actual 중기업-eligible alternative. An explicit small-only restriction not listed
+    after 중기업 says no. Otherwise the certificates it accepts decide (a 중기업·중소기업 확인서 admits 중기업, a 소기업·소상공인
+    확인서 does not): alternatives admit 중기업 when any does, certificates required together (및 … 모두) only when all do; a
     certificate it refuses counts for neither, and a clause accepting none is read by its eligibility wording. Statute and rule
     names are removed first."""
     text = V13_STAGE_BRACKET.sub(lambda m: ' ' if V13_STAGE_LAW.search(m.group(1)) else ' ' + m.group(1) + ' ', text)
     text = V13_STAGE_NAMES.sub(' ', text)
+    if any(not V13_STAGE_MID_BEFORE.search(text[max(0, m.start() - 12):m.start()]) for m in V13_STAGE_SMALL_RULE.finditer(text)):
+        return False
     accepted, refused = [], []
     for m in V13_STAGE_CERT.finditer(text):
         (refused if V13_STAGE_DENY.match(text, m.end()) else accepted).append(m)
     if accepted:
-        return any('중' in m.group(0) for m in accepted)
+        mid = ['중' in m.group(0) for m in accepted]
+        together = len(accepted) > 1 and V13_STAGE_ALL.match(text, accepted[-1].end())
+        return all(mid) if together else any(mid)
     for m in reversed(refused):
         text = text[:m.start()] + ' ' + text[m.end():]
     return bool(V13_STAGE_MID.search(text))
