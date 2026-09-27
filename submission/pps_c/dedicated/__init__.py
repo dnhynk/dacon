@@ -2,6 +2,7 @@
 
 A stage module has FAM (its journal family name), request(engine, b, k, request_cls) -> a request or None,
 consume(b, cands, text) -> bool (stores the stage's reading on b), and verdict(b) -> an evidence line, True or None.
+A module that decides several items is listed as 'module:X' per item and takes the violation: verdict(b, 'X').
 Modules are imported only when their item is switched on, so the default runtime never loads them.
 """
 import importlib
@@ -10,12 +11,17 @@ MODULES = {'v9': 'model_name', 'v12': 'general_dp', 'v24': 'input_mismatch'}
 
 
 def stage(item):
-    return importlib.import_module(f'{__name__}.{MODULES[item]}')
+    return importlib.import_module(f"{__name__}.{MODULES[item].partition(':')[0]}")
+
+
+def verdict(item, b):
+    tag = MODULES[item].partition(':')[2]
+    return stage(item).verdict(b, tag) if tag else stage(item).verdict(b)
 
 
 def active():
     from .. import switches
-    return [stage(item) for item in switches.DEDICATED]
+    return list(dict.fromkeys(stage(item) for item in switches.DEDICATED))
 
 
 def by_family(fam):

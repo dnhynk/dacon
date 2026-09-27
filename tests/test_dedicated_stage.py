@@ -17,8 +17,9 @@ def bundle():
 
 def fake_stage(verdict):
     calls = []
-    mod = types.SimpleNamespace(FAM='d_fake', verdict=lambda b: verdict,
-                                consume=lambda b, cands, text: calls.append(text) or True)
+    mod = types.ModuleType('fake_stage')
+    mod.FAM, mod.verdict = 'd_fake', (verdict if callable(verdict) else lambda b: verdict)
+    mod.consume = lambda b, cands, text: calls.append(text) or True
     return mod, calls
 
 
@@ -43,3 +44,13 @@ def test_consume_goes_to_the_stage(monkeypatch):
     monkeypatch.setattr(dedicated, 'stage', lambda item: mod)
     r = main.Request(0, 'd_fake', [], (), [], {}, 16)
     assert main.consume(bundle(), r, '{"x": 1}') is True and calls == ['{"x": 1}']
+
+
+def test_group_module_decides_each_listed_violation(monkeypatch):
+    mod, _ = fake_stage(lambda b, tag: True if tag == 'A' else None)
+    monkeypatch.setattr(switches, 'DEDICATED', ('v10', 'v11'))
+    monkeypatch.setattr(dedicated, 'MODULES', {'v10': 'grp:A', 'v11': 'grp:B'})
+    monkeypatch.setattr(dedicated, 'stage', lambda item: mod)
+    out = judge.judge(bundle())
+    assert out['v10'] == (1, '') and out['v11'] == (0, '')
+    assert dedicated.active() == [mod]

@@ -3531,7 +3531,7 @@ def judge(b):
     out = {}
     for it in ITEMS:
         if it in switches.DEDICATED:
-            hit = dedicated.stage(it).verdict(b)
+            hit = dedicated.verdict(it, b)
         elif it in switches.AF_ITEMS or it in switches.AF1_ITEMS or it in switches.AF3_ITEMS:
             saved = switches.AUDIT_FIXES, switches.AUDIT_FIXES2, switches.AUDIT_FIXES3
             switches.AUDIT_FIXES = True
