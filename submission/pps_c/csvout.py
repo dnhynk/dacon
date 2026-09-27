@@ -7,7 +7,6 @@ import io
 import os
 import unicodedata
 
-from . import switches
 
 ITEMS = [f'v{k}' for k in range(1, 25)]
 EVID = [f'e{k}' for k in range(1, 25)]
@@ -28,10 +27,6 @@ def row(rec_id, verdicts, source_text):
     out = {'id': rec_id}
     for k, it in enumerate(ITEMS, 1):
         hit, ev = verdicts.get(it, (0, ''))
-        if it in switches.ZERO_ITEMS:
-            hit = 0
-        if it in switches.ONES_ITEMS:
-            hit = 1
         ev = unicodedata.normalize('NFC', ev or '').strip()
         if not hit or it in ABSENCE or ev[:1] in ('=', '+', '@') or len(ev) > 500 or (ev and ev not in source_text):
             ev = ''

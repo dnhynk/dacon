@@ -271,11 +271,6 @@ COMP_REGISTERED = ()
 COMP_MIXED = ()
 # v10: the 1천만원 floor (판로지원법 제9조①: 수의계약 1천만원 이상) applies to 수의계약 only; a competitive bid is judged at any amount.
 V10_FLOOR_PRIVATE_ONLY = False
-# Diagnostic probes only: these item columns are written as 0, so 24 x the score drop is the item's exact F1.
-ZERO_ITEMS = ()
-# Diagnostic probes only: these item columns are written as 1; 24 x (this probe - the same package with the item zeroed)
-# is the F1 of predicting every notice positive, 2P/(P+N), which gives the item's number of test positives P.
-ONES_ITEMS = ()
 # Items decided by a dedicated stage (pps_c/dedicated) instead of the shared rule; () keeps every item on the shared rule.
 DEDICATED = ()
 # Items that keep the shared verdict and also fire where their dedicated stage fires (OR); () adds nothing.
