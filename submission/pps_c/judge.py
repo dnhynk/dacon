@@ -2041,6 +2041,9 @@ X4_NOT_BASE = re.compile(X4_ROLE + r'|Up\s*to', re.I)
 X4_ROLE_AFTER = re.compile(r'\s*[\(\[]?\s*(?:' + X4_ROLE + ')', re.I)
 X4_CLOCK_LINE = re.compile(r'클\s*럭|clock|동\s*작\s*(속\s*도|주\s*파\s*수)|기\s*본\s*주\s*파\s*수|base\s*freq', re.I)
 X4_OVER = re.compile(r'3\.2\s*GHz\s*초\s*과', re.I)
+# 컴퓨터서버 특이사항 'x86 서버': a specification naming only a non-x86 processor (Arm, RISC-V, POWER) is outside it.
+X4_NON_X86 = re.compile(r'\b(?:Arm|ARM)\b(?=[^\n]{0,40}(?:Cortex|Neoverse|core|코어|기반|프로세서|CPU|v\d))|\bCortex-[AX]\d|\bNeoverse|\bAmpere\b|\bGraviton|\bRISC-?V\b|\bPOWER\s?\d{1,2}\b')
+X4_X86 = re.compile(r'x86|X86|Xeon|XEON|EPYC|인텔|Intel|INTEL|\bAMD\b')
 
 
 X4_OTHER_PART = re.compile(r'Wi-?Fi|무선|WLAN|블루투스|Bluetooth|메모리|DDR\d?|(?<![A-Za-z])RAM(?![A-Za-z])|램|스토리지|SSD|HDD|디스크'
@@ -2132,6 +2135,7 @@ def designation_excluded(b):
             fast = any(x4_base_clock(s, m) for s in clock for m in X4_GHZ.finditer(s) if float(m.group(1)) > 3.2) \
                 or any(x4_base_clock(s, m) for s in clock for m in X4_OVER.finditer(s))
             out |= fast and any(X4_CPU_LINE.search(s) and X4_DUAL.search(s) for s in text.split('\n'))
+            out |= switches.X4_SERVER_ARCH and bool(X4_NON_X86.search(text)) and not X4_X86.search(text)
         elif p.code == '4511189301':      # 영상정보디스플레이장치: 단독형 600cd 미만, 비디오월 제외
             out |= any(int(v.replace(',', '')) >= 600 for v, _ in X4_NITS.findall(text)) or bool(X4_VWALL.search(text))
         elif p.code == '6010999901':      # 교육훈련장비: 자동제어·마이크로프로세서·과학교구 실습장비에 한함

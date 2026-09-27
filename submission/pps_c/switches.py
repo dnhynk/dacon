@@ -81,6 +81,8 @@ COMPETITIVE_GOODS = ()
 # Probe (expert audit X4): v10·v11·v13 skip 급식·간식 baskets registered under a food 세부품명 and products outside the designation's
 # 특이사항; v10·v11 read a 시행령 제7조 exception in any document; v13 skips a registered 제7조의2 small-only basis. False = current.
 X4_OBJECT = False
+# 컴퓨터서버: a specification naming only a non-x86 processor is outside the designation (특이사항 'x86 서버'). False = current.
+X4_SERVER_ARCH = False
 # Probe (audit RB): competition-product scope (catalog.classify) follows the audit rounds 1–3 identification rules — 조항호
 # designation, title labels, 디자인 plans/IP, 감리, 회의록, 저수조 licences, SW objects — and nothing else changes. False =
 # current behaviour.
