@@ -64,3 +64,43 @@ def test_or_keeps_the_shared_verdict_and_adds_the_stage(monkeypatch):
         monkeypatch.setitem(judge.RULES, 'v12', lambda b: shared)
         assert judge.judge(bundle())['v12'] == want
         assert dedicated.active() == [mod]
+
+
+def test_x4_drops_a_competition_stage_firing_on_an_excluded_object(monkeypatch):
+    mod, _ = fake_stage(lambda b, tag: True)
+    monkeypatch.setattr(switches, 'DEDICATED_OR', ('v10',))
+    monkeypatch.setattr(dedicated, 'stage', lambda item: mod)
+    monkeypatch.setitem(judge.RULES, 'v10', lambda b: None)
+    monkeypatch.setattr(judge, 'food_basket', lambda b: True)
+    monkeypatch.setattr(judge, 'designation_excluded', lambda b: False)
+    assert judge.judge(bundle())['v10'] == (1, '')
+    monkeypatch.setattr(switches, 'DEDICATED_X4', True)
+    assert judge.judge(bundle())['v10'] == (0, '')
+    monkeypatch.setattr(judge, 'food_basket', lambda b: False)
+    assert judge.judge(bundle())['v10'] == (1, '')
+
+
+def test_v13_stage_fires_only_on_a_small_only_line(monkeypatch):
+    monkeypatch.setattr(switches, 'DEDICATED_OR', ('v13',))
+    monkeypatch.setitem(judge.RULES, 'v13', lambda b: None)
+    lines = {
+        '「중소기업기본법」 제2조에 따른 소기업 또는 「소상공인기본법」 제2조에 따른 소상공인으로서 소기업·소상공인 확인서를 소지한 자': 1,
+        '중소기업기본법 제2조(중소기업자의 범위)에 따른 소기업과 소상공인으로서 중‧소기업‧소상공인 및 장애인기업 확인요령에 따라 발급된 '
+        '소기업 ‧ 소상공인 확인서를 소지한 자': 1,
+        '「중소기업기본법」 제2조에 따른 중·소기업 및 「소상공인 기본법」 제2조에 따른 소상공인으로서 중·소기업·소상공인 확인서를 소지한 자': 0,
+        '중소기업기본법 제2조에 따른 중소기업자, 소기업·소상공인으로서 발급된 중기업·소기업·소상공인확인서를 소지한 자': 0,
+        '제2조에 따른 중소기업 또는 소상공인으로서 중소기업(소상공인) 확인서를 소지한 업체': 0,
+        '「중소기업제품 구매촉진 및 판로지원에 관한 법률」에 의한 중소기업으로서, 소기업 ․ 소상공인확인서(중소기업현황 정보시스템 발급 '
+        '또는 지방중소기업청 발급)를 소지한 업체': 1,
+        '「중·소기업 및 소상공인 지원을 위한 특별조치법」에 따른 중·소기업 또는 소상공인 업체로서 중소기업확인서 또는 '
+        '소상공인확인서를 소지한 자': 0,
+        '「중소기업기본법」 제2조에 따른 중소기업 또는 「소상공인기본법」 제2조에 따른 소상공인으로서 입찰에 참가할 수 있는 자': 0,
+    }
+    for text, want in lines.items():
+        line = types.SimpleNamespace(text=text)
+        mod, _ = fake_stage(lambda b, tag: line)
+        monkeypatch.setattr(dedicated, 'stage', lambda item: mod)
+        monkeypatch.setattr(switches, 'V13_STAGE_SMALL_ONLY', False)
+        assert judge.judge(bundle())['v13'][0] == 1
+        monkeypatch.setattr(switches, 'V13_STAGE_SMALL_ONLY', True)
+        assert judge.judge(bundle())['v13'][0] == want, text

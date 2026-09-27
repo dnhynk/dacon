@@ -3526,12 +3526,43 @@ def segment_of(b):
     return {'work': b.meta.work, 'method': b.meta.method, 'award': b.meta.award, 'law': b.meta.law, 'band': band, 'attach': attach}
 
 
+# V13_STAGE_SMALL_ONLY: law, regulation and certificate-rule names mention 중소기업 without admitting anyone to the bid.
+V13_STAGE_NAMES = re.compile(r'「[^」]*」|『[^』]*』|｢[^｣]*｣|\([^)]*범위[^)]*\)|중소기업\s*기본법|중소기업\s*범위\s*및\s*확인에\s*관한\s*규정|'
+                             r'중[\s·ㆍ‧・]*소기업[\s·ㆍ‧・]*소상공인\s*및\s*장애인기업\s*확인요령|중소기업제품\s*구매촉진\S*|중소기업자\s*간\s*경쟁제품')
+V13_STAGE_MID = re.compile(r'중\s*기업|중\s*[·ㆍ‧・,․]\s*소\s*기업|중소\s*기업\s*자|중소\s*기업(?!\s*(?:기본법|제품|청))')
+V13_STAGE_KIND = r'(?:중\s*[·ㆍ‧・․]?\s*소\s*기업|중소\s*기업|중\s*기업|소\s*기업|소\s*상\s*공\s*인|장애인\s*기업)'
+V13_STAGE_CERT = re.compile(V13_STAGE_KIND + r'(?:\s*[·ㆍ‧・․,/]?\s*(?:또는|및)?\s*' + V13_STAGE_KIND
+                            + r')*\s*(?:\([^)]{0,20}\))?\s*확\s*인\s*서')
+
+
+def v13_stage_admits_mid(text):
+    """The certificate a line requires decides (a 중기업·중소기업 확인서 admits 중기업, a 소기업·소상공인 확인서 does not); a line
+    naming none is read by its eligibility wording. Law and regulation names are removed first."""
+    text = V13_STAGE_NAMES.sub(' ', text)
+    certs = [m.group(0) for m in V13_STAGE_CERT.finditer(text)]
+    return any('중' in c for c in certs) if certs else bool(V13_STAGE_MID.search(text))
+
+
+def dedicated_hit(it, b):
+    """The item's dedicated-stage verdict. DEDICATED_X4 drops a v10·v11·v13 firing on an object X4 excludes;
+    V13_STAGE_SMALL_ONLY drops a v13 firing whose evidence line admits 중기업 or every 중소기업자."""
+    hit = dedicated.verdict(it, b)
+    if hit is None:
+        return None
+    if switches.DEDICATED_X4 and it in ('v10', 'v11', 'v13') and (food_basket(b) or designation_excluded(b)):
+        return None
+    if switches.V13_STAGE_SMALL_ONLY and it == 'v13' and hit is not True \
+            and v13_stage_admits_mid(hit.text):
+        return None
+    return hit
+
+
 def judge(b):
     """{item: (0|1, evidence text)}; evidence is an exact source line (≤500 chars) or '' for absence items."""
     out = {}
     for it in ITEMS:
         if it in switches.DEDICATED:
-            hit = dedicated.verdict(it, b)
+            hit = dedicated_hit(it, b)
         elif it in switches.AF_ITEMS or it in switches.AF1_ITEMS or it in switches.AF3_ITEMS:
             saved = switches.AUDIT_FIXES, switches.AUDIT_FIXES2, switches.AUDIT_FIXES3
             switches.AUDIT_FIXES = True
@@ -3544,7 +3575,7 @@ def judge(b):
         else:
             hit = RULES[it](b)
         if hit is None and it in switches.DEDICATED_OR:
-            hit = dedicated.verdict(it, b)
+            hit = dedicated_hit(it, b)
         if hit is None:
             out[it] = (0, '')
             continue
