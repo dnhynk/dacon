@@ -3526,33 +3526,68 @@ def segment_of(b):
     return {'work': b.meta.work, 'method': b.meta.method, 'award': b.meta.award, 'law': b.meta.law, 'band': band, 'attach': attach}
 
 
-# V13_STAGE_SMALL_ONLY: law, regulation and certificate-rule names mention 중소기업 without admitting anyone to the bid.
-V13_STAGE_NAMES = re.compile(r'「[^」]*」|『[^』]*』|｢[^｣]*｣|\([^)]*범위[^)]*\)|중소기업\s*기본법|중소기업\s*범위\s*및\s*확인에\s*관한\s*규정|'
+# V13_STAGE_SMALL_ONLY: statute and rule names mention 중소기업 without admitting anyone to the bid. A bracketed name is one
+# when it ends in a statute or rule word; a bracketed certificate (「중소기업확인서」) keeps its name.
+V13_STAGE_BRACKET = re.compile(r'[「『｢]([^」』｣]*)[」』｣]')
+V13_STAGE_LAW = re.compile(r'(?:법|법률|시행령|시행규칙|규칙|규정|요령|고시|기준|지침|조례|예규|훈령)\s*$')
+V13_STAGE_NAMES = re.compile(r'\([^)]*범위[^)]*\)|중소기업\s*기본법|중소기업\s*범위\s*및\s*확인에\s*관한\s*규정|'
                              r'중[\s·ㆍ‧・]*소기업[\s·ㆍ‧・]*소상공인\s*및\s*장애인기업\s*확인요령|중소기업제품\s*구매촉진\S*|중소기업자\s*간\s*경쟁제품')
 V13_STAGE_MID = re.compile(r'중\s*기업|중\s*[·ㆍ‧・,․]\s*소\s*기업|중소\s*기업\s*자|중소\s*기업(?!\s*(?:기본법|제품|청))')
 V13_STAGE_KIND = r'(?:중\s*[·ㆍ‧・․]?\s*소\s*기업|중소\s*기업|중\s*기업|소\s*기업|소\s*상\s*공\s*인|장애인\s*기업)'
 V13_STAGE_CERT = re.compile(V13_STAGE_KIND + r'(?:\s*[·ㆍ‧・․,/]?\s*(?:또는|및)?\s*' + V13_STAGE_KIND
                             + r')*\s*(?:\([^)]{0,20}\))?\s*확\s*인\s*서')
+V13_STAGE_DENY = re.compile(r'\s*(?:은|는|의\s*경우|로는)?\s*(?:인정하지\s*않|인정되지\s*않|불인정|제외|불가|허용하지\s*않|해당되지\s*않)')
+V13_STAGE_CLAUSE_END = re.compile(r'(?:다|함|음|됨|임|요|니다)\s*[\.。]?\s*$|[\.。]\s*$')
+
+
+def v13_stage_clause(b, ln):
+    """The evidence line with the lines its clause wraps over: back while the line before ends mid-clause and this line opens
+    no new item, forward while this line ends mid-clause and the next opens none; same document and section, three lines each
+    way."""
+    lines, text = b.notice.lines, ln.text
+    k = ln.i
+    for _ in range(3):
+        if k == 0 or lines[k - 1].doc != ln.doc or lines[k - 1].sec != ln.sec \
+                or V13_STAGE_CLAUSE_END.search(lines[k - 1].text) or ITEM_START.match(lines[k].text):
+            break
+        k -= 1
+        text = lines[k].text + ' ' + text
+    k = ln.i
+    for _ in range(3):
+        if k + 1 >= len(lines) or lines[k + 1].doc != ln.doc or lines[k + 1].sec != ln.sec \
+                or V13_STAGE_CLAUSE_END.search(lines[k].text) or ITEM_START.match(lines[k + 1].text):
+            break
+        k += 1
+        text = text + ' ' + lines[k].text
+    return text
 
 
 def v13_stage_admits_mid(text):
-    """The certificate a line requires decides (a 중기업·중소기업 확인서 admits 중기업, a 소기업·소상공인 확인서 does not); a line
-    naming none is read by its eligibility wording. Law and regulation names are removed first."""
+    """The certificates a clause accepts decide (a 중기업·중소기업 확인서 admits 중기업, a 소기업·소상공인 확인서 does not); a
+    certificate it refuses counts for neither, and a clause accepting none is read by its eligibility wording. Statute and rule
+    names are removed first."""
+    text = V13_STAGE_BRACKET.sub(lambda m: ' ' if V13_STAGE_LAW.search(m.group(1)) else ' ' + m.group(1) + ' ', text)
     text = V13_STAGE_NAMES.sub(' ', text)
-    certs = [m.group(0) for m in V13_STAGE_CERT.finditer(text)]
-    return any('중' in c for c in certs) if certs else bool(V13_STAGE_MID.search(text))
+    accepted, refused = [], []
+    for m in V13_STAGE_CERT.finditer(text):
+        (refused if V13_STAGE_DENY.match(text, m.end()) else accepted).append(m)
+    if accepted:
+        return any('중' in m.group(0) for m in accepted)
+    for m in reversed(refused):
+        text = text[:m.start()] + ' ' + text[m.end():]
+    return bool(V13_STAGE_MID.search(text))
 
 
 def dedicated_hit(it, b):
     """The item's dedicated-stage verdict. DEDICATED_X4 drops a v10·v11·v13 firing on an object X4 excludes;
-    V13_STAGE_SMALL_ONLY drops a v13 firing whose evidence line admits 중기업 or every 중소기업자."""
+    V13_STAGE_SMALL_ONLY drops a v13 firing whose evidence clause admits 중기업 or every 중소기업자."""
     hit = dedicated.verdict(it, b)
     if hit is None:
         return None
     if switches.DEDICATED_X4 and it in ('v10', 'v11', 'v13') and (food_basket(b) or designation_excluded(b)):
         return None
     if switches.V13_STAGE_SMALL_ONLY and it == 'v13' and hit is not True \
-            and v13_stage_admits_mid(hit.text):
+            and v13_stage_admits_mid(v13_stage_clause(b, hit)):
         return None
     return hit
 

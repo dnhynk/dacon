@@ -80,10 +80,10 @@ def test_x4_drops_a_competition_stage_firing_on_an_excluded_object(monkeypatch):
     assert judge.judge(bundle())['v10'] == (1, '')
 
 
-def test_v13_stage_fires_only_on_a_small_only_line(monkeypatch):
+def test_v13_stage_fires_only_on_a_small_only_clause(monkeypatch):
     monkeypatch.setattr(switches, 'DEDICATED_OR', ('v13',))
     monkeypatch.setitem(judge.RULES, 'v13', lambda b: None)
-    lines = {
+    clauses = {
         '「중소기업기본법」 제2조에 따른 소기업 또는 「소상공인기본법」 제2조에 따른 소상공인으로서 소기업·소상공인 확인서를 소지한 자': 1,
         '중소기업기본법 제2조(중소기업자의 범위)에 따른 소기업과 소상공인으로서 중‧소기업‧소상공인 및 장애인기업 확인요령에 따라 발급된 '
         '소기업 ‧ 소상공인 확인서를 소지한 자': 1,
@@ -95,12 +95,20 @@ def test_v13_stage_fires_only_on_a_small_only_line(monkeypatch):
         '「중·소기업 및 소상공인 지원을 위한 특별조치법」에 따른 중·소기업 또는 소상공인 업체로서 중소기업확인서 또는 '
         '소상공인확인서를 소지한 자': 0,
         '「중소기업기본법」 제2조에 따른 중소기업 또는 「소상공인기본법」 제2조에 따른 소상공인으로서 입찰에 참가할 수 있는 자': 0,
+        '중소기업확인서를 소지한 업체만 참가할 수 있습니다.': 0,
+        '「중소기업확인서」를 소지한 업체만 참가할 수 있습니다.': 0,
+        '중소기업자로서 소기업·소상공인 확인서를 소지한 업체만 참가할 수 있습니다.': 1,
+        '중소기업자로서 「소기업·소상공인 확인서」를 소지한 업체만 참가할 수 있습니다.': 1,
+        '중기업 또는 소기업·소상공인 확인서를 소지한 업체만 참가할 수 있습니다.': 0,
+        '중기업 또는\n소기업·소상공인 확인서를 소지한 업체만 참가할 수 있습니다.': 0,
+        '소기업·소상공인 확인서를 소지한 업체만 참가할 수 있습니다. 중기업 확인서는 인정하지 않습니다.': 1,
     }
-    for text, want in lines.items():
-        line = types.SimpleNamespace(text=text)
+    for text, want in clauses.items():
+        b = facts.build({'id': 'T', 'meta': {}, 'docs': [{'type': '공고문', 'text': '2. 입찰참가자격\n' + text}]}, catalog.load())
+        line = next((ln for ln in b.notice.lines if '확인서' in ln.text), b.notice.lines[-1])
         mod, _ = fake_stage(lambda b, tag: line)
         monkeypatch.setattr(dedicated, 'stage', lambda item: mod)
         monkeypatch.setattr(switches, 'V13_STAGE_SMALL_ONLY', False)
-        assert judge.judge(bundle())['v13'][0] == 1
+        assert judge.judge(b)['v13'][0] == 1
         monkeypatch.setattr(switches, 'V13_STAGE_SMALL_ONLY', True)
-        assert judge.judge(bundle())['v13'][0] == want, text
+        assert judge.judge(b)['v13'][0] == want, text
