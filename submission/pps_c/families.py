@@ -87,6 +87,17 @@ BIDDER_LOC = re.compile(r'(주된\s*영업소|본점|본사|사업장|영업소)
 PLACE = re.compile(r'납품\s*(장소|지)|장\s*소|위\s*치|현\s*장|행사\s*장|배송|설치\s*장소|수행\s*장소|용역\s*위치|사업\s*(대상)?지|개최')
 
 
+ORDERER_TOKEN_LOC = re.compile(r'\[수요기관\([^)]*\)[^\]]*\]\s*(관\s*내|내|안|관\s*할|에\s*소\s*재|소\s*재)')
+
+
+def region_sel_sido(ln):
+    """REGION_SEL_SIDO: a bidder-location clause naming a 시·도 the parser finds, or the orderer's jurisdiction token."""
+    if switches.REGION_SEL_SIDO == 1 and not (ln.doc_type == '공고문' and ln.sec == 'QUAL'):
+        return False
+    return BIDDER_LOC.search(ln.text) is not None and (bool(regions.mentions(ln.text)['sido'])
+                                                     or ORDERER_TOKEN_LOC.search(ln.text) is not None)
+
+
 def region_select(notice):
     if switches.AUDIT_FIXES3 and switches.FIX3_PROMPTS:
         # Audit R3-C: a 공고문 qualification clause naming the bidder's location is a candidate even when REGION_ANY misses its
@@ -94,6 +105,9 @@ def region_select(notice):
         return pick(notice, REGION_CUE, 12, lambda ln: REGION_ANY.search(ln.text) is not None or '지역제한' in ln.text.replace(' ', '')
                     or ln.doc_type == '공고문' and ln.sec == 'QUAL' and BIDDER_LOC.search(ln.text) is not None
                     and bool(regions.mentions(ln.text)['sido']))
+    if switches.REGION_SEL_SIDO:
+        return pick(notice, REGION_CUE, 12, lambda ln: REGION_ANY.search(ln.text) is not None or '지역제한' in ln.text.replace(' ', '')
+                    or region_sel_sido(ln))
     return pick(notice, REGION_CUE, 12, lambda ln: REGION_ANY.search(ln.text) is not None or '지역제한' in ln.text.replace(' ', ''))
 
 
@@ -269,6 +283,15 @@ SME_CERT = re.compile(r'중' + DOT + r'소\s*기업\s*(' + DOT + r'|\s*(또는|�
                       r'|중\s*기업\s*(,|，|·|ㆍ|및|또는|/)\s*소\s*기업[^확]{0,14}확인서')
 NO_MEDIUM = re.compile(r'중\s*기업\s*[×xX]|중\s*기업\s*(은|는)?\s*(제외|불가|참여\s*(불가|할\s*수\s*없))')
 
+# V13_SMALL_LIMIT (set by judge.v13 while it reads the class): the clause limits bidding to 소기업·소상공인, or bars 중기업 in
+# words NO_MEDIUM does not cover.
+SMALL_LIMIT_ACTIVE = [False]
+SMALL_LIMIT = re.compile(r'(?<![중·ㆍ・‧․•･/])소\s*기\s*업\s*(자\s*)?(및|또는|과|와|이나|·|,|ㆍ)?\s*소\s*상\s*공\s*인\s*'
+                         r'(만\s*(을\s*)?(참\s*여|참\s*가|입\s*찰|대\s*상|으\s*로|이)|에\s*한\s*(함|하여|정|한다|해)'
+                         r'|(으\s*로|로)\s*(입\s*찰\s*)?(참\s*가\s*)?(자\s*격\s*을\s*)?(제\s*한|한\s*정))'
+                         r'|중\s*기\s*업\s*(은|는|의)?\s*[^.。\n]{0,24}?(참\s*가|참\s*여|입\s*찰|응\s*찰)\s*(할\s*)?(수\s*없|불\s*가|자\s*격\s*이\s*없|제\s*한|제\s*외)'
+                         r'|중\s*기\s*업\s*(은|는|을|를)?\s*(제\s*외|배\s*제)')
+
 
 CERT_WORD = re.compile(r'확\s*인\s*서')
 CERT_CUT = re.compile(r'으로서|로서|으로|(자|체)\s*로\s|발급된|발급한|따라|[,，<‘“「\(（]')
@@ -317,6 +340,34 @@ def size_normal(text):
     return CLASS_COMMA.sub(r'\1·', t)
 
 
+# C2_SIZE_NO_MEDIUM: more wordings of the 중기업 exclusion, and 중소기업 narrowed to its 소기업 part.
+NO_MEDIUM_C2 = re.compile(r'중\s*기\s*업\s*(은|는|의)?\s*(본\s*)?(입\s*찰\s*(에\s*)?)?(참\s*가|참\s*여|응\s*찰|입\s*찰)\s*(은|는|이|가)?\s*'
+                          r'(불\s*가|제\s*외|할\s*수\s*없|하실\s*수\s*없|제\s*한|불\s*가\s*능)|중\s*기\s*업\s*(을|를)\s*제\s*외'
+                          r'|중\s*소\s*기\s*업\s*(중|가\s*운\s*데)\s*(에\s*서\s*)?소\s*기\s*업')
+
+
+# D extends C2_SIZE_NO_MEDIUM: membership subsets and complete negative
+# admission predicates; a denial of the exclusion must not narrow the class.
+MEDIUM_BAN_C2 = re.compile(r'중\s*기\s*업\s*(?:은|는|의|을|를)?\s*(?:본\s*)?(?:입\s*찰\s*(?:에\s*)?)?'
+                          r'(?:(?:참\s*가|참\s*여|응\s*찰|입\s*찰)\s*(?:은|는|이|가)?\s*'
+                          r'(?:불\s*가(?:\s*능)?|불\s*허|제\s*외|(?:할|하실)\s*수\s*없|대\s*상\s*에\s*서\s*제\s*외)'
+                          r'|제\s*외)')
+SME_SUBSET_C2 = re.compile(r'중\s*소\s*기\s*업\s*자?\s*(?:확\s*인\s*서[^.。]{0,30}업\s*체\s*)?'
+                         r'(?:중|가\s*운\s*데)\s*(?:에\s*서\s*)?소\s*기\s*업[^.。]{0,45}'
+                         r'(?:만[^.。]{0,20}(?:참\s*가|참\s*여|입\s*찰)|(?:으\s*로)?\s*(?:참\s*가\s*자\s*격\s*을\s*)?제\s*한)')
+
+def small_only_c2(text):
+    for m in SME_SUBSET_C2.finditer(text):
+        tail=text[m.end():m.end()+38]
+        if re.match(r'\s*(?:하지\s*않|두지\s*않|없|할\s*수\s*있는\s*것\s*은\s*아니|할\s*수\s*없|할\s*필요\s*없|가\s*아니)',tail):continue
+        return True
+    for m in MEDIUM_BAN_C2.finditer(text):
+        tail=text[m.end():m.end()+26]
+        if re.match(r'\s*(?:하\s*지\s*않|되\s*지\s*않|하\s*는\s*것\s*은\s*아니|인\s*것\s*은\s*아니|가\s*아니|아님|아니)',tail):continue
+        return True
+    return False
+
+
 def size_words(text):
     """The size class a clause restricts to once law, agency and article names are removed: 'sme' (중기업 included),
     'small' (소기업·소상공인 only) or None.
@@ -327,7 +378,9 @@ def size_words(text):
     t = SIZE_NAMES.sub(' ', strip_law_titles(text or ''))
     if switches.AUDIT_FIXES:
         t = PREFERENCE_PAREN.sub(' ', RESEARCH_FIRM.sub(' ', t))
-    if NO_MEDIUM.search(t):
+    if NO_MEDIUM.search(t) or switches.C2_SIZE_NO_MEDIUM and small_only_c2(t):
+        return 'small'
+    if SMALL_LIMIT_ACTIVE[0] and SMALL_LIMIT.search(t):
         return 'small'
     small_cert = sme_cert = False
     spans = []

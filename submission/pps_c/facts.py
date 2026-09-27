@@ -108,9 +108,15 @@ def title_texts(bundle):
     return out
 
 
+# Red team A2 (switch V20_PROGRAM_SW): a program named by a business word is software, not a programme run.
+SW_PROGRAM_BEFORE = re.compile(r'(업\s*무|관\s*리|정\s*보|전\s*산|행\s*정|회\s*계|통\s*계|인\s*사|급\s*여|재\s*무|자\s*산|물\s*품|민\s*원|예\s*약|보\s*안)\s*(관\s*리\s*)?$')
+
+
 def not_sw_title(bundle):
     for t in title_texts(bundle):
         hits = list(NOT_SW_TITLE.finditer(t))
+        if switches.V20_PROGRAM_SW:
+            hits = [m for m in hits if not (re.match(r'프\s*로\s*그\s*램', m.group(0)) and SW_PROGRAM_BEFORE.search(t[:m.start()]))]
         if hits and not SYSTEM_WORD.search(t, hits[-1].end()):
             return True
     return False

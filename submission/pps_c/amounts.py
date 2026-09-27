@@ -120,6 +120,22 @@ def money(text):
     return sorted(out, key=lambda o: o.start)
 
 
+# C2_BUDGET_WORDS: the base named with no multiple and a comparison ("사업예산 이상"), and "…의 100분의 N".
+RATIO_BARE = re.compile(r'(?P<base>기초\s*금액|추정\s*가격|추정\s*금액|예정\s*가격|사업\s*예산|배정\s*예산|예산|계약\s*금액|사업\s*금액|사업비|용역\s*금액)'
+                        r'\s*(?:액|금\s*액|액\s*수)?\s*(?:이\s*상|을\s*초\s*과|를\s*초\s*과|초\s*과|을\s*상\s*회|과\s*같\s*거\s*나|과\s*동\s*일)')
+RATIO_FRACTION = re.compile(r'(?P<base>기초\s*금액|추정\s*가격|추정\s*금액|예정\s*가격|사업\s*예산|배정\s*예산|예산\s*액?|계약\s*금액|사업\s*금액|사업비|용역\s*금액)'
+                            r'\s*(?:의|대비)?\s*100\s*분\s*의\s*(?P<num>\d+(?:\.\d+)?)')
+
+
+# C2's new implicit/fraction floors retain their own comparator polarity.
+def c2_ratio_is_floor(text, end):
+    tail=re.sub(r'\s+','',text[end:end+80])
+    if re.match(r'^(?:이하|이내|미만)',tail):return False
+    if re.match(r'^(?:이상|초과|상회)?(?:인|일|인것|일것)?(?:은|는)?(?:아니|아님|필요(?:가|는|은)?없|필요하지않)',tail):return False
+    if re.match(r'^의?(?:(?:단일|동종|유사|용역|납품|수행|사업))*실적(?:을|은|이|의)?(?:요구하지않|필요(?:가|는|은)?없|요구하는것은아니)',tail):return False
+    return True
+
+
 def ratios(text):
     """Base-relative requirements: [(base, multiple)], e.g. ('기초금액', 1.3) for 기초금액의 130%."""
     out = []
@@ -133,6 +149,14 @@ def ratios(text):
         else:
             continue
         out.append((re.sub(r'\s', '', m.group('base')), mult))
+    if switches.C2_BUDGET_WORDS:
+        for m in RATIO_FRACTION.finditer(text or ''):
+            if not c2_ratio_is_floor(text,m.end()):continue
+            out.append((re.sub(r'\s', '', m.group('base')), float(m.group('num')) / 100.0))
+        if not out:
+            for m in RATIO_BARE.finditer(text or ''):
+                if not c2_ratio_is_floor(text,m.end()):continue
+                out.append((re.sub(r'\s', '', m.group('base')), 1.0))
     return out
 
 

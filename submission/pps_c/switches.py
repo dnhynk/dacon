@@ -295,3 +295,129 @@ V9_MAKER = False
 # object with none of the cited product's own words (judge.V12_PRODUCT_WORDS), the clause names the 직접생산확인 certificate and
 # offers no licence or supply route in its place. False = current behaviour.
 V12_OBJECT_VOCAB = False
+# Red team A2 (switch V8_SAME_CLAUSE): v8 takes a qualification clause that states the bidder's location and a held record together
+# when no region line was read and none is registered. False = current behaviour.
+V8_SAME_CLAUSE = False
+# Red team A2 (switch V20_PROGRAM_SW): V20_CONTENT does not refuse "…프로그램 운영" when a business word names the program as
+# software ("업무관리 프로그램 운영", "회계 프로그램 운영"). False = current behaviour.
+V20_PROGRAM_SW = False
+# Red team A2 (switch V24_METHOD_WIDE): v24's method-field axis also reads other method labels, value-only table lines,
+# "본 입찰은 … 제한경쟁입찰입니다" declarations, heading parentheses and "지역제한 경쟁". False = current behaviour.
+V24_METHOD_WIDE = False
+# Red team A2 (switch V24_AMOUNT_LABELS): v24's CPU amount readers also take 용역금액, 용역(기초)금액, 과업예산, 물품·구매금액, a label
+# closed by a parenthesis ("기초금액(사업예산):", "(예비가격기초금액)") and a backslash won sign. False = current behaviour.
+V24_AMOUNT_LABELS = False
+# Red team A2 (switch V24_AMOUNT_TOTAL): v24's CPU amount readers accept "총"/"총액" between the label and the amount
+# ("사업금액 : 총 88,000,000원"). False = current behaviour.
+V24_AMOUNT_TOTAL = False
+# Red team A2 (switch V1_INST_WORDS): v1's institution gate also accepts 교육기관, 전문기관, 학회, 지방공사·공단, 출연·출자·투자기관,
+# 진흥원·평가원 as institution kinds. False = current behaviour.
+V1_INST_WORDS = False
+# Red team A2 (switch V24_METHOD_VERTICAL): v24's method-field axis takes the next line as the value of a label that stands
+# alone (vertical table). False = current behaviour.
+V24_METHOD_VERTICAL = False
+# Red team A2 (switch V1_NATIONWIDE_WIDE): v1 reads every qualification-section line for a nationwide or multi-region holding of
+# branches, service centres, repair shops, offices, plants or warehouses (wider nouns and verbs than NATIONWIDE_HOLDING) or a
+# held staff count of ten or more (STAFF_SCALE), with no institution-family candidacy needed. False = current behaviour.
+V1_NATIONWIDE_WIDE = False
+# Red team A2 (switch V24_LICENCE_PARTIAL): v24 fires when the 공고문's qualification licence codes and 나라장터's each hold a code
+# the other lacks (a partial overlap; the licence axes fire only on disjoint sets). False = current behaviour.
+V24_LICENCE_PARTIAL = False
+# Red team A2 (switch V4_ONLY_RECORDS): with a participation record required, v4 also fires on a 공고문 line (not the evaluation
+# section) limiting the counted records to schools or a public-buyer kind ("(중·고등학교 실적만 해당)"). False = current behaviour.
+V4_ONLY_RECORDS = False
+# Red team A2 (switch V24_BASIC_SCOPE): v24 fires when 나라장터 registers only 시·군·구 and the 공고문 restricts the bidder to the
+# whole 시·도 naming no 시·군·구 (a scope mismatch the 시·도 comparison cannot see). False = current behaviour.
+V24_BASIC_SCOPE = False
+# Red team A2 (switch V24_BARE_TAG): v24 reads a bracketed method tag without an amount band in the first 12 공고문 lines
+# ("(제한경쟁)") against 나라장터 계약방법. False = current behaviour.
+V24_BARE_TAG = False
+# Red team A2 (switch V4_BUYER_NOUN): a buyer kind directly qualifying the record noun ("공공기관(…) 통근버스 운행 실적") limits the
+# record to that buyer although no ordering verb or particle follows it. False = current behaviour.
+V4_BUYER_NOUN = False
+# Red team A2 (switch V8_TOKEN_REGION): v8 also takes a 공고문 qualification clause that restricts the bidder's location to the
+# anonymised orderer/local-government token ("본점소재지가 [수요기관(기초자치단체)]내에 소재"), which the region family never
+# selects. False = current behaviour.
+V8_TOKEN_REGION = False
+# Red team A2 (switch V4_UNREAD): v4 also reads held-record clauses the perf family never selected (x2_unread_records, as v2
+# under X2_HELD_RECORD_X) and fires when such a clause limits the record to a named kind of buyer. False = current behaviour.
+V4_UNREAD = False
+# Red team A2 (switch V24_BASIC_REGION): v24 compares 시·군·구 tokens too: 나라장터 registers 시·군·구 and the 공고문's
+# bidder-location clause names only other 시·군·구 (anonymiser ids are shared by doc and meta), no orderer token. False = current.
+V24_BASIC_REGION = False
+# Red team A2 (switch V24_POW10): v24 fires when, in a field group none of whose labelled values agrees with 나라장터, a value
+# equals the registered amount x 10^k (k = ±1..±3; a dropped or added zero). False = current behaviour.
+V24_POW10 = False
+# Red team A2 (switch V20_STATEMENT_STRICT): v20's statement reader takes a 제48조 citation only of the 소프트웨어 진흥법 (not
+# 지방계약법 시행령 제48조) and not a bare list entry naming the 중소 SW사업자 지침 among applicable rules. False = current behaviour.
+V20_STATEMENT_STRICT = False
+# Red team A2 (switch V4_BUYER_WIDE): v4's buyer reader also takes 중앙부처, 공공단체, 관급, 국공립, 시·도, 시·군·구, 공사·공단, 공단
+# and public facilities (도서관·박물관·미술관·복지관) (complementing C2_BUYER_VOCAB), reads "(민간 제외)" as no private admission,
+# and takes a clientele-limited record ("중학생 대상 … 실적"). False = current behaviour.
+V4_BUYER_WIDE = False
+# Red team C2: the region family also selects bidder-location clauses whose 시·도 REGION_ANY misses ("충청남도에 둔") or that
+# name the orderer's jurisdiction token (families.region_sel_sido). 1: 공고문 qualification section, 2: any line. 0 = current.
+REGION_SEL_SIDO = 0
+# Red team C2: v4 buyer kinds outside BUYER (행정기관, 정부기관, 출연·투자·산하기관, 군부대·국방부, 시·군·구청·도청, 청-level
+# agencies, 공공부문) and the relations "…과 체결한" / "…로부터 수주한" (judge.BUYER_C2). False = current behaviour.
+C2_BUYER_VOCAB = False
+# Red team C2: v19 bid-time wording ("입찰서와 함께 제출", "입찰참가 신청 시", "개찰 전까지") and maker 공급확인서 /
+# 기술지원확인서 as pledge documents in the X6 stage check (judge.X6_PRE_TIME_C2, X6_PLEDGE_C2). False = current behaviour.
+C2_PLEDGE_VOCAB = False
+# Red team C2: v10's presence test skips lines that only verify the direct-production certificate (v12's
+# DP_VERIFY with the certificate as subject; judge.dp_only_verifies). False = current behaviour.
+C2_DP_PRESENT_LITERAL = False
+# Red team C2: v12 treats a line as verification-only only when the certificate is the verified subject and no possession
+# wording (incl. 발급받은, 받은 업체, 갖춘, 소지 업체) is present (judge.dp_verify_only). False = current behaviour.
+C2_DP_VERIFY_SUBJECT = False
+
+# Red-team D: isolated candidate, default preserves the measured union.
+RTD_V21_SHARE_TEXT = False
+
+# Red-team D: isolated candidate, default preserves the measured union.
+RTD_V3_AMOUNT_TEXT = False
+
+# Red-team D: isolated candidate, default preserves the measured union.
+RTD_V23_EVENT_DATES = False
+
+# Red-team D: isolated candidate, default preserves the measured union.
+RTD_REGION_BIDDER_CLAUSE = False
+
+# Red-team D: isolated candidate, default preserves the measured union.
+RTD_BRIEF_ATTENDANCE = False
+
+# Red-team D: explicit joint-contract mode ownership.
+RTD_V21_MODE_SCOPE = False
+# Red team C2: amounts.ratios reads "사업예산 이상" (no multiple) as 1 x the base and "…의 100분의 N" as N/100 (v3 and the
+# perf CPU form). False = current behaviour.
+C2_BUDGET_WORDS = False
+# Red team C2: size_words reads "중기업 참가 불가" / "중기업을 제외" / "중소기업 중 소기업" as small-only (families.NO_MEDIUM_C2).
+# False = current behaviour.
+C2_SIZE_NO_MEDIUM = False
+
+# Red-team D: isolated candidate, default preserves the measured union.
+RTD_V2_COMPLETED_EXPERIENCE = False
+# Probe (red team B2): v13 keeps a small-only firing when the 조항호 registers the 판로지원법 제7조의2 small-business
+# restricted competition (talkboard v13: amount bands are no requirement, the only exception is 소액수의). False = current.
+V13_REG72_KEEP = False
+# Probe (red team B2, with C2_DP_PRESENT_LITERAL): v10's presence test also skips validity notes (※ … 발급된 것으로 유효기간
+# 내에 있어야) and competition-conditioned lines, and X4 ignores them. False = current.
+V10_NOTE_NOT_REQ = False
+# Probe (red team B2): v13 reads a clause limiting bidding to 소기업·소상공인 ("…에 한함", "…만 참여", "…로 제한") or barring
+# 중기업 in other words as the small class even inside an SME frame (other size items unchanged). False = current.
+V13_SMALL_LIMIT = False
+# Probe (red team B2): items judged as buying 동영상제작서비스 when a service notice without a catalog object admits only video
+# producers (비디오물제작업, 방송영상독립제작사) and names video work in its title or overview; () = current.
+OBJ_VIDEO_LICENSE = ()
+# Probe (red team B2): items judged with AUDIT_FIXES2 alone (the round-2 size-class reading without the AUDIT_FIXES
+# sibling-option rule); () = current behaviour.
+AF2_ITEMS = ()
+# Probe (red team B2): v11 treats the SME restriction as absent when every restriction line is only a method statement,
+# a certificate issue/verification note or an admission of 특별법인·비영리법인. False = current.
+V11_NOTE_NOT_RESTRICT = False
+# Probe (red team B2): in a goods purchase whose 세부품명 are all outside the 경쟁제품 list, v12 does not follow the model's
+# "과업과 같은 종류" reading of a certificate for a listed product. False = current.
+V12_GOODS_OBJECT = False
+# Probe (red team B2): a v12 firing of the dedicated stage is dropped when its evidence is a document-list entry, a DOCS
+# line, a certificate name with no holder or possession wording, or a verification-only note. False = current.
+DED_V12_REQ_ONLY = False
