@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "updated_utc": "2026-09-27T21:25:00+00:00",
+  "updated_utc": "2026-09-28T06:05:00+00:00",
   "competition": "DACON 236754",
   "goal_official_macro_f1": 0.8,
   "official": {
@@ -380,16 +380,95 @@
         "slot": "spare10",
         "score": 0.7100332713,
         "outcome": "+0.00137 vs its base: v9 stage OR adopted"
+      },
+      {
+        "row": "120",
+        "name": "BIGSHOT0928_v6",
+        "kst": "2026-09-28",
+        "slot": "main",
+        "score": null,
+        "outcome": "submitted 14:56:58 KST (receipt official_submission_BIGSHOT0928_v6.json); computed measured part 0.7426"
+      },
+      {
+        "row": "130",
+        "name": "SPR0929_BASE",
+        "kst": "2026-09-29",
+        "slot": "spare1",
+        "score": null
+      },
+      {
+        "row": "131",
+        "name": "SPR0929_P1_v9",
+        "kst": "2026-09-29",
+        "slot": "spare2",
+        "score": null
+      },
+      {
+        "row": "132",
+        "name": "SPR0929_P2_v20",
+        "kst": "2026-09-29",
+        "slot": "spare3",
+        "score": null
+      },
+      {
+        "row": "133",
+        "name": "SPR0929_P3_v24",
+        "kst": "2026-09-29",
+        "slot": "spare4",
+        "score": null
+      },
+      {
+        "row": "134",
+        "name": "SPR0929_P4_v19v12",
+        "kst": "2026-09-29",
+        "slot": "spare5",
+        "score": null
+      },
+      {
+        "row": "135",
+        "name": "SPR0929_P5_comp",
+        "kst": "2026-09-29",
+        "slot": "spare6",
+        "score": null
+      },
+      {
+        "row": "136",
+        "name": "SPR0929_P6_v1v4",
+        "kst": "2026-09-29",
+        "slot": "spare7",
+        "score": null
+      },
+      {
+        "row": "137",
+        "name": "SPR0929_P7_region_rec",
+        "kst": "2026-09-29",
+        "slot": "spare8",
+        "score": null
+      },
+      {
+        "row": "138",
+        "name": "SPR0929_P8_size",
+        "kst": "2026-09-29",
+        "slot": "spare9",
+        "score": null
+      },
+      {
+        "row": "139",
+        "name": "SPR0929_P10_v20bet",
+        "kst": "2026-09-29",
+        "slot": "spare10",
+        "score": null
       }
     ]
   },
   "task": {
-    "status": "probes_0928_scored_hidden_scores_pending",
-    "next_action": "9/28 probes all scored by 06:22 KST. Visible: R0928 0.7360846704, Z9 0.7222725157 (F1_v9 0.3315), Z12 0.7086585101 (F1_v12 0.6582), O12 0.7120246416 (78 test v12 positives), D12 0.7211386905 (-0.00113 vs Z9: v12 stage and V12_TITLE_OBJECT2/V12_MANUF dropped). D10x, D11x, D20, D24 and D9 scored below their teams' earlier bests, so the public leaderboard hides them; the user reads them from the site. Gains: D10x/D11x/D20/D24 minus Z9Z12 0.6948463554, D9 minus Z12. Then runs/rebuild_c/main0928/make_m28_spec.py (positive stages + cov30 + literal fixes RTD_SIZE_EXPLICIT_EXCEPTION, RTD_SIZE_TYPOGRAPHY, RTD_V21_MODE_SCOPE; --retry for RETRY_TOKEN_FACTOR=2 when D9 or D24 wins, checked on L40S) and build_main_0928.py spec_M28.json; the clean zip goes to the main slot with the user's approval. 9/29 candidates: runs/rebuild_c/main0929/m29_groups.json.",
+    "status": "bigshot_v6_submitted_score_pending",
+    "next_action": "Main 9/28: BIGSHOT0928_v6 (artifacts/rebuild_c/BIGSHOT0928_v6_clean/submit.zip, sha256 20481534..., source 72e9577) submitted 14:56:58 KST: the union, the stage ORs that won (v9 v11 v20 v24), red-team rounds 1-3 (95 overrides, runs/rebuild_c/bigshot0928/spec_v6.json). 9/29 00:00:01: Windows task dacon_0929 (starts 23:58) submits ten spare probes (runs/rebuild_c/probes0929/zero_manifest.json): the union with v3 v5 v6 v21 v22 v23 zeroed (spare1) and that base plus one item group (spares 2-10); probe minus base = the group's effect; all score about 0.51 (user: spares far below the top 100). The final main (before 10:00 9/29, user approval) keeps the v6 groups that measure positive and drops the negative ones.",
     "main_slot_rule": "From 9/28 the main slot carries the strongest supported package; spare probes keep minimal bases below 0.75 (user).",
     "held": "CODE_AUDIT_BASE=False keeps the 9/26 audit estimate/article/date-role repairs dormant until measured separately; THINKING_FAMILIES=() keeps thinking off by default.",
     "lesson_0927": "preregistered estimates were about 4x too high in total (+0.012 measured vs about +0.05); practitioner-standard removals paid in v19/v20/v22 and v1 but lost in v9, v14-v18 and competition scope; the organizer mostly labels literally",
-    "dedicated_stages": "submission/pps_c/dedicated: clean-room stages for v9 (model_name), v12 (general_dp), v24 (input_mismatch), v10/v11/v13 (competition_product), v1/v4/v8 (qualification), v19 (pledge), v20 (sw_participation). DEDICATED replaces an item's shared verdict with the stage's; DEDICATED_OR keeps the shared verdict and adds the stage's firings (user decision 9/27: probe OR). DEDICATED_X4 drops a v10/v11/v13 stage firing on an object X4 excludes; V13_STAGE_SMALL_ONLY drops a v13 stage firing whenever its evidence clause names 중기업, 중·소기업 or 중소기업(자) in any role, once statute and rule names and refused certificates are removed (conservative). All default off; the default replay is byte-identical. Readings measured by the GPU run ded0927 (dev, t2500, para; Colab A100), results under runs/rebuild_c/gpu/ded0927."
+    "dedicated_stages": "submission/pps_c/dedicated: clean-room stages for v9 (model_name), v12 (general_dp), v24 (input_mismatch), v10/v11/v13 (competition_product), v1/v4/v8 (qualification), v19 (pledge), v20 (sw_participation). DEDICATED replaces an item's shared verdict with the stage's; DEDICATED_OR keeps the shared verdict and adds the stage's firings (user decision 9/27: probe OR). DEDICATED_X4 drops a v10/v11/v13 stage firing on an object X4 excludes; V13_STAGE_SMALL_ONLY drops a v13 stage firing whenever its evidence clause names 중기업, 중·소기업 or 중소기업(자) in any role, once statute and rule names and refused certificates are removed (conservative). All default off; the default replay is byte-identical. Readings measured by the GPU run ded0927 (dev, t2500, para; Colab A100), results under runs/rebuild_c/gpu/ded0927.",
+    "spare_rule": "From 9/28 afternoon (user): spare probes score far below the top 100. The item-zeroing switch exists only in the spare build tree runs/rebuild_c/probes0929/root, never in the canonical tree or a main package."
   },
   "runtime": {
     "entry": "script.py",
