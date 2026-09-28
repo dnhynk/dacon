@@ -282,13 +282,16 @@ def perf_lines(b):
     stated = [ln for ln in lines_where(b, 'perf', 역할='참가자격')
               if ln not in lines and ln.doc_type == '공고문' and ln.sec not in ('EVAL', 'DOCS')
               and PERF_BIDDER_REQ.search(ln.text) and not PERF_FORMISH.search(ln.text)]
+    if switches.X3_RECORD_FORMS:
+        stated += [ln for ln in lines_where(b, 'perf', 역할='참가자격') if ln not in lines and ln not in stated and ln.doc_type != '공고문'
+                   and ln.sec not in ('EVAL', 'DOCS', 'NOTE') and X3_QUAL_LABEL.match(ln.text) and not PERF_FORMISH_ATTACH.search(ln.text)]
     if switches.AUDIT_FIXES3:
         lines, stated = [ln for ln in lines if not not_record_limit(b, ln)], [ln for ln in stated if not not_record_limit(b, ln)]
     out = [ln for ln in lines + stated if not evaluation_context(b, ln)] if switches.AUDIT_FIXES2 else lines + stated
     if switches.PERF_UNREAD:
         known = {ln.i for ln in b.cands.get('perf', [])}
         out += [ln for ln in b.notice.lines if ln.i not in known and ln.doc_type == '공고문' and ln.sec == 'QUAL'
-                and qual_section(ln, b.notice) and (HELD_RECORD.search(ln.text) or switches.X2_HELD_VERBS and X2_HELD_VERBS_R3.search(ln.text)) and not NOT_RECORD.search(ln.text)
+                and qual_section(ln, b.notice) and (HELD_RECORD.search(ln.text) or switches.X2_HELD_VERBS and X2_HELD_VERBS_R3.search(ln.text) or switches.X3_RECORD_FORMS and x3_record_form(ln.text)) and not NOT_RECORD.search(ln.text)
                 and not PERF_FORMISH.search(ln.text) and not PERF_NOTE.search(ln.text) and not METHOD_SUMMARY.search(ln.text)
                 and not evaluation_context(b, ln) and not not_record_limit(b, ln)
                 and not X2_STAFF_CTX.search(ln.text) and not PU_EXCLUSION.search(clause_text(b.notice, ln))
@@ -359,6 +362,61 @@ def x2_under_qual_heading(b, ln, back=20):
     return False
 
 
+# Red team T3 (switch X3_RECORD_FORMS): held-record wordings outside HELD_RECORD and X2_HELD_VERBS_R3. The firm subject keeps
+# staff careers out (X2_STAFF_CTX still applies); "경력 N년" is left out for the same reason.
+_X3_ACT = (r'(?:공\s*급|납\s*품|수\s*행|운\s*영|설\s*치|시\s*공|제\s*작|개\s*최|대\s*행|판\s*매|이\s*행|구\s*축|개\s*발|제\s*공|유\s*지\s*보\s*수'
+           r'|유\s*지\s*관\s*리|준\s*공|완\s*료|참\s*여)')
+_X3_ORG = r'[가-힣]{0,6}?(?:업\s*체|법\s*인|사\s*업\s*자|기\s*관|단\s*체|회\s*사|기\s*업)(?!\s*명)'
+_X3_FIRM = r'(?:[가-힣]{0,6}?(?:업\s*체|법\s*인|사\s*업\s*자|기\s*관|단\s*체|회\s*사|기\s*업)(?!\s*명)|자(?!\s*[격료재산본체동원]))'
+X3_HELD_FORMS = re.compile(
+    _X3_ACT + r'\s*(?:을|를)?\s*(?:완\s*료\s*)?(?:한|하였던|했던)?\s*사\s*실\s*(?:이|을|가)?\s*(?:있\s*는|있\s*어\s*야|(?:증\s*명|입\s*증|증\s*빙|확\s*인)\s*(?:할\s*수\s*있\s*는|가\s*능\s*한|되\s*는))'
+    r'|(?:을|를)\s*해\s*본\s*' + _X3_FIRM + r'|' + _X3_ACT + r'\s*해\s*본\s*' + _X3_FIRM
+    + r'|(?:경\s*험|이\s*력|경\s*력|실\s*적|사\s*례)\s*(?:유\s*무|여\s*부)?\s*[:：]?\s*필\s*수(?![가-힣])'
+    + r'|' + _X3_ACT + r'\s*(?:여\s*부|유\s*무)\s*[:：]?\s*필\s*수(?![가-힣])'
+    + r'|(?:하\s*였|했|되\s*었)\s*음\s*을\s*(?:입\s*증|증\s*명|증\s*빙)\s*할\s*수\s*있\s*는\s*' + _X3_FIRM
+    + r'|(?:사\s*례|이\s*력)\s*(?:를|을|가|이)?\s*(?:증\s*빙|증\s*명|입\s*증)\s*할\s*수\s*있\s*는\s*' + _X3_FIRM
+    + r'|사\s*례\s*가\s*있\s*는\s*' + _X3_FIRM
+    + r'|(?:경\s*험|이\s*력|경\s*력)\s*(?:[:：][^.。]{0,30}?)?\d+\s*(?:회|건)\s*이\s*상'
+    + r'|이\s*력\s*(?:을\s*)?보\s*유\s*(?:한\s*)?' + _X3_ORG
+    + r'|(?:참\s*여|수\s*행|납\s*품|공\s*급|운\s*영)\s*(?:이\s*력|실\s*적|경\s*험)\s*(?:이|가)?\s*확\s*인\s*(?:되\s*는|된|가\s*능\s*한)\s*' + _X3_FIRM
+    + r'|(?:수\s*주|계\s*약)\s*(?:하\s*여|하\s*고|해)\s*(?:완\s*료|이\s*행|수\s*행)\s*한\s*' + _X3_FIRM)
+X3_NOT_FORM = re.compile(r'우\s*대|가\s*점|배\s*점|점\s*수|평\s*가|감\s*점|하\s*도\s*급|협\s*력\s*업\s*체|행\s*정\s*처\s*분|제\s*재|부\s*정\s*당|체\s*납'
+                         r'|자\s*격\s*(?:을\s*)?(?:취\s*득|증|소\s*지)|학\s*위|박\s*사|석\s*사|[가-힣]{1,4}사\s*자\s*격')
+X3_QUAL_LABEL = re.compile(r'^\W*(?:제\s*안|입\s*찰|견\s*적|사\s*업)?\s*참\s*가\s*자\s*격\s*[:：|]')
+X3_CONSEQUENCE = re.compile(
+    r'(?:실\s*적|이\s*력|경\s*험)(?:\s*증\s*명\s*서)?[^.。]{0,40}?(?:미\s*제\s*출|없\s*는|미\s*보\s*유|보\s*유\s*하\s*지\s*않\s*은|제\s*출\s*하\s*지\s*않\s*은)'
+    r'[^.。]{0,20}?(?:업\s*체|자|경\s*우|시)[^.。]{0,25}?(?:입\s*찰|참\s*가|참\s*여|견\s*적|응\s*찰)[^.。]{0,15}?(?:제\s*한|불\s*가|할\s*수\s*없|무\s*효)'
+    r'|(?:실\s*적|경\s*험|이\s*력)\s*(?:이|을)?\s*(?:있\s*는|보\s*유\s*한)\s*(?:업\s*체|자)\s*만\s*(?:이\s*)?(?:입\s*찰|견\s*적|참\s*가|참\s*여|제\s*안|응\s*찰)')
+X3_WAIVER = re.compile(r'(?:실\s*적|경\s*험|이\s*력)[^.。]{0,25}(?:없\s*어\s*도|없\s*더\s*라\s*도|무\s*관|묻\s*지|요\s*구\s*하\s*지|제\s*한\s*하\s*지)|없\s*는\s*(?:업\s*체|자)\s*도')
+
+
+X3_PROOF_NOTE = re.compile(r'[\(（][^)）]{0,15}(?:증\s*빙|증\s*명)[^)）]{0,10}제\s*출[^)）]{0,5}[\)）]')
+
+
+def x3_record_form(t):
+    return bool(X3_HELD_FORMS.search(t)) and not X3_NOT_FORM.search(t)
+
+
+def x3_strip(t):
+    # A held-record line keeps its record reading when its only submission word is a proof note ("필수(증빙자료 제출)").
+    return X3_PROOF_NOTE.sub(' ', t) if switches.X3_RECORD_FORMS and x3_record_form(t) else t
+
+
+def x3_consequence_records(b):
+    """공고문 lines outside the evaluation text that bar bidders without the record."""
+    out = []
+    for ln in b.notice.lines:
+        if ln.doc_type != '공고문' or ln.sec == 'EVAL' or not ln.text.strip():
+            continue
+        t = clause_text(b.notice, ln)
+        if not X3_CONSEQUENCE.search(t) or X3_WAIVER.search(t) or X3_NOT_FORM.search(t) or X2_STAFF_CTX.search(t):
+            continue
+        if evaluation_context(b, ln) or in_form_annex(b, ln) or METHOD_SUMMARY.search(t):
+            continue
+        out.append(ln)
+    return out
+
+
 def x2_unread_records(b):
     known = {ln.i for ln in b.cands.get('perf', [])}
     out = []
@@ -368,11 +426,11 @@ def x2_unread_records(b):
         if ln.doc_type == '공고문':
             if not (ln.sec == 'QUAL' and qual_section(ln, b.notice)):
                 continue
-        elif not (switches.X2_ATTACH_QUAL and ln.sec not in ('EVAL', 'DOCS', 'NOTE') and x2_under_qual_heading(b, ln)):
+        elif not (switches.X2_ATTACH_QUAL and ln.sec not in ('EVAL', 'DOCS', 'NOTE') and (x2_under_qual_heading(b, ln) or switches.X3_RECORD_FORMS and X3_QUAL_LABEL.match(ln.text))):
             continue
         clause = clause_text(b.notice, ln)
         t = clause if switches.X2_HELD_RECORD_X else ln.text
-        if not ((X2_HELD_RECORD if switches.X2_HELD_RECORD_X else HELD_RECORD).search(t) or switches.X2_HELD_VERBS and X2_HELD_VERBS_R3.search(t)) or NOT_RECORD.search(t) \
+        if not ((X2_HELD_RECORD if switches.X2_HELD_RECORD_X else HELD_RECORD).search(t) or switches.X2_HELD_VERBS and X2_HELD_VERBS_R3.search(t) or switches.X3_RECORD_FORMS and x3_record_form(t)) or NOT_RECORD.search(x3_strip(t)) \
                 or PERF_FORMISH.search(t) or PERF_NOTE.search(t) or METHOD_SUMMARY.search(t) or evaluation_context(b, ln) \
                 or not_record_limit(b, ln):
             continue
@@ -404,8 +462,58 @@ V8_RW = re.compile(r'(?:' + _V8_SIDO + r'|(?:도|시|군|구|관)\s*내\s*|(?:�
 V8_RW_NOT = re.compile(r'우\s*대|가\s*점|공\s*동|하\s*도\s*급|협\s*력|분\s*담|납\s*품\s*(?:장\s*소|지)|구\s*매\s*하|제\s*외')
 
 
+# Red team T3 (switch V8_REGION_LABEL): a participation region written as a label and its value, "관내(<시·도>) 업체", and a
+# joined 시·도 pair before "소재 업체".
+X3_REGION_LABEL = re.compile(r'(?:^|[|│])\W*(?:(?:[가-하]|\d{1,2})\s*[.)]\s*|[①-⑳]\s*)?(?P<label>(?:입\s*찰\s*)?참\s*가\s*(?:가\s*능\s*)?지\s*역'
+                             r'|참\s*가\s*자\s*격\s*지\s*역|지\s*역\s*제\s*한|(?:본\s*사|본\s*점|사\s*업\s*장|주\s*된\s*영\s*업\s*소|업\s*체)?\s*(?:의\s*)?소\s*재\s*지)'
+                             r'\s*[:：|]\s*(?P<v>[^|:：]{1,40})')
+X3_REGION_PAREN = re.compile(r'관\s*내\s*[\(（][^)）]{1,20}[\)）]\s*(?:소\s*재\s*)?(?:업\s*체|사\s*업\s*자|법\s*인)')
+X3_SIDO_PAIR = re.compile(r'(?:전\s*라|경\s*상|충\s*청)\s*[남북]\s*[·ㆍ,]\s*[남북]\s*도\s*(?:에\s*)?소\s*재\s*(?:의\s*)?(?:업\s*체|사\s*업\s*자|법\s*인)')
+X3_REGION_NOT = re.compile(r'없\s*음|해\s*당\s*없|미\s*적\s*용|제\s*한\s*없|전\s*국')
+# A region group or an anonymised region token before "소재 업체" ("충청권(대전·세종·충남·충북) 소재 업체", "[지역:…] 소재 업체").
+X3_REGION_GROUP = re.compile(r'(?:(?:수\s*도|충\s*청|호\s*남|영\s*남|동\s*남|대\s*경)\s*권\s*[\(（][^)）]{1,30}[\)）]|\[지역:[^\]]*\])\s*(?:관\s*내\s*|내\s*|지\s*역\s*)?'
+                             r'(?:에\s*)?소\s*재\s*(?:의\s*|한\s*|하는\s*)?(?:업\s*체|사\s*업\s*자|법\s*인)')
+
+
+def x3_region_label(ln, t):
+    if REGION_NONE.search(t) or JV_PARTNER3.search(t) or V8_RW_NOT.search(t):
+        return False
+    for m in X3_REGION_LABEL.finditer(t):
+        if re.sub(r'\s', '', m.group('label')).endswith('소재지') and ln.sec != 'QUAL':
+            continue
+        v = m.group('v')
+        if X3_REGION_NOT.search(v):
+            continue
+        mm = regions.mentions(v)
+        if mm['sido'] or mm['basic']:
+            return True
+    if X3_REGION_PAREN.search(t):
+        mm = regions.mentions(t)
+        return bool(mm['sido'] or mm['basic'])
+    return bool(X3_SIDO_PAIR.search(t) or X3_REGION_GROUP.search(t))
+
+
+X3_REGION_ONLY = re.compile(r'(?:(?<![\d천백십억일이삼사오육칠팔구])만(?!\s*원)|에\s*한\s*하\s*여)\s*[^.。]{0,10}?(?:입\s*찰|참\s*가|참\s*여|응\s*찰|견\s*적)')
+
+
+def x3_region_note(b, ln):
+    # A 공고문 유의사항, 입찰 or other-section line that admits only bidders located in a region ("※ 본 입찰은 충청남도 소재
+    # 업체만 참가할 수 있습니다").
+    if ln.doc_type != '공고문' or ln.sec not in ('NOTE', 'BID', 'OTHER') or not ln.text.strip():
+        return False
+    t = clause_text(b.notice, ln)
+    if not X3_REGION_ONLY.search(t) or REGION_NONE.search(t) or JV_PARTNER3.search(t) or V8_RW_NOT.search(t):
+        return False
+    if V8_RW.search(t):
+        return True
+    mm = regions.mentions(t)
+    return bool(X2_BIDDER_LOC.search(t) and (mm['sido'] or mm['basic']))
+
+
 def x2_cpu_region(b):
     for ln in b.notice.lines:
+        if switches.V8_REGION_LABEL and not qual_section(ln, b.notice) and x3_region_note(b, ln):
+            return ln
         if not qual_section(ln, b.notice):
             continue
         t = clause_text(b.notice, ln)
@@ -414,6 +522,8 @@ def x2_cpu_region(b):
             if m['sido'] or m['basic'] or X2_PLACE.search(t):
                 return ln
         if switches.V8_REGION_WORDS and V8_RW.search(t) and not (V8_RW_NOT.search(t) or REGION_NONE.search(t) or JV_PARTNER3.search(t)):
+            return ln
+        if switches.V8_REGION_LABEL and x3_region_label(ln, t):
             return ln
     return None
 
@@ -433,6 +543,28 @@ def x2_single_amount(t):
     return max(single) if single else None
 
 
+# Red team T3 (switch V3_BASE_WORDS): bases the ratio reader lacks, a parenthetical between base and comparison, "전액".
+_X3_BASE = (r'(?P<base>기\s*초\s*금\s*액|기\s*초\s*가\s*격|추\s*정\s*가\s*격|추\s*정\s*금\s*액|예\s*정\s*가\s*격|계\s*약\s*예\s*정\s*금\s*액|예\s*정\s*금\s*액'
+            r'|사\s*업\s*예\s*산|배\s*정\s*예\s*산|예\s*산\s*액?|계\s*약\s*금\s*액|사\s*업\s*금\s*액|사\s*업\s*비|용\s*역\s*금\s*액|용\s*역\s*비|발\s*주\s*금\s*액'
+            r'|사\s*업\s*규\s*모)(?:\s*[\(（][^)）]{0,20}[\)）])?')
+X3_RATIO = re.compile(_X3_BASE + r'\s*(?:의|대\s*비)?\s*(?P<num>\d+(?:\.\d+)?)\s*(?P<unit>%|퍼\s*센\s*트|배)')
+X3_RATIO_BARE = re.compile(_X3_BASE + r'\s*(?:전\s*액|액|금\s*액)?\s*(?:이\s*상|을\s*초\s*과|를\s*초\s*과|초\s*과|과\s*같\s*거\s*나|과\s*동\s*일|와\s*같\s*거\s*나)')
+
+
+def x3_ratios(t):
+    out = []
+    for m in X3_RATIO.finditer(t or ''):
+        if not amounts.c2_ratio_is_floor(t, m.end()):
+            continue
+        n = float(m.group('num'))
+        out.append((re.sub(r'\s', '', m.group('base')), n if m.group('unit') == '배' else n / 100.0))
+    if not out:
+        for m in X3_RATIO_BARE.finditer(t or ''):
+            if amounts.c2_ratio_is_floor(t, m.end()):
+                out.append((re.sub(r'\s', '', m.group('base')), 1.0))
+    return out
+
+
 def required_amount(b, ln):
     # Audit A: a title band tag "(수의계약·5천만원미만)" states this notice's amount band, not a required record.
     t = TAG.sub(' ', ln.text) if switches.AUDIT_FIXES else ln.text
@@ -442,12 +574,14 @@ def required_amount(b, ln):
     base_b = b.meta.B or ((b.meta.P or 0) * 1.1) or None
     vals = []
     for base, mult in amounts.ratios(t):
-        if base in ('추정가격', '예정가격'):
+        if base in ('추정가격', '예정가격') and not (switches.V3_BASE_WORDS and base == '예정가격'):
             ref = b.meta.P
         else:
             ref = base_b
         if ref:
             vals.append(ref * mult)
+    if switches.V3_BASE_WORDS and not vals:
+        vals += [(b.meta.P if base == '추정가격' else base_b) * mult for base, mult in x3_ratios(t) if (b.meta.P if base == '추정가격' else base_b)]
     for mo in amounts.money(t):
         if mo.value >= 1e6:
             vals.append(mo.value)
@@ -502,16 +636,30 @@ INST_WORD_A2 = re.compile(r'교\s*육\s*기\s*관|전\s*문\s*기\s*관|학\s*�
                           r'|진\s*흥\s*원|평\s*가\s*원')
 
 
+# Red team T3 (switch V1_INST_KINDS): institution kinds outside INST_WORD and INST_WORD_A2, the limiting phrase "…로 참가자격을
+# 제한", and a parenthetical that narrows the eligible kind ("(전문대학 제외)"), which ALT_CLAUSE would read as an alternative.
+INST_WORD_T3 = re.compile(r'공\s*기\s*업|준\s*정\s*부\s*기\s*관|정\s*부\s*기\s*관|국\s*가\s*기\s*관|(?:산\s*하|소\s*속|부\s*설)\s*기\s*관|언\s*론\s*사|신\s*문\s*사|방\s*송\s*사'
+                          r'|상\s*공\s*회\s*의\s*소|박\s*물\s*관|미\s*술\s*관|의\s*료\s*기\s*관|지\s*방\s*자\s*치\s*단\s*체')
+ONLY_T3 = re.compile(r'(?:으\s*로|로)\s*(?:입\s*찰\s*)?(?:참\s*가\s*|참\s*여\s*)?자\s*격\s*(?:을|를)?\s*(?:한\s*정|제\s*한)'
+                     r'|만\s*(?:이\s*)?(?:입\s*찰|참\s*가|참\s*여|응\s*찰|제\s*안)\s*(?:에\s*(?:참\s*가|참\s*여)\s*)?할\s*수\s*있')
+NARROW_T3 = re.compile(r'[\(（][^)）]{0,30}제\s*외[\)）]')
+
+
 def institution_limit(text):
     """A limit to institution types names one (대학, 연구기관, 협회, 법인 …, anonymised [기관(유형)] tokens included; the
     [수요기관(…)] token is the orderer, never the bidder) and is neither an exclusion of that type ("비영리법인은 참가
     불가"), a clause admitting or conditioning one more kind of bidder, a list that also admits commercial bidders, nor a
     type defined by legal registration."""
     bidder_text = LAW_NAME.sub(' ', ORDERER_TOKEN.sub(' ', text))
+    if switches.V1_INST_KINDS:
+        text, bidder_text = NARROW_T3.sub(' ', text), NARROW_T3.sub(' ', bidder_text)
     inst_word = (lambda s: INST_WORD.search(s) or INST_WORD_A2.search(s)) if switches.V1_INST_WORDS else INST_WORD.search
+    if switches.V1_INST_KINDS and (ONLY_LIMIT.search(text) or ONLY_T3.search(text)):
+        _iw = inst_word
+        inst_word = lambda s: _iw(s) or INST_WORD_T3.search(s)
     if TOKEN_ONLY.match(text) or not inst_word(bidder_text):
         return False
-    only = ONLY_LIMIT.search(text)
+    only = ONLY_LIMIT.search(text) or switches.V1_INST_KINDS and ONLY_T3.search(text)
     # An institution named only inside an anonymised [기관(…)] token needs an explicit limiting phrase.
     if not inst_word(re.sub(r'\[[^\]]*\]', ' ', bidder_text)) and not only:
         return False
@@ -690,11 +838,19 @@ X1_ARTICLE_REF = re.compile(r'제\s*\d+\s*조(?:\s*의\s*\d+)?(?:\s*제\s*\d+\s*
 X1_LIST_HEAD_NOT = re.compile(r'(?:업\s*체|사\s*업\s*자|기\s*업|개\s*인|회\s*사|민\s*간[가-힣]{0,3})\s*(?:또\s*는|및|이\s*나|,|·|ㆍ)\s*[^.。,]{0,30}$')
 
 
+# Red team T3 (switch V1_INST_KINDS): the CPU list path's members widened by the same kinds.
+_X1_ITEM_T3 = (r'(?:' + X1_INST_ITEM + r'|공\s*기\s*업|준\s*정\s*부\s*기\s*관|정\s*부\s*기\s*관|국\s*가\s*기\s*관|언\s*론\s*사|신\s*문\s*사|방\s*송\s*사'
+               r'|지\s*방\s*공\s*사|지\s*방\s*공\s*단|출\s*연\s*기\s*관)')
+X1_INST_LIST_T3 = re.compile(_X1_ITEM_T3 + r'\s*(?:,|·|ㆍ|및|또는|이나|와|과)\s*(?:[^.。,]{0,30}?\s*)?' + _X1_ITEM_T3)
+
+
 def x1_institution_list_line(b, ln):
-    if not qual_section(ln, b.notice) or len(ln.text) > 500:
+    if not qual_section(ln, b.notice) and not (switches.V1_PLACEMENT and x3_v1_placed(b, ln)) or len(ln.text) > 500:
         return False
     t = X1_ARTICLE_REF.sub(' ', LAW_NAME.sub(' ', ORDERER_TOKEN.sub(' ', ln.text)))
     m = X1_INST_LIST.search(t)
+    if m is None and switches.V1_INST_KINDS:
+        m = X1_INST_LIST_T3.search(t)
     if not m:
         return False
     if X1_LIST_NOT.search(t[m.start():m.end()]) or ALT_CLAUSE.search(ln.text) or EXCLUSION2.search(ln.text) \
@@ -708,12 +864,83 @@ def x1_institution_list_line(b, ln):
 def x1_institution_list(b):
     if b.meta.method == '지명경쟁' or switches.V1_LOCAL_PRIVATE_INST and b.meta.local_private:
         return None
-    return next((ln for ln in b.notice.lines if (ln.doc_type == '공고문' or not b.notice.has_qual) and x1_institution_list_line(b, ln)), None)
+    return next((ln for ln in b.notice.lines if (ln.doc_type == '공고문' or not b.notice.has_qual or switches.V1_PLACEMENT and x3_v1_placed(b, ln)) and x1_institution_list_line(b, ln)), None)
+
+
+# Red team T3 (switch V1_FACILITY_SCALE): a held facility of a stated size, or a site in every 시·군 or per region.
+X3F_NOUN = (r'(?:물\s*류\s*센\s*터|창\s*고|공\s*장|사\s*옥|사\s*무\s*실|공\s*연\s*장|전\s*시\s*장|매\s*장|연\s*수\s*원|교\s*육\s*장|주\s*차\s*장|작\s*업\s*장'
+            r'|센\s*터|영\s*업\s*소|지\s*점|지\s*사|거\s*점|사\s*무\s*소|대\s*리\s*점|사\s*업\s*장|정\s*비\s*소|강\s*당|체\s*육\s*관|숙\s*박\s*시\s*설|시\s*설)')
+X3F_SCALE = re.compile(r'[\d,]+(?:\.\d+)?\s*(?:㎡|m²|m2|제\s*곱\s*미\s*터|평|석|객\s*실)\s*이\s*상')
+X3F_BIDDER = (r'(?:(?:보\s*유|소\s*유|운\s*영|확\s*보)\s*(?:하\s*고\s*있\s*는|하\s*는|한|중\s*인)|갖\s*춘|갖\s*추\s*고\s*있\s*는|두\s*고\s*있\s*는|둔)\s*'
+              r'(?:업\s*체|법\s*인|사\s*업\s*자|기\s*관|회\s*사|자(?![격료재산본체동원]))')
+X3F_HELD = re.compile(X3F_NOUN + r'[^.。]{0,40}?' + X3F_BIDDER)
+X3F_NET = re.compile(r'(?:시\s*[·ㆍ]?\s*군\s*(?:[·ㆍ]?\s*구\s*)?별|시\s*[·ㆍ]?\s*도\s*별|권\s*역\s*별|모\s*든\s*시\s*[·ㆍ]?\s*군(?:\s*[·ㆍ]?\s*구)?'
+                     r'|각\s*시\s*[·ㆍ]?\s*군(?:\s*[·ㆍ]?\s*구)?)[^.。]{0,20}?' + X3F_NOUN + r'[^.。]{0,25}?' + X3F_BIDDER)
+X3F_NOT = re.compile(r'실\s*적|경\s*험|이\s*력|납\s*품|설\s*치\s*장\s*소|수\s*행\s*장\s*소|대\s*관|임\s*차|행\s*사\s*장|개\s*최|제\s*공\s*할|등\s*록\s*기\s*준'
+                     r'|시\s*설\s*기\s*준|허\s*가|인\s*가|신\s*고|우\s*대|가\s*점|평\s*가|배\s*점|「|『|｢|법\s*에\s*(?:따|의)|법\s*시\s*행')
+
+
+def x3_facility_scale(b):
+    if b.meta.local_private or b.meta.method == '지명경쟁':
+        return None
+    for ln in b.notice.lines:
+        if not qual_section(ln, b.notice):
+            continue
+        t = clause_text(b.notice, ln)
+        if X3F_NOT.search(t) or JV_PARTNER3.search(t):
+            continue
+        if X3F_SCALE.search(t) and X3F_HELD.search(t) or X3F_NET.search(t):
+            return ln
+    return None
+
+
+# Red team T3 (switch V1_PLACEMENT): participation requirements stated in a 공고문 유의사항, 입찰 or other section, or in an
+# attachment's labelled or headed qualification text.
+X3V1_SUBJECT = re.compile(r'(?:입\s*찰\s*)?참\s*가\s*(?:업\s*체|자|기\s*관)\s*(?:는|은)|입\s*찰\s*(?:참\s*가\s*)?(?:자|업\s*체)\s*(?:는|은)|응\s*찰\s*자\s*(?:는|은)'
+                          r'|제\s*안\s*(?:자|업\s*체|사)\s*(?:는|은)|본\s*(?:입\s*찰|사\s*업|용\s*역|과\s*업)\s*(?:은|는)')
+X3V1_PART = re.compile(r'(?:(?<![\d천백십억일이삼사오육칠팔구])만(?!\s*원)|에\s*한\s*하\s*여|으\s*로\s*한\s*정\s*하\s*여)\s*[^.。]{0,10}?(?:입\s*찰|참\s*가|참\s*여|응\s*찰|제\s*안)'
+                       r'|(?:참\s*가|참\s*여|입\s*찰|응\s*찰)\s*(?:할\s*수\s*(?:있|없)|가\s*능|불\s*가)')
+X3V1_LABEL = re.compile(r'^\W*(?:제\s*안|입\s*찰|견\s*적|사\s*업)?\s*참\s*가\s*자\s*격\s*[:：|]')
+X3V1_NOT = re.compile(r'평\s*가|배\s*점|점\s*수|가\s*점|감\s*점|공\s*동\s*(?:수\s*급|도\s*급|이\s*행|계\s*약)|컨\s*소\s*시\s*엄|하\s*도\s*급|제\s*출\s*서\s*류|구\s*비\s*서\s*류')
+
+
+def x3_v1_placed(b, ln):
+    if not ln.text.strip():
+        return False
+    if ln.doc_type == '공고문':
+        if ln.sec not in ('NOTE', 'BID', 'OTHER', 'BRIEF'):
+            return False
+        t = clause_text(b.notice, ln)
+        return bool(X3V1_SUBJECT.search(t) or X3V1_PART.search(t)) and not X3V1_NOT.search(t) and not evaluation_context(b, ln)
+    if ln.sec in ('EVAL', 'DOCS', 'NOTE') or X3V1_NOT.search(ln.text):
+        return False
+    t = clause_text(b.notice, ln)
+    return bool(X3V1_LABEL.match(ln.text)) or x2_under_qual_heading(b, ln) and bool(X3V1_SUBJECT.search(t) or X3V1_PART.search(t))
+
+
+def x3_v1_cpu_placed(b):
+    # An attachment line labelled "제안참가자격:" that limits bidders to institution kinds in its own words ("…에 한함"), whatever
+    # the model read (the inst family does not select such lines).
+    if b.meta.method == '지명경쟁' or b.meta.local_private:
+        return None
+    for ln in b.notice.lines:
+        if ln.doc_type == '공고문' or qual_section(ln, b.notice) or not X3V1_LABEL.match(ln.text) or not x3_v1_placed(b, ln):
+            continue
+        t = clause_text(b.notice, ln)
+        if not re.search(X1_INST_ITEM, LAW_NAME.sub(' ', ln.text)):
+            continue
+        if not ONLY_LIMIT.search(ln.text) or RESERVED_PROFESSION.search(t) or disclaimed(b, ln) or BUYER_SUBJECT.search(ln.text):
+            continue
+        if x1_commercial_alternative(LAW_NAME.sub(' ', t)) or x1_lead_options_commercial(b, ln):
+            continue
+        if institution_limit(ln.text):
+            return ln
+    return None
 
 
 def v1(b):
     for ln in b.cands.get('inst', []):
-        if not qual_section(ln, b.notice):
+        if not qual_section(ln, b.notice) and not (switches.V1_PLACEMENT and x3_v1_placed(b, ln)):
             continue
         r = b.read('inst', ln)
         if r.get('역할') != '참가자격':
@@ -724,7 +951,7 @@ def v1(b):
         if kind == '기관 유형 한정':
             # Audit A: the 입찰공고 states the 입찰참가자격 (국가계약법 시행령 제36조); an attachment's institution list does
             # not limit bidders when the 공고문 has its own qualification section.
-            if switches.AUDIT_FIXES and b.notice.has_qual and ln.doc_type != '공고문':
+            if switches.AUDIT_FIXES and b.notice.has_qual and ln.doc_type != '공고문' and not (switches.V1_PLACEMENT and x3_v1_placed(b, ln)):
                 continue
             # 지명경쟁 names its bidders by definition (지방계약법 시행령 제22조 등); a nomination list is not a limit.
             # A legally reserved profession (회계법인 for 결산, 법무법인 …) is a license unless the line says only it may bid.
@@ -752,10 +979,14 @@ def v1(b):
             if r.get('필요성') == '과도하거나 과업과 무관':
                 return ln
     hit = region_facility(b) if switches.V1_REGION_FACILITY else None
+    if hit is None and switches.V1_PLACEMENT:
+        hit = x3_v1_cpu_placed(b)
     if hit is None and switches.V1_INST_LIST:
         hit = x1_institution_list(b)
     if hit is None and switches.V1_NATIONWIDE_WIDE:
         hit = v1_nationwide(b)
+    if hit is None and switches.V1_FACILITY_SCALE:
+        hit = x3_facility_scale(b)
     return hit
 
 
@@ -773,7 +1004,7 @@ def v1_nationwide(b):
     if b.meta.local_private:
         return None
     for ln in b.notice.lines:
-        if not qual_section(ln, b.notice):
+        if not qual_section(ln, b.notice) and not (switches.V1_PLACEMENT and x3_v1_placed(b, ln)):
             continue
         t = ln.text
         staff = (STAFF_SCALE.search(t) or STAFF_WIDE.search(t)) and STAFF_VERB.search(t) and not NO_RECORD.search(t) and not SIZE_DEFINITION.search(t)
@@ -821,6 +1052,8 @@ def _rtd_v2_base(b):
     if switches.X2_HELD_RECORD_X or switches.X2_ATTACH_QUAL:
         known = {ln.i for ln in lines}
         lines += [ln for ln in x2_unread_records(b) if ln.i not in known]
+    if switches.X3_RECORD_FORMS and not lines:
+        lines = x3_consequence_records(b)
     return lines[0] if lines else None
 
 
@@ -867,8 +1100,34 @@ def _rtd_v3_base(b):
     return None
 
 
+# Red team T3 (switch V3_NOTE_FLOOR): a line whose subject is the record and whose predicate sets its amount floor.
+X3N_SUBJ = re.compile(r'실\s*적\s*(?:은|는|의\s*(?:금\s*액|규\s*모)\s*(?:은|는)?)|실\s*적\s*(?:인\s*정\s*)?기\s*준\s*(?:금\s*액)?\s*[:：]')
+X3N_REQ = re.compile(r'이\s*어\s*야|일\s*것|이\s*상\s*인\s*(?:것|건|실\s*적)|에\s*한\s*(?:함|하며|한다)|으\s*로\s*(?:함|한다|하며)|이\s*상\s*(?:이|으로)\s*(?:하|한)')
+X3N_NOT = re.compile(r'평\s*가|배\s*점|점\s*수|적\s*격|심\s*사|가\s*점|감\s*점|하\s*도\s*급|공\s*동|신\s*인\s*도|이\s*하|미\s*만')
+
+
+def x3_note_floor(b):
+    budget = b.meta.B or ((b.meta.P or 0) * 1.1) or None
+    if budget is None:
+        return None
+    for ln in b.notice.lines:
+        if ln.doc_type != '공고문' or ln.sec in ('EVAL', 'DOCS') or not ln.text.strip():
+            continue
+        t = clause_text(b.notice, ln)
+        if not (X3N_SUBJ.search(t) and X3N_REQ.search(t)) or X3N_NOT.search(t):
+            continue
+        if evaluation_context(b, ln) or in_form_annex(b, ln):
+            continue
+        a = required_amount(b, _Clause(t))
+        if a is not None and a >= budget - 1:
+            return ln
+    return None
+
+
 def v3(b):
     hit = _rtd_v3_base(b)
+    if hit is None and switches.V3_NOTE_FLOOR:
+        hit = x3_note_floor(b)
     if not switches.RTD_V3_AMOUNT_TEXT:
         return hit
     from .rtd_v3_amount import augment
@@ -1001,6 +1260,31 @@ BUYER_VERB_R3 = re.compile(r'(?:공\s*급|설\s*치|제\s*공|판\s*매|임\s*�
                            r'\s*(?:한|하였|하고|하여|실\s*적|이\s*력|경\s*험)')
 
 
+# Red team T3 (switch V4_BUYER_MORE): the orderer as a plain word, a named public body with its affiliates, abbreviations of
+# public housing bodies, military buyers, "와/과 … 이행한" and a buyer kind qualifying an operation or delivery experience.
+X4M_WITH = re.compile(r'\s*(?:등\s*)?(?:과|와)\s')
+X4M_EXEC = re.compile(r'이\s*행\s*(?:한|하였)|계\s*약\s*(?:을\s*)?이\s*행')
+X4M_NOUN_EXP = re.compile(r'\s*(?:[\(（][^)）]{0,40}[\)）])?\s*(?:(?!민\s*간|기\s*업|업\s*체|법\s*인|회\s*사|또\s*는|및|인\s*력|근\s*무)[^.。;:\n,]){0,30}?'
+                          r'(?:위\s*탁\s*운\s*영|운\s*영|수\s*행|납\s*품|공\s*급|구\s*축|대\s*행|설\s*치|시\s*공)\s*(?:경\s*험|이\s*력)')
+X4M_SELF = re.compile(r'(?:해\s*당|당\s*해|본|당|귀)\s*(?:수\s*요\s*기\s*관|발\s*주\s*기\s*관|발\s*주\s*처|기\s*관)' + X4N_PART + r'[^.。,;]{0,15}?' + X4N_VERB
+                      + r'|(?:해\s*당|당\s*해|본|당)\s*(?:수\s*요\s*)?기\s*관\s*(?:발\s*주|납\s*품)\s*[가-힣\s]{0,15}?(?:실\s*적|이\s*력|경\s*험)')
+X4M_AFFIL = re.compile(r'(?:한\s*국|국\s*립|국\s*민|대\s*한)[가-힣]{1,12}?(?:공\s*사|공\s*단|진\s*흥\s*원|개\s*발\s*원|연\s*구\s*원|재\s*단|공\s*항|은\s*행)'
+                       r'\s*(?:및|또\s*는|과|와)\s*(?:그\s*)?(?:자\s*회\s*사|계\s*열\s*사|산\s*하\s*기\s*관|소\s*속\s*기\s*관|출\s*자\s*회\s*사)' + X4N_PART + X4N_VERB)
+X4M_ABBR = re.compile(r'(?<![A-Za-z])(?:LH|SH|GH|IH)(?![A-Za-z])\s*(?:\([^()]{0,12}\))?' + X4N_PART + X4N_VERB)
+X4M_MILITARY = re.compile(r'(?:군\s*\(\s*軍\s*\)\s*부\s*대|(?<![가-힣])(?:육|해|공)\s*군(?:\s*부\s*대)?|해\s*병\s*대)' + X4N_PART + r'[^.。,;]{0,20}?'
+                          r'(?:' + X4N_VERB + r'|공\s*급\s*한|설\s*치\s*한)')
+
+
+def x4_buyer_more(text):
+    t = LAW_REF.sub(' ', text)
+    if (ORDERER_OPEN2 if switches.AUDIT_FIXES2 else ORDERER_OPEN).search(t) or not X4N_RECORD.search(t) or PRIVATE_SECTOR.search(t):
+        return None
+    for pat in (X4M_SELF, X4M_AFFIL, X4M_ABBR, X4M_MILITARY):
+        if pat.search(t):
+            return 'specific'
+    return None
+
+
 def buyer_limit(text):
     """'specific' when the required record is limited to a named kind of buyer or customer, 'open' when the buyer list
     admits private parties, None when the text names no buyer. Law names are not buyers."""
@@ -1022,17 +1306,24 @@ def buyer_limit(text):
             verb = BUYER_VERB_C2.search(text, m.end(), min(len(text), m.end() + 60))
         if verb is None and switches.V4_BUYER_VERBS and BUYER_E_R3.match(text, m.end()):
             verb = BUYER_VERB_R3.search(text, m.end(), min(len(text), m.end() + 60))
+        if verb is None and switches.V4_BUYER_MORE and X4M_WITH.match(text, m.end()):
+            verb = X4M_EXEC.search(text, m.end(), min(len(text), m.end() + 40))
         if particle:
             stop = particle.start()
         elif verb:
             stop = verb.start()
         elif switches.V4_BUYER_NOUN and not NOUN_KIND.match(m.group(0)) and BUYER_NOUN_RECORD.match(text, m.end()):
             stop = m.end()            # red team A2: the buyer qualifies the record noun itself
+        elif switches.V4_BUYER_MORE and not NOUN_KIND.match(m.group(0)) and X4M_NOUN_EXP.match(text, m.end()):
+            stop = m.end()
         else:
             continue
         span = text[m.start():stop]
         return 'open' if PRIVATE_BUYER.search(span) or (ORDERER_OPEN2 if switches.AUDIT_FIXES2 else ORDERER_OPEN).search(text) else 'specific'
-    return x4_named_buyer(raw) if switches.V4_NAMED_BUYER else None
+    hit = x4_named_buyer(raw) if switches.V4_NAMED_BUYER else None
+    if hit is None and switches.V4_BUYER_MORE:
+        hit = x4_buyer_more(raw)
+    return hit
 
 
 # Expert audit X1 (switch V4_PRIVATE_ENUM; audit/expert/X1/REPORT.md §4.4): the vice is refusing private records ("다른 기관 및
@@ -1093,10 +1384,43 @@ def x1_token_buyer(t):
     return False
 
 
+# Red team T3 (switch V4_NAMED_RECORD): a required record limited to a named record by refusing similar ones.
+X3_SIMILAR_REFUSED = re.compile(r'유\s*사\s*(?:한\s*)?(?:(?:사\s*업|용\s*역|실\s*적|품\s*목|물\s*품|행\s*사|과\s*업|공\s*사|분\s*야|제\s*품|장\s*비|시\s*설)\s*(?:의\s*)?){0,2}'
+                                r'(?:(?:수\s*행|납\s*품|이\s*행|설\s*치|조\s*성|운\s*영|공\s*급)\s*)?(?:실\s*적)?\s*(?:은|는)?\s*'
+                                r'(?:인\s*정\s*(?:하\s*지\s*(?:않|아\s*니)|불\s*가|되\s*지\s*않)|불\s*인\s*정|제\s*외)')
+X3_SAME_NAME = re.compile(r'(?:동\s*일\s*(?:한\s*)?명\s*칭|명\s*칭\s*이\s*동\s*일\s*한)[^.。]{0,30}(?:실\s*적|사\s*업|용\s*역)[^.。]{0,15}(?:만|에\s*한)')
+X3_ONLY_EXCEPT = re.compile(r'실\s*적[^.。]{0,30}?(?:만|에\s*한\s*(?:함|하며|하고|한다|하여))[^.。]{0,40}?[\(（][^)）]{0,40}?실\s*적\s*(?:은|는)?\s*'
+                            r'(?:불\s*인\s*정|제\s*외|인\s*정\s*하\s*지)')
+X3_NAMED_NOT = re.compile(r'평\s*가|배\s*점|점\s*수|기\s*재|적\s*격|심\s*사|가\s*점|감\s*점|하\s*도\s*급|공\s*동|컨\s*소\s*시\s*엄|분\s*담')
+
+
+def x3_named_record(b):
+    recs = perf_lines(b)
+    known = {ln.i for ln in recs}
+    recs = recs + [ln for ln in x2_unread_records(b) if ln.i not in known]
+    if not recs:
+        return None
+    rec_i = {ln.i for ln in recs}
+    for ln in b.notice.lines:
+        if ln.doc_type != '공고문' or ln.sec in ('EVAL', 'DOCS') or not ln.text.strip():
+            continue
+        if ln.i not in rec_i and not (qual_section(ln, b.notice) or ln.sec == 'NOTE'):
+            continue
+        t = LAW_REF.sub(' ', clause_text(b.notice, ln))
+        if not (X3_SIMILAR_REFUSED.search(t) or X3_SAME_NAME.search(t) or X3_ONLY_EXCEPT.search(t)):
+            continue
+        if X3_NAMED_NOT.search(t) or evaluation_context(b, ln):
+            continue
+        return ln
+    return None
+
+
 def v4(b):
     hit = v4_base(b)
     if hit is None and switches.V4_ONLY_RECORDS:
         hit = v4_only_records(b)          # red team A2
+    if hit is None and switches.V4_NAMED_RECORD:
+        hit = x3_named_record(b)
     return hit
 
 
@@ -1193,7 +1517,11 @@ def v5(b):
     if not switches.RTD_REGION_BIDDER_CLAUSE:
         return hit
     from .rtd_region_clause import v5
-    return v5(b, hit)
+    hit = v5(b, hit)
+    if hit is not None or not switches.REGION_CLAUSE_FORMS:
+        return hit
+    from .region_clause_forms import v5 as clause_forms
+    return clause_forms(b, hit)
 
 
 # Expert audit X7 (runs/rebuild_c/transfer_20260925/audit/expert/X7/REPORT.md): 국가계약법 시행규칙 제25조③ and 지방계약법 시행규칙
@@ -1305,7 +1633,11 @@ def v6(b):
     if not switches.RTD_REGION_BIDDER_CLAUSE:
         return hit
     from .rtd_region_clause import v6
-    return v6(b, hit)
+    hit = v6(b, hit)
+    if hit is not None or not switches.REGION_CLAUSE_FORMS:
+        return hit
+    from .region_clause_forms import v6 as clause_forms
+    return clause_forms(b, hit)
 
 
 def v7_clause_lines(b):
@@ -1378,7 +1710,11 @@ def v7(b):
         return hit if hit is not None or not switches.V7_ADJACENT else v7_adjacent(b)
     from .rtd_region_clause import v7
     got = v7(b, hit)
-    return got if got is not None or not switches.V7_ADJACENT else v7_adjacent(b)
+    got = got if got is not None or not switches.V7_ADJACENT else v7_adjacent(b)
+    if got is not None or not switches.REGION_CLAUSE_FORMS:
+        return got
+    from .region_clause_forms import v7 as clause_forms
+    return clause_forms(b, None)
 
 
 def v8(b):
@@ -1393,6 +1729,8 @@ def v8(b):
     if switches.X2_V8_ADDS:
         known = {ln.i for ln in perf}
         perf += [ln for ln in x2_unread_records(b) if ln.i not in known]
+    if switches.X3_RECORD_FORMS and not perf:
+        perf = x3_consequence_records(b)
     if perf and (lines or b.meta.region_flag == 'Y'):
         return lines[0] if lines else perf[0]
     if perf and switches.X2_V8_ADDS:
@@ -1736,6 +2074,53 @@ def x3b_line(b):
 V9_STAGE2_DROP = ('기존 장비', '호환 대상', '해당 없음')
 
 
+# Switch V9_BRAND_REQ (집행기준 제5조④5: a specification naming a maker or brand as what must be bought): a known maker or
+# brand product named with the demand to supply, install, mount or buy it, with its licence count, or as the value of a
+# maker/brand/model/spec label, on a line no reader was shown and that is not the notice title. The maker vocabulary is common
+# brand and product-line names.
+V9_BRANDS = (r'삼성전자|삼성|엘지전자|LG전자|LG|현대자동차|현대차|기아자동차|기아차|한샘|퍼시스|리바트|시디즈|듀오백|에이스침대|시몬스|일룸|오텍'
+             r'|위니아|딤채|휘센|비스포크|그램|갤럭시(?:\s*(?:탭|북|S\d+))?|오디세이|코웨이|쿠쿠|쿠첸|청호나이스|경동나비엔|린나이|귀뚜라미|캐리어|신도리코'
+             r'|한컴오피스|한글과컴퓨터|한컴|안랩|알약|이스트소프트|더존|한솔제지|모나미|오티스|티센크루프|다이슨|필립스|브라운|테팔|일렉트로룩스|레노버'
+             r'|씽크패드|에이수스|에이서|엡손|캐논|브라더|제록스|로지텍|인텔|엔비디아|마이크로소프트|어도비|오라클|시스코|아이패드|아이폰|맥북|아이맥'
+             r'|애플|소니|파나소닉|니콘|스타리아|카니발|포터|봉고'
+             r'|Samsung|Hyundai|Dell|HP|Lenovo|ThinkPad|ASUS|Acer|Apple|iPad|iPhone|MacBook|iMac|Microsoft|Adobe|Oracle|Cisco|Intel|NVIDIA'
+             r'|AMD|Canon|Epson|EPSON|Brother|Xerox|Logitech|Sony|Panasonic|Dyson|Philips|Bosch|BOSCH|Makita|DJI|Autodesk|Hancom|OTIS')
+V9_BRAND = re.compile(r'(?<![가-힣A-Za-z0-9])(' + V9_BRANDS + r')(?![가-힣A-Za-z])')
+V9_BRAND_DEMAND = re.compile(r'(제\s*품|모\s*델|정\s*품|시\s*리\s*즈|브\s*랜\s*드|기\s*종)?\s*(으\s*로|로|을|를)?\s*'
+                             r'(납\s*품|구\s*매|구\s*입|설\s*치|탑\s*재|장\s*착|구\s*성|한\s*정|지\s*정|할\s*것|일\s*것|이\s*어\s*야|하\s*여\s*야|또\s*는\s*동\s*등)'
+                             r'|\d+\s*(대|개|식|세\s*트|EA|ea)(?![가-힣])')
+V9_BRAND_LATER = re.compile(r'[^.。,，]{0,40}?((으\s*로|로)\s*(할\s*것|납\s*품|구\s*매|설\s*치|한\s*정|지\s*정)|일\s*것|이\s*어\s*야|하\s*여\s*야'
+                            r'|납\s*품|구\s*매|설\s*치|탑\s*재|장\s*착)')
+V9_BRAND_LABEL = re.compile(r'(제\s*조\s*(사|원|회\s*사|업\s*체)|제\s*작\s*사|브\s*랜\s*드|상\s*표\s*명?|메\s*이\s*커|모\s*델\s*명?|규\s*격|사\s*양|품\s*명'
+                            r'|제\s*품\s*명|구\s*매\s*물\s*품|납\s*품\s*물\s*품|물\s*품\s*명|차\s*종|차\s*량\s*명?|기\s*종)\s*(지\s*정)?\s*[:：|]\s*$')
+V9_BRAND_TITLE = re.compile(r'공\s*고\s*[)）]?\s*$')
+V9_BRAND_LICENCE = re.compile(r'[^.。,，]{0,40}?(라\s*이\s*선\s*스|라\s*이\s*센\s*스|copy|카\s*피|user|유\s*저)', re.I)
+V9_BRAND_NOT = re.compile(r'기\s*존|호\s*환|연\s*동|유\s*지\s*보\s*수|수\s*리|점\s*검|교\s*체|A\s*/\s*S|확\s*약|증\s*명|인\s*증|발\s*행|발\s*급'
+                          r'|작\s*성|환\s*경|기\s*반|구\s*동|파\s*일|형\s*식|지\s*원\s*(하|되|할|가\s*능)|열\s*람|뷰\s*어|제\s*외|불\s*가|금\s*지|사\s*용\s*불'
+                          r'|지\s*않')
+
+
+def v9_brand_line(b):
+    shown = {ln.i for ln in b.cands.get('model', [])}
+    stage = getattr(b, 'd_model_name', None)
+    if stage:
+        shown |= set(stage.get('shown', ()))
+    titles = [x for x in b.titles if len(x.strip()) >= 6]
+    for ln in b.notice.lines:
+        t = ln.text
+        if ln.i in shown or ln.sec in ('EVAL', 'DOCS') or len(t.strip()) > 160 or V9_BRAND_NOT.search(t) \
+                or any(x in t for x in titles) or V9_BRAND_TITLE.search(t) \
+                or BRAND_NONPRODUCT.search(t) or MAKER_CONDITION.search(t) or PLACEHOLDER_LABEL.search(t):
+            continue
+        for m in V9_BRAND.finditer(t):
+            if m.group(1) == 'HP' and (re.search(r'\d\s*$', t[:m.start()]) or t[m.end():m.end() + 1] == '-'):
+                continue          # horsepower ("1/15 HP") or a model code ("HP-N138L")
+            if V9_BRAND_LABEL.search(t[:m.start()]) or V9_BRAND_DEMAND.match(t, m.end()) or V9_BRAND_LATER.match(t, m.end()) \
+                    or V9_BRAND_LICENCE.match(t, m.end()):
+                return ln
+    return None
+
+
 def v9(b):
     if switches.V9_READ2:
         return v9_read2(b)
@@ -1746,6 +2131,8 @@ def v9(b):
         lines = [ln for ln in lines if not x3_drop(b, ln)]
     if not lines and switches.V9_X3B:
         return x3b_line(b)
+    if not lines and switches.V9_BRAND_REQ:
+        return v9_brand_line(b)
     return lines[0] if lines else None
 
 
@@ -2547,6 +2934,49 @@ def v12_explicit_lines(b):
     return out
 
 
+# Switch V12_EXPLICIT_WIDE (판로지원법 제9조: holding the certificate as a condition of the bid restricts it wherever the notice
+# writes the condition): the holder wording of V12_PART, a bar on bidders without the certificate, a demand that the bidder
+# hold, obtain or submit it, or a restriction of the qualification to its holders, on a line of any 공고문 section but the
+# evaluation table or of any attachment section.
+V12_VOID = r'(무\s*효|불\s*가|수\s*없|제\s*외|제\s*한|부\s*적\s*격)'
+V12_BIDDER = r'(입\s*찰\s*(참\s*가\s*)?(자|업\s*체)|참\s*가\s*(업\s*체|자)|입\s*찰\s*에\s*참\s*가\s*(하\s*는|하\s*려\s*는|하\s*고\s*자\s*하\s*는)\s*(업\s*체|자))'
+V12_BAR = re.compile(
+    r'(없\s*는|않\s*은|아\s*니\s*한|못\s*한)\s*(업\s*체|자|사\s*업\s*자)[^.。]{0,30}' + V12_VOID
+    + r'|미\s*(소\s*지|보\s*유|첨\s*부|제\s*출)\s*(자|업\s*체|시)[^.。]{0,30}' + V12_VOID
+    + r'|(첨\s*부|제\s*출|구\s*비)\s*하\s*지\s*(않|아\s*니)[^.。]{0,30}' + V12_VOID
+    + r'|(보\s*유|소\s*지|구\s*비|취\s*득)\s*하\s*여\s*야|(받|갖\s*추)\s*(아|어)\s*야|필\s*한\s*(업\s*체|자)'
+    r'|(가\s*진|가\s*지\s*고\s*있\s*는|등\s*록\s*되\s*어\s*있\s*는)\s*(업\s*체|자|사\s*업\s*자)'
+    r'|(받\s*은|보\s*유\s*한|소\s*지\s*한|갖\s*춘)\s*(중\s*소\s*)?기\s*업|(보\s*유|소\s*지)\s*하\s*고\s*[^.。]{0,40}(한|는|된)\s*(업\s*체|자)(?![가-힣])'
+    r'|(으\s*로|로)\s*(참\s*가\s*자\s*격\s*을\s*)?(제\s*한|한\s*정)|(참\s*가\s*자\s*격|자\s*격\s*요\s*건)\s*[:：][^.。]{0,40}(보\s*유|소\s*지)'
+    + r'|' + V12_BIDDER + r'[^.。]{0,60}(제\s*출|첨\s*부)\s*하\s*여\s*야')
+V12_ADMIT = re.compile(r'(않\s*은|없\s*는|미\s*소\s*지|미\s*보\s*유)\s*(자|업\s*체|사\s*업\s*자)\s*도|없\s*이\s*도|않\s*아\s*도'
+                       r'|필\s*요\s*(하\s*지\s*)?않|불\s*필\s*요|(생\s*략|면\s*제)\s*(하|합|함|한|됩|된)|우\s*대|가\s*점|가\s*산\s*점|배\s*점')
+
+
+V12_COMPETITION = re.compile(r'경\s*쟁\s*(제\s*품|품\s*목)')
+
+
+def v12_wide_lines(b):
+    # A notice whose certificate lines cite a listed competition product (세부품명 or 10-digit code) certifies that product:
+    # the reading of those lines decides v12, and a line naming no product restates the same certificate.
+    from .families import DOC_LIST
+    cat = catalog.load()
+    cert = [ln for ln in b.notice.lines if DP_CERT.search(ln.text)]
+    if any(catalog.cites_listed(clause_text(b.notice, ln), cat, b.meta.P) for ln in cert):
+        return []
+    out = []
+    for ln in cert:
+        t = ln.text
+        if ln.doc_type == '공고문' and ln.sec == 'EVAL' or METHOD_SUMMARY.search(t) or V12_SANCTION.search(t) \
+                or V12_ADMIT.search(t) or DP_BONUS.search(t) or V12_COMPETITION.search(clause_text(b.notice, ln)):
+            continue
+        if (DOC_LIST.search(t) or LIST_ENTRY.search(t)) and not re.search(V12_VOID, t):
+            continue
+        if V12_BAR.search(t) or V12_PART.search(t) and not V12_EXEMPT.search(t):
+            out.append(ln)
+    return out
+
+
 def v12(b):
     """v12 is judged by the procured object (talkboard): a certificate for a listed competition product that the model
     reads as the procured work itself shows the purchase is that product, whatever our title families say."""
@@ -2554,7 +2984,8 @@ def v12(b):
         return None
     cat = catalog.load()
     lines = []
-    for ln in dp_required(b, positive=True) + (v12_explicit_lines(b) if switches.V12_EXPLICIT_ANY else []):
+    wide = v12_wide_lines(b) if switches.V12_EXPLICIT_ANY and switches.V12_EXPLICIT_WIDE else []
+    for ln in dp_required(b, positive=True) + (v12_explicit_lines(b) if switches.V12_EXPLICIT_ANY else []) + wide:
         clause = clause_text(b.notice, ln)
         # Audit E: the verification, possession and condition wording is read on the clause (a layout break splits "…확인(" /
         # "종합정보망)이 안 될 경우"), and the clause must name the 직접생산확인 certificate.
@@ -3242,6 +3673,22 @@ def list_deadline_pre(b, ln):
     return any(V19_BID_STAGE.search(s) for s in chain + [sibling]) and not any(V19_LATE_STAGE.search(s) for s in chain)
 
 
+# Switch V19_BID_BAR (talkboard 9/28: v19 is the pledge submitted at the bid or issued or held before it): a demand whose
+# absence voids the bid or bars participation is a demand at the bid; so is one set at the bid-participation application,
+# in a 참가자격 label or in a bid-document label.
+V19_BAR = re.compile(
+    r'(미\s*제\s*출|미\s*첨\s*부|제\s*출\s*하\s*지\s*(않|아\s*니|못)|첨\s*부\s*하\s*지\s*않)[^.。]{0,30}?(입\s*찰|견\s*적|투\s*찰|참\s*가)[^.。]{0,12}?'
+    r'(무\s*효|제\s*외|불\s*가|할\s*수\s*없|자\s*격\s*이?\s*없)'
+    r'|(제\s*출|첨\s*부|보\s*유|확\s*보)\s*하\s*여\s*야\s*(만\s*)?(입\s*찰|견\s*적)\s*에?\s*참\s*(가|여)\s*할\s*수'
+    r'|입\s*찰\s*참\s*가\s*(신\s*청|등\s*록)\s*(서\s*)?(제\s*출\s*)?(마\s*감|시|기\s*한)'
+    r'|(입\s*찰\s*)?참\s*가\s*자\s*격\s*[:：][^.。]{0,60}(제\s*출|보\s*유|소\s*지)\s*한\s*(업\s*체|자)'
+    r'|입\s*찰\s*(참\s*가\s*)?(서\s*류|등\s*록\s*서\s*류)\s*[:：]')
+
+
+def bid_bar_timed(b, ln):
+    return bool(V19_BAR.search(clause_text(b.notice, ln)))
+
+
 def v19(b):
     if not switches.V19_PRIVATE and b.meta.private:
         return None
@@ -3254,6 +3701,8 @@ def v19(b):
         if not timed and switches.V19_CPU_TIMED and x6_pledge_stage(b, ln) in ('PRE', 'PRE_LIST'):
             timed = True
         if not timed and switches.V19_LIST_DEADLINE and list_deadline_pre(b, ln):
+            timed = True
+        if not timed and switches.V19_BID_BAR and bid_bar_timed(b, ln):
             timed = True
         qual = switches.V19_QUAL_STAGE and x6_qual_stage_demand(b, ln)
         if not timed and qual:
@@ -3393,7 +3842,11 @@ def _rtd_v21_mode_base(b):
     if not switches.RTD_V21_SHARE_TEXT:
         return hit
     from .rtd_v21_share import augment
-    return augment(b, hit)
+    hit = augment(b, hit)
+    if not switches.V21_SHARE_FORMS:
+        return hit
+    from .v21_share_forms import augment as share_forms
+    return share_forms(b, hit)
 
 
 def v21(b):
@@ -3499,7 +3952,11 @@ def v22(b):
     if not switches.RTD_BRIEF_ATTENDANCE:
         return hit
     from .rtd_brief_attendance import augment
-    return augment(b, hit)
+    hit = augment(b, hit)
+    if hit is not None or not switches.V22_ATTEND_FORMS:
+        return hit
+    from .v22_attend_forms import augment as attend_forms
+    return attend_forms(b, hit)
 
 
 NO_BRIEF = re.compile(r'생략|미\s*개최|개최\s*(하지\s*)?않|(설명회|설명)\s*(는|은)?\s*[:：]?\s*(없음|없습니다|미개최)|해당\s*없음|미\s*실시|실시\s*하지\s*않|(으로|로)\s*갈음')
@@ -3616,6 +4073,9 @@ def v23(b):
     hit = _rtd_v23_base(b)
     if not switches.RTD_V23_EVENT_DATES:
         return hit
+    if switches.V23_DATE_FORMS:
+        from .v23_date_forms import decide as date_forms
+        return date_forms(b, hit)
     from .rtd_v23_dates import decide
     return decide(b, hit)
 
@@ -3994,6 +4454,34 @@ AMOUNT_AFTER_LABEL_L = re.compile(AMOUNT_AFTER_LABEL_T.pattern.replace(r'^\s*', 
 assert AMOUNT_FIELD.pattern.endswith(")") and AMOUNT_AFTER_LABEL_L.pattern != AMOUNT_AFTER_LABEL_T.pattern
 
 
+# Switch V24_AMOUNT_UNITS: the amount written with Korean units (만·억·천·백만, Korean numerals; amounts.compound_money) as the
+# value of a budget/estimate field, inline or opening the next line of a vertical table; an amount followed by 이상·이하·미만·초과
+# is a band, not the notice's amount. A unit amount states a registered value it equals at its own precision ("1.6억원" for
+# 159,432,000), and a field that names a registered value anywhere in its statement agrees.
+V24_UNIT_LEAD = re.compile(r'^\s*(?:[\(（][^)）]{0,14}[\)）])?\s*(?:[:：|=]\s*)?(?:총\s*(?:액\s*)?[:：]?\s*)?(?:금\s*)?')
+V24_UNIT_BAND = re.compile(r'^\s*(?:[\(（][^)）]{0,20}[\)）]\s*)?(?:이\s*상|이\s*하|미\s*만|초\s*과|인\s*경\s*우|까\s*지|내\s*외|정\s*도|수\s*준)')
+
+
+def unit_amount_after(rest, refs):
+    lead = V24_UNIT_LEAD.match(rest)
+    if not lead:
+        return None
+    k = lead.end()
+    found = amounts.compound_money(rest)
+    if not found or found[0].start > k + 1 or found[0].value < 1e5 or not re.search(r'억|만|천|백', found[0].raw) \
+            or V24_UNIT_BAND.match(rest[found[0].end:]):
+        return None
+    # The field names a registered value anywhere in its statement ("총 7,110,000천원/년 중 1,435,270천원"): it agrees.
+    for mo in found:
+        v = mo.value
+        digits = str(int(round(v)))
+        unit = 10 ** (len(digits) - len(digits.rstrip('0')))
+        for ref in refs:
+            if ref and v in (ref // unit * unit, round(ref / unit) * unit, -(-ref // unit) * unit):
+                return ref
+    return found[0].value
+
+
 def stated_amounts(b):
     """[(line, value, is 추정가격, is a field meta registers)] of the budget/estimate statements, inline or on the next line."""
     out, lines = [], b.notice.notice_lines()[:150]
@@ -4003,6 +4491,11 @@ def stated_amounts(b):
             continue
         found = False
         for m in (AMOUNT_FIELD_L if switches.V24_AMOUNT_LABELS else AMOUNT_FIELD).finditer(t):
+            if switches.V24_AMOUNT_UNITS:
+                u = unit_amount_after(t[m.end():], (b.meta.P, b.meta.B))
+                if u is not None and not OTHER_AMOUNT_FIELD.search(t[m.end():m.end() + 12]):
+                    out.append((ln, u, bool(ESTIMATE_FIELD.fullmatch(m.group(1))), bool(REGISTERED_FIELD.fullmatch(m.group(1)))))
+                    found = True
             a = (AMOUNT_AFTER_LABEL_L if switches.V24_AMOUNT_LABELS else AMOUNT_AFTER_LABEL_T if switches.V24_AMOUNT_TOTAL
                  else AMOUNT_AFTER_LABEL).match(t[m.end():])
             if a and not OTHER_AMOUNT_FIELD.search(t[m.end():m.end() + a.start(1)]):
@@ -4014,6 +4507,11 @@ def stated_amounts(b):
         for nxt in lines[k + 1:k + 3]:          # vertical table: the value opens the next non-empty line
             if not nxt.text.strip():
                 continue
+            u = unit_amount_after(nxt.text, (b.meta.P, b.meta.B)) if switches.V24_AMOUNT_UNITS else None
+            if u is not None:
+                label = AMOUNT_FIELD.search(t).group(1)
+                out.append((nxt, u, bool(ESTIMATE_FIELD.fullmatch(label)), bool(REGISTERED_FIELD.fullmatch(label))))
+                break
             a = (AMOUNT_LEAD_T if switches.V24_AMOUNT_TOTAL else AMOUNT_LEAD).match(nxt.text)
             if a:
                 label = AMOUNT_FIELD.search(t).group(1)
@@ -4490,6 +4988,55 @@ def _rtd4_rule(it):
 
 
 v14, v15, v16, v17, v18 = (_rtd4_rule(it) for it in ('v14', 'v15', 'v16', 'v17', 'v18'))
+
+
+# T4_V17_NOTICE_CLASS: v17 takes the 공고문's class when only an attachment names 소기업·소상공인 (t4_v17_notice).
+def _t4v_rule(base):
+    def rule(b):
+        hit = base(b)
+        if hit is not None or not switches.T4_V17_NOTICE_CLASS:
+            return hit
+        from .t4_v17_notice import notice_class_v17
+        return notice_class_v17(b)
+    return rule
+
+
+v17 = _t4v_rule(v17)
+
+
+# T4_SIZE_WIDE_ABS: v16/v18 do not fire when t4_size_wide reads a clause limiting bidders to a size class.
+_T4A_BASE = {'v16': v16, 'v18': v18}
+
+
+def _t4a_rule(it):
+    def rule(b):
+        hit = _T4A_BASE[it](b)
+        if hit is None or not switches.T4_SIZE_WIDE_ABS:
+            return hit
+        from .t4_size_wide import wide
+        return None if wide(b) else hit
+    return rule
+
+
+v16, v18 = (_t4a_rule(it) for it in ('v16', 'v18'))
+
+
+# T4_SIZE_WIDE: v14/v15/v17 read a clause limiting bidders to a size class stated outside the qualification section
+# when that section states no class (t4_size_wide).
+_T4W_BASE = {'v14': v14, 'v15': v15, 'v17': v17}
+
+
+def _t4w_rule(it):
+    def rule(b):
+        hit = _T4W_BASE[it](b)
+        if hit is not None or not switches.T4_SIZE_WIDE:
+            return hit
+        from .t4_size_wide import adjust
+        return adjust(b, it)
+    return rule
+
+
+v14, v15, v17 = (_t4w_rule(it) for it in ('v14', 'v15', 'v17'))
 
 
 RULES = {'v1': v1, 'v2': v2, 'v3': v3, 'v4': v4, 'v5': v5, 'v6': v6, 'v7': v7, 'v8': v8, 'v9': v9, 'v10': v10,

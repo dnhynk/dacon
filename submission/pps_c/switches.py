@@ -184,9 +184,18 @@ T_SAFETY_STATUTE = False
 V5_ANY_SECTION = False
 # v3 counts a required record equal to the budget (항목명 "1배수 이상") and skips 신인도 lines; probe with AF_ITEMS including 'v3'.
 V3_EXACT = False
+# v3: a 공고문 line outside the evaluation text and the document list that sets the amount the record must reach ("※ 실적은
+# 단일 건 기준 3억원 이상이어야 합니다", "※ 실적은 사업예산 이상의 단일 건이어야 합니다") is the record requirement's floor,
+# compared with the budget as a record line's amount is. False = current behaviour.
+V3_NOTE_FLOOR = False
 # Probe (expert audit X2): v3 takes the single-record amount of "단일 … 또는 누적 …" (집행기준 제5조①: one past contract).
 # False = current behaviour.
 V3_DISJUNCTIVE = False
+# v3: a required record measured against the project itself in words the ratio reader lacks is read against the budget:
+# 기초가격, 계약예정금액·예정금액, 발주금액, 용역비, 사업 규모, "사업비 전액", a base followed by a parenthetical
+# ("기초금액(부가세 포함) 이상", "추정가격(부가세 포함)의 1.2배"), and 예정가격 (VAT included, like the budget) is compared
+# with the budget instead of the 추정가격. Only when no ratio was found. False = current.
+V3_BASE_WORDS = False
 # v23 counts "전일부터 기산하여 N일 전": a gap of N days is short (current: < N).
 V23_LEGAL_COUNT = False
 # Probes (audit RF), each False = current behaviour: v17 reads the 제2조의2 ①1 단서 widening in every document line (failed
@@ -235,6 +244,12 @@ V1_INST_LIST = False
 V4_PRIVATE_ENUM = False
 # v4 fires on a facility-kind orderer token directly followed by a delivery or operation record.
 V4_TOKEN_BUYER = False
+# v4 (item name "특정실적"; 정부 입찰·계약 집행기준 제5조④2 and ①: a record of the same or a similar kind counts): when a
+# record is required, a 공고문 qualification line, 유의사항 line or the record clause itself that refuses similar records ("유사
+# 사업 실적은 인정하지 않음", "유사 용역 실적 불인정"), admits only records of the same name ("동일 명칭의 용역 수행실적만
+# 인정") or excludes records of like kinds in a parenthetical ("…실적에 한함(시민회관·강당 설치 실적은 제외)") limits the record to a
+# named one; evaluation, document-list, subcontract and joint-contract text is not. False = current behaviour.
+V4_NAMED_RECORD = False
 # Probes (expert audit X2), each False = current behaviour: v2 and v8 skip a third-party record clause, a statutory definitional
 # record (공익활동실적) and a 신인도 line;
 X2_RECORD_NOISE = False
@@ -324,6 +339,11 @@ V24_AMOUNT_TOTAL = False
 # Red team A2 (switch V1_INST_WORDS): v1's institution gate also accepts 교육기관, 전문기관, 학회, 지방공사·공단, 출연·출자·투자기관,
 # 진흥원·평가원 as institution kinds. False = current behaviour.
 V1_INST_WORDS = False
+# v1: more institution kinds a limit with an explicit limiting phrase can name (공기업, 준정부기관, 정부·국가기관, 산하·소속·부설기관, 언론사·신문사·방송사, 상공회의소,
+# 박물관·미술관, 의료기관, 지방자치단체), a parenthetical that narrows the eligible kind ("4년제 대학교(전문대학 제외)",
+# "대학, 연구기관(영리법인 제외)") is no alternative clause, "…로 참가자격을 제한" is a limiting phrase, and the CPU list path
+# (V1_INST_LIST) takes the same kinds as list members. False = current behaviour.
+V1_INST_KINDS = False
 # Red team A2 (switch V24_METHOD_VERTICAL): v24's method-field axis takes the next line as the value of a label that stands
 # alone (vertical table). False = current behaviour.
 V24_METHOD_VERTICAL = False
@@ -331,6 +351,18 @@ V24_METHOD_VERTICAL = False
 # branches, service centres, repair shops, offices, plants or warehouses (wider nouns and verbs than NATIONWIDE_HOLDING) or a
 # held staff count of ten or more (STAFF_SCALE), with no institution-family candidacy needed. False = current behaviour.
 V1_NATIONWIDE_WIDE = False
+# v1: a participation requirement stated outside the qualification section is judged like one inside it: a 공고문 유의사항,
+# 입찰 or other-section line with a bidder subject or a participation phrase ("※ 본 입찰은 대학(산학협력단 포함)만 참가할 수
+# 있으며", "※ 참가업체는 상시 근로자 50인 이상을 고용하여야 합니다"), and an attachment line labelled "제안참가자격:" or
+# under a 참가자격 heading with a bidder subject or a participation phrase (also for the CPU list path, and a labelled
+# attachment line that limits bidders to institution kinds in its own words counts without a model reading); evaluation, document-list and joint-contract text is not. False = current.
+V1_PLACEMENT = False
+# v1 (item: 법령상 근거 없는 시설·인력·장비 규모 요구): a qualification that the bidder own or run a facility of a stated size
+# ("자체 물류창고(연면적 3,000㎡ 이상)를 보유한 업체", "2,000석 이상 규모의 공연장을 … 운영하는 업체") or keep a site in every
+# 시·군 or per region ("시·군별 1개소 이상의 영업소를 두고 있는 업체", "도내 모든 시·군에 배송거점을 보유한 업체"), found by
+# the CPU in any qualification line; a record, a place of performance, a rented venue, a partner and a facility a named
+# statute requires are not. False = current behaviour.
+V1_FACILITY_SCALE = False
 # Red team A2 (switch V24_LICENCE_PARTIAL): v24 fires when the 공고문's qualification licence codes and 나라장터's each hold a code
 # the other lacks (a partial overlap; the licence axes fire only on disjoint sets). False = current behaviour.
 V24_LICENCE_PARTIAL = False
@@ -350,6 +382,11 @@ V4_BUYER_NOUN = False
 # supplying, installing, providing, selling, leasing, operating, building or producing verbs as the record's buyer relation
 # (BUYER_VERB names ordering, delivery and performance only). False = current behaviour.
 V4_BUYER_VERBS = False
+# v4: more ways to limit the record to one buyer (정부 집행기준 제5조④3, 지방 집행기준 제1장 7.나.1)5)): the orderer itself as
+# a plain word ("해당 수요기관에 … 납품한", "본 기관 발주 … 실적"), a named public body with its affiliates ("한국전력공사 및 그
+# 자회사에 납품한"), LH/SH-type abbreviations with an ordering verb, "군(軍) 부대"·육해공군, a buyer kind with "와/과 …
+# 이행한", and a buyer kind directly qualifying an operation or delivery experience ("공공기관 급식소 위탁운영 경험"). False = current.
+V4_BUYER_MORE = False
 # Red team R3 (switch V4_NAMED_BUYER): v4 also reads a record limited to one named buyer when no buyer kind decides the
 # clause: a public body named with its own name ("한국전력공사에 납품한", "서울특별시에서 발주한"), an anonymised institution token, the orderer
 # token directly qualifying the record ("[수요기관(공기업)] 3년 내 납품실적"), the orderer itself ("당 기관에 납품한") or a clause
@@ -364,6 +401,11 @@ V8_TOKEN_REGION = False
 # (x2_cpu_region) also takes "<시·도> 소재 업체", "도내·관내·시내·군내 업체" and multi-시·도 region groups ("수도권 소재 업체"),
 # unless the clause is a preference, a partner or a subcontract. False = current behaviour.
 V8_REGION_WORDS = False
+# v8: the CPU bidder-location reader (x2_cpu_region, used when a record is required, no region line was read and none is
+# registered) also takes a labelled participation region ("입찰참가지역 : 부산광역시", "참가 가능지역 : 충청남도", "지역제한 :
+# 강원특별자치도", "참가자격 지역 : 대구광역시", in the qualification section "소재지 : 서울특별시"), "관내(울산광역시) 업체", a joined
+# 시·도 pair ("전라남·북도 소재 업체"), a region group or region token before "소재 업체" and a 유의사항 line admitting only bidders of a region; "없음" values and preference, partner or place clauses are not. False = current.
+V8_REGION_LABEL = False
 # Red team A2 (switch V4_UNREAD): v4 also reads held-record clauses the perf family never selected (x2_unread_records, as v2
 # under X2_HELD_RECORD_X) and fires when such a clause limits the record to a named kind of buyer. False = current behaviour.
 V4_UNREAD = False
@@ -523,3 +565,68 @@ RTD4_CERT_LIST = False
 # puts in the 행사기획·대행 competition family, with no event work in its title or project-name lines, is a general service
 # (v14-v18 apply, v10/v11/v13 do not). False = current.
 RTD4_EVENT_LICENSE = False
+# v23: the briefing date may be written with a two-digit year ("’26.03.05.", read as 2026-03-05) and may sit on the next
+# item of the briefing heading's own list ("- 사업설명회" / "- 일시: 2026. 3. 5."), which the layout parser returns to the
+# enclosing section. Requires RTD_V23_EVENT_DATES. False = current behaviour.
+V23_DATE_FORMS = False
+# v22 (negotiated contracts): attendance at the orderer's briefing is a participation condition also when written as a
+# qualification item naming the attendees ("라. 현장설명회 참석 업체"), as a duty or requirement ("참석은 필수", "의무참석",
+# "참석은 입찰참가자격 요건"), as only attendees admitted in other words ("참석 업체에 한해 입찰참가 자격을 부여", "참석업체만
+# 입찰 가능", "참석업체 외에는 입찰에 참가할 수 없음", "참석자 명부에 서명한 업체만") or as absence barring participation
+# ("미참석 시 입찰참가자격 박탈", "현장설명에 참가하지 아니한 자는 입찰에 참가할 수 없다", "참석확인서 미제출 시 입찰 무효"),
+# in the 공고문 or an attachment's qualification text; a bare "설명회" counts right below a line naming the orderer's briefing.
+# The proposer's presentation and evaluation-stage consequences stay out. Requires RTD_BRIEF_ATTENDANCE. False = current.
+V22_ATTEND_FORMS = False
+# v21: a joint-member share floor written as "3/100", "3프로", "삼(3)퍼센트", "지분율이 N% 미만인 경우 구성원이 될 수 없음" (the
+# floor is N%), "구성원은 각 N% 이상 참여" (a member's own participation floor without the word 지분) or a share field whose
+# value line opens with its own bullet ("구성원별 지분율" / "- 최소 3% 이상") is read by the same literal share check.
+# Requires RTD_V21_SHARE_TEXT. False = current behaviour.
+V21_SHARE_FORMS = False
+# v5/v6/v7: a restriction of who may bid by where the bidder is, written as a labelled field ("지역제한: 경기도",
+# "| 참가지역 | 부산광역시 |", "입찰참가자격 제한: 지역(대구광역시)"), as "X 소재 업체에 한함", as an exclusion of bidders outside
+# X ("X 외 지역 업체는 입찰에 참가할 수 없음"), with a residence or registration predicate ("X에 주소를 둔 자", "X에
+# 사업자등록이 되어 있는 업체"), naming the orderer's own 시·군·구 ("당해 시 관내") or naming 시·군 without the anonymised
+# token ("여주, 양평 지역 업체"), in the 공고문 outside evaluation and document lists or in an attachment line stating the
+# participation qualification; delivery, work-site, contact, facility, joint-partner and bonus clauses stay out. Applies
+# after RTD_REGION_BIDDER_CLAUSE finds nothing. False = current behaviour.
+REGION_CLAUSE_FORMS = False
+# v2, v8 (and v4 through V4_UNREAD, v2-v4 through PERF_UNREAD): a held record stated without the "실적이 있는 업체" shape is a
+# record requirement: "…공급한 사실이 있는 업체", "…운영을 해본 업체", "…경험 유무 : 필수", "…수행하였음을 입증할 수 있는
+# 업체", "…사례를 증빙할 수 있는 업체", "…개최 경험 2회 이상", "…수행 이력 보유 업체", "…참여 이력이 확인되는 업체", "…수주하여
+# 완료한 업체"; an attachment line labelled "제안참가자격:" is under a qualification heading; and a 공고문 line outside the
+# evaluation text that bars bidders without the record ("실적증명서 미제출 시 입찰참가를 제한", "실적이 있는 업체만 견적서를
+# 제출할 수 있습니다") states the requirement when no other record line does. False = current behaviour.
+X3_RECORD_FORMS = False
+# v14/v15/v17: a clause limiting bidders to a size class (…만 참가, …에 한함, …로 제한, …이어야, 참가대상·참가자격: …)
+# counts in the 공고문's notes and opening lines and in attachments outside a qualification heading, when the
+# qualification section states no class (t4_size_wide). False = current.
+T4_SIZE_WIDE = False
+# v16/v18: a clause that t4_size_wide reads as limiting bidders to a size class is a stated restriction, so the
+# absence items do not fire on it. False = current.
+T4_SIZE_WIDE_ABS = False
+# v17: when the 공고문's qualification clauses admit the whole SME class (중기업 included) and only an attachment
+# names 소기업·소상공인, the 공고문's class decides (t4_v17_notice). False = current.
+T4_V17_NOTICE_CLASS = False
+# v12 (with V12_EXPLICIT_ANY): a line of any 공고문 section but the evaluation table, or of any attachment section, that names
+# the 직접생산확인 certificate and bars bidders without it in its own words ("…가 없는 업체의 입찰 참가를 제한", "…를 받지 않은
+# 업체는 … 참여할 수 없음", "…를 첨부하지 않은 경우 … 무효", "입찰자는 …를 보유하여야 합니다", "…를 소지한 중소기업으로
+# 제한") is the possession requirement, whether or not the reader selected the line; lines admitting non-holders, sanctions,
+# preferences or points for holders, and document-list entries without a bar are not. False = current behaviour.
+V12_EXPLICIT_WIDE = False
+# v19: a third-party pledge whose absence voids the bid or bars the bidder ("…확약서 미제출 시 입찰 무효", "…확약서를
+# 제출하지 아니한 자의 입찰은 무효", "…제출하지 않으면 입찰참가 자격이 없습니다", "…를 제출하여야 입찰에 참가할 수 있습니다"), or that is set
+# at the bid-participation application ("입찰참가 신청 마감일까지"), in a 참가자격 label ("입찰참가자격: …확약서를 제출한 업체")
+# or in a bid-document label ("입찰서류: …확약서 각 1부"), is demanded at the bid although the reader gave no time. The other v19
+# conditions (third-party issuer, pledge document, X6 stage check) apply unchanged. False = current behaviour.
+V19_BID_BAR = False
+# v24: a budget or 추정가격 field whose value is written with Korean units ("사업예산: 3,500만원", "추정가격 | 1억 2,000만원",
+# "사업비 금일억이천만원정", "예산: 35,000천원") is read as that amount in won by the CPU amount reader (it read only digit
+# amounts, so "3,500만원" was 3,500); a band ("…2억원 미만") is no value, and a unit amount equal to a registered value at its own
+# precision agrees with it. False = current behaviour.
+V24_AMOUNT_UNITS = False
+# v9: a specification line that neither the model family nor the model-name stage was shown, and that names a known maker or
+# brand as what must be supplied ("…한샘 제품으로 납품하여야 함", "(주)오텍 제품일 것", "냉장고는 삼성전자 비스포크 제품으로 납품",
+# "브랜드: 에이스침대", "규격: 한솔제지 A4 복사용지"), designates the maker (집행기준 제5조④5). Lines about existing or compatible
+# equipment, issuers of certificates or pledges, software named as a working environment and negated demands ("…으로 한정하지
+# 않음") are not. False = current behaviour.
+V9_BRAND_REQ = False
