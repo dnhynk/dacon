@@ -4477,6 +4477,10 @@ def title_sw_project(b):
 
 
 def v20(b):
+    if getattr(switches, 'V20_TASK_SW', False):
+        from . import rt_c_v20_task
+        if rt_c_v20_task.extra(b):
+            return True
     if b.sw_project != '소프트웨어 개발·구축·유지관리·운영' and not (switches.V20_TITLE_SW and title_sw_project(b)):
         return None
     if b.meta.private and not switches.V20_PRIVATE:
