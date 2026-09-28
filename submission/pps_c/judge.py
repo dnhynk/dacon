@@ -2251,6 +2251,11 @@ def v9(b):
         lines = [ln for ln in lines if b.read('v9obj', ln).get('대상') not in V9_STAGE2_DROP]
     if switches.V9_X3:
         lines = [ln for ln in lines if not x3_drop(b, ln)]
+    if not lines and (switches.RTD_V9_WRAPPED_MODEL or switches.RTD_V9_SPEC_FIELDS):
+        from .rtd_v9_literal import verdict as literal_v9
+        extra = literal_v9(b)
+        if extra is not None:
+            return extra
     if not lines and switches.V9_X3B:
         return x3b_line(b)
     if not lines and switches.V9_BRAND_REQ and switches.V9_CODE_LISTING:

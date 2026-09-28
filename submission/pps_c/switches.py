@@ -66,6 +66,10 @@ FIX3_PROMPTS = False
 # Probe: v9 also fires on a line the model read as designating the procured item when it carries a model code, without
 # designation wording (talkboard: 규격서 등에 특정 모델명·제조사명 명시 → 성립). False = current behaviour.
 V9_BROAD = False
+# Literal supplied-goods model codes across adjacent physical lines.
+RTD_V9_WRAPPED_MODEL = False
+# Literal maker/model fields and named supplied computer components.
+RTD_V9_SPEC_FIELDS = False
 # Probe: items judged with AUDIT_FIXES and AUDIT_FIXES2 on (AF1_ITEMS: AUDIT_FIXES only) while the bundle (sections,
 # candidates, prompts) stays as the global switches build it. () = current behaviour.
 AF_ITEMS = ()
