@@ -192,7 +192,11 @@ def run(args):
                 stats['skipped_deadline'] += len(stage2)
     rows = []
     for rec, b in zip(recs, bundles):
-        verdicts = judge.judge(b)
+        try:
+            verdicts = judge.judge(b)
+        except Exception as e:   # one notice's failure must not stop the whole output
+            log(f'judge failed on {rec["id"]}: {e!r}; its items are written as 0')
+            verdicts = {it: (0, '') for it in judge.ITEMS}
         rows.append(csvout.row(rec['id'], verdicts, '\n'.join(d['text'] for d in rec['docs'])))
     out_path = str(Path(args.output_dir) / 'submission.csv')
     csvout.write(rows, out_path)
