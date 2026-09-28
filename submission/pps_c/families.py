@@ -514,8 +514,22 @@ SPEC_NOISE = re.compile(r'^\s*(USB|HDMI|IP\d|ISO|KS|LED|LCD|CPU|RAM|SSD|HDD|GB|T
 CREDIT = re.compile(r'\b(AAA|AA[+0\-]?|A[+0\-]|BBB[+0\-]?|BB[+0\-]?|B[+0\-]|CCC|CC|C|D)\b(?=[\s,/·)]|$)')
 
 
+def _empty_model_label(text):
+    """Only an empty explicit form label; never discard a line carrying a value."""
+    text = re.sub(r'^\s*(?:(?:\d+(?:\.\d+)*[.)]?|[가-하][.)]|[①-⑳])\s*|[•*○●◦\-]\s*)', '', text)
+    label = r'(?:제조\s*(?:사|원|회사)|(?:응찰\s*|제안\s*)?모델\s*명?)'
+    other = r'(?:물품\s*명|제품\s*명|업체\s*명)'
+    if not re.search(label, text):
+        return False
+    # A slash-joined label (제조사/모델명:) and multiple empty cells are both forms.
+    cell = r'(?:' + label + r'|' + other + r')(?:\s*/\s*' + label + r')*\s*[:：]'
+    return re.fullmatch(r'\s*\|?\s*' + cell + r'(?:\s*[/|]?\s*' + cell + r')*\s*\|?\s*', text) is not None
+
+
 def model_select(notice):
     def ok(ln):
+        if switches.READ_SKIP_EMPTY_LABELS and _empty_model_label(ln.text):
+            return False
         if ln.sec in ('EVAL', 'DOCS') or CREDIT.search(ln.text) and '등급' in ln.text:
             return False
         if MODEL_WORD.search(ln.text):

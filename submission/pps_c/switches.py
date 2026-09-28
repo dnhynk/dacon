@@ -1051,3 +1051,5 @@ RTB_V24_LICENCE_OR = False
 # RT-C: literal software development/maintenance tasks in full task documents,
 # with a conservative whole-document participation-statement absence check.
 V20_TASK_SW = False
+
+READ_SKIP_EMPTY_LABELS = False
