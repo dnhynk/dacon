@@ -321,6 +321,37 @@ V9_MAKER = False
 # object with none of the cited product's own words (judge.V12_PRODUCT_WORDS), the clause names the 직접생산확인 certificate and
 # offers no licence or supply route in its place. False = current behaviour.
 V12_OBJECT_VOCAB = False
+# v12 (판로지원법 제9조; with the procured object deciding v12): a title, band-tagged line, attachment project name or
+# opening statement that ends with research, a training course, education, 수련활동, a school trip, 현장체험학습, consulting,
+# advice, translation, evaluation, analysis, laundry, disinfection, recruitment, lodging or travel, or 나라장터 licences
+# that are all research, travel, youth-training, university or education trades, name a work that
+# is no listed competition product: a 직접생산확인 demand for a listed product then restricts the bid even when the model
+# read the certificate as the procured kind, and a withheld-title service the certificate alone made competitive is judged
+# by that work. Names mentioning an event and licences of other trades keep the current reading. False = current behaviour.
+V12_OBJECT_WORK = False
+# v12 (판로지원법 제9조; with the procured object deciding v12): a 직접생산확인 demand citing only 소프트웨어 진흥법
+# 제48조 products, in a service notice whose names use no SW product word and whose 나라장터 licences name no SW, IT or
+# content trade, restricts the bid even when the model read the certificate as the procured kind. Requires
+# V12_OBJECT_WORK code (not its value). False = current behaviour.
+V12_OBJECT_SW = False
+# v12 (판로지원법 제9조; with V12_OBJECT_WORK or V12_OBJECT_SW on): a certificate line citing a listed product that
+# those rules show is not the procured work is read wherever V12_EXPLICIT_WIDE and V12_MORE_FORMS read certificate lines
+# (any 공고문 section but evaluation, any attachment section). False = current behaviour.
+V12_OBJECT_WIDE = False
+# v12 (판로지원법 제9조; with the procured object deciding v12): a 직접생산확인 demand citing only event, exhibition,
+# festival or conference products, in a service notice whose names end with maintenance, repair, inspection,
+# construction, design, survey, waste, cleaning, security, catering, rental, purchase, testing, insurance, translation or
+# printing work (no name mentioning an event, no event, exhibition, advertising, design or interior licence), restricts the
+# bid even when the model read the certificate as the procured kind. Requires the V12_OBJECT_WORK, V12_OBJECT_SW and
+# V12_OBJECT_WIDE code (not their values). False = current behaviour.
+V12_OBJECT_EVENT = False
+# v12 (판로지원법 제9조; with the procured object deciding v12): a 직접생산확인 demand citing listed services none of
+# whose related trades is among the 나라장터 licences (at least one licence other than 기타자유업종, no name using the
+# cited products' words) certifies a product other than the registered trades' work and restricts the bid even when the
+# model read the certificate as the procured kind; a withheld-title service that the cited certificate alone made
+# competitive is judged by v12 when its licences show such another trade. Requires the V12_OBJECT_WORK, V12_OBJECT_SW,
+# V12_OBJECT_WIDE and V12_OBJECT_EVENT code (not their values). False = current behaviour.
+V12_OBJECT_TRADE = False
 # Red team A2 (switch V8_SAME_CLAUSE): v8 takes a qualification clause that states the bidder's location and a held record together
 # when no region line was read and none is registered. False = current behaviour.
 V8_SAME_CLAUSE = False
@@ -700,6 +731,10 @@ V12_EXPLICIT_WIDE = False
 # and holder clauses citing the 고시 "중소기업자간 경쟁제품 직접생산 확인기준". A revocation of the certificate for a breach
 # (확인 취소, 제11조, 하청생산, 위반, 부정당) stays a sanction. False = current behaviour.
 V12_MORE_FORMS = False
+# v12 (판로지원법 제9조; with V12_MORE_FORMS): more holder wordings of the certificate requirement ("발급받아 유효기간
+# 내에 있는 업체", "보유하고 있는 중소기업", "보유(세부품명) 업체", "자격요건: … 구비", a qualification table row ending
+# in 소지·보유·구비) on the lines V12_MORE_FORMS reads, with its exclusions. False = current behaviour.
+V12_MORE_FORMS2 = False
 # v19: a third-party pledge whose absence voids the bid or bars the bidder ("…확약서 미제출 시 입찰 무효", "…확약서를
 # 제출하지 아니한 자의 입찰은 무효", "…제출하지 않으면 입찰참가 자격이 없습니다", "…를 제출하여야 입찰에 참가할 수 있습니다"), or that is set
 # at the bid-participation application ("입찰참가 신청 마감일까지"), in a 참가자격 label ("입찰참가자격: …확약서를 제출한 업체")
@@ -718,6 +753,35 @@ V24_AMOUNT_UNITS = False
 # notes (※, *), settlement, annual, monthly, per-unit and variable amounts, compound labels ("홍보용역비"), exact shares and
 # lines that also state a registered value stay out. False = current behaviour.
 V24_ATTACH_AMOUNT = False
+# v24: every method/band tag in the 공고문 head, in any bracket or separator shape, is compared with 나라장터
+# (another method, or a band neither registered amount falls in), not only the first strict tag. False = current behaviour.
+V24_TAG_ANY = False
+# v24: a 공고문 region statement ("지역제한(…)", "지역제한 : …"), any 공고문 qualification clause on the
+# bidder's seat, or a seat clause elsewhere in the 공고문 that limits bidders, naming 시·도 none of which
+# 나라장터 제한지역 registers disagrees, also when another clause agrees. False = current behaviour.
+V24_REGION_STATED = False
+# v24: a 공고문 line outside the qualification section labelled as the licence field ("업종 :", "등록업종 :")
+# or stating the licence the bidder must have registered (outside the joint-contract section), whose codes
+# share none with 나라장터 업종, disagrees with 나라장터. False = current behaviour.
+V24_LICENCE_FIELD = False
+# v24: 나라장터 registers 시·군 tokens only and a 공고문 qualification clause on the bidder's seat names a
+# registered token and an unregistered one: the notice admits bidders 나라장터 excludes. False = current behaviour.
+V24_BASIC_SUPERSET = False
+# v24: a 기초금액 written as a vertical table (label alone, amount on the next line) is judged as
+# V24_BASE_ZONE judges an inline 기초금액. False = current behaviour.
+V24_BASE_VERTICAL = False
+# v24: an attachment line restricting the bidder's seat (본점·주된 영업소) to 시·도 none of which 나라장터
+# 제한지역 registers disagrees with 나라장터. False = current behaviour.
+V24_ATTACH_REGION = False
+# v24: an attachment line outside the qualification section stating the licence the bidder must have
+# registered, with codes none of which 나라장터 업종 registers, disagrees with 나라장터. False = current behaviour.
+V24_ATTACH_LICENCE = False
+# v24: a budget or 추정가격 stated in a sentence ("…소요예산은 금 X원…", "추정가격은 X원…") is compared with
+# 나라장터 when no such statement agrees (equal, rounded or VAT) and it lies within half to double. False = current behaviour.
+V24_AMOUNT_SENTENCE = False
+# v24: labelled budget or 추정가격 statements past the first 150 공고문 lines are judged as the budget readers
+# judge the first 150 lines, when none of them agrees with 나라장터. False = current behaviour.
+V24_AMOUNT_LATE = False
 # v9: a specification line that neither the model family nor the model-name stage was shown, and that names a known maker or
 # brand as what must be supplied ("…한샘 제품으로 납품하여야 함", "(주)오텍 제품일 것", "냉장고는 삼성전자 비스포크 제품으로 납품",
 # "브랜드: 에이스침대", "규격: 한솔제지 A4 복사용지"), designates the maker (집행기준 제5조④5). Lines about existing or compatible

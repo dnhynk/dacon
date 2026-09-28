@@ -3078,6 +3078,217 @@ def v12_vocab_overrides(b, clause, cat):
     return bool(prods) and not any(v12_product_named(p, title) for p in prods)
 
 
+# Switch V12_OBJECT_WORK (판로지원법 제9조; talkboard: v12 is judged by the procured object, not by the certificate's
+# 세부품명): the procured work is research, a training course, education, a 수련활동, a school trip, 현장체험학습, lodging,
+# travel, consulting, advice, translation, interpretation, evaluation, diagnosis, analysis, appraisal, screening, laundry,
+# disinfection or recruitment when the end of the title, of a band-tagged 공고문 line, of an attachment's project-name line (용역명·사업명·과업명)
+# or of an opening "…용역을 다음과 같이 … 공고" statement names it (and that name uses no listed product's own words), or
+# when every 나라장터 licence is a research, travel, youth-training-facility, university or education-institution trade and
+# no name uses a listed product's own words. None of these works is a listed competition product, so a 직접생산확인 demand for an event,
+# exhibition, festival, SW or other listed product restricts a general-product bid whatever the model read. A name that
+# mentions an event (행사·축제·전시·컨퍼런스 …), a licence of any other trade (기타자유업종 aside) and a cited product that
+# carries the work word itself (지질연구조사서비스 for 연구) keep the model's reading. A service that only a cited
+# certificate made competitive, because the title is withheld (공고명), is judged by that named work too.
+V12_WORK_WORD = re.compile(r'(연\s*구|연\s*수(\s*과\s*정)?|교\s*육(\s*과\s*정)?|수\s*련\s*활\s*동|수\s*학\s*여\s*행|(현\s*장\s*)?체\s*험\s*학\s*습|숙\s*박|여\s*행'
+                           r'|컨\s*설\s*팅|자\s*문|번\s*역|통\s*역|평\s*가|진\s*단|분\s*석|감\s*정|심\s*사|세\s*탁|방\s*역|소\s*독|채\s*용)'
+                           r'(\s*(위\s*탁\s*)?운\s*영)?\s*$')
+V12_WORK_STATEMENT = re.compile(r'([가-힣A-Za-z0-9·ㆍ\s]{0,40}?)\s*(용\s*역|사\s*업)\s*(을|를)\s*(다\s*음\s*과|아\s*래\s*와)\s*같\s*이')
+V12_WORK_LICENCE = re.compile(r'학\s*술\s*[.·ㆍ]?\s*연\s*구\s*용\s*역|(종\s*합|국\s*내\s*외?|국\s*외)\s*여\s*행\s*업|청\s*소\s*년\s*수\s*련\s*시\s*설'
+                              r'|^\s*(교\s*육\s*|전\s*문\s*)?대\s*학\s*$|연\s*수\s*원|교\s*육\s*연\s*구\s*기\s*관|평\s*생\s*(직\s*업\s*)?교\s*육|교\s*육\s*기\s*관')
+V12_NEUTRAL_LICENCE = re.compile(r'기\s*타\s*자\s*유\s*업\s*종')
+V12_WORK_DOCS = ('제안요청서', '과업지시서', '규격서')
+
+
+def v12_licences(b):
+    lic = str(b.meta.license or '')
+    return [m.group(1).strip(' 과[]') for m in re.finditer(r'([^\[\]]*?)\((\d{4})\)', lic)]
+
+
+def v12_work_texts(b):
+    notice = [x for x in b.notice.lines if x.doc_type == '공고문']
+    texts = list(b.titles[:2]) + [ln.text for ln in notice[:60] if catalog.BAND_TAG.search(ln.text)]
+    for ln in notice[:12]:
+        m = V12_WORK_STATEMENT.search(re.split(r'[」』”"\]]', ln.text)[-1])
+        if m and m.group(1).strip():
+            texts.append(m.group(1) + ' 용역')
+    first = {}
+    for ln in b.notice.lines:
+        first.setdefault(ln.doc, ln.i)
+        if ln.doc_type in V12_WORK_DOCS and ln.i - first[ln.doc] < 80:
+            m = catalog.TITLE_LABEL.search(ln.text)
+            if m and m.group(2).strip(' :：|‣·-'):
+                texts.append(m.group(2).strip(' :：|‣·-'))
+    return texts
+
+
+def v12_work_head(t):
+    m = catalog.BAND_TAG.search(t)
+    return catalog.TITLE_TAIL.sub('', V12_TOKEN.sub(' ', t[:m.start()] if m else t)).strip()[-16:]
+
+
+def v12_work(b):
+    """V12_OBJECT_WORK: the procured work word, or None."""
+    lic = v12_licences(b)
+    if any(not (V12_WORK_LICENCE.search(n) or V12_NEUTRAL_LICENCE.search(n)) for n in lic):
+        return None
+    texts = v12_work_texts(b)
+    if any(V12_EVENT_HEAD.search(t) for t in texts):
+        return None
+    for t in texts:
+        head = v12_work_head(t)
+        m = V12_WORK_WORD.search(head)
+        if m and not any(v12_words_name(prod, words, head) for prod, words in V12_PRODUCT_WORDS):
+            return re.sub(r'\s', '', m.group(1))
+    work = [n for n in lic if V12_WORK_LICENCE.search(n)]
+    if work and not any(v12_words_name(prod, words, t) for t in texts for prod, words in V12_PRODUCT_WORDS):
+        return '연구' if re.search(r'연\s*구', work[0]) else '여행' if re.search(r'여\s*행', work[0]) \
+            else '수련' if re.search(r'수\s*련', work[0]) else '교육'
+    return None
+
+
+def v12_work_overrides(b, clause, cat):
+    word = v12_work(b)
+    return bool(word) and not any(word in re.sub(r'\s', '', p.name)
+                                  for p in catalog.cited_products(clause, cat) if catalog.admits(p, b.meta.P))
+
+
+def v12_cited_scope_work(b, scope):
+    return scope is not None and str(scope.basis).startswith('service_cited:') and catalog.placeholder_title(scope.detail) \
+        and v12_work(b) is not None
+
+
+# Switch V12_OBJECT_SW (판로지원법 제9조; talkboard: v12 is judged by the procured object): a 직접생산확인 demand whose
+# cited products admitted at the 추정가격 are all 소프트웨어 진흥법 제48조 products (정보시스템개발, 인터넷지원개발,
+# 데이터처리, 소프트웨어유지및지원 …), in a service notice whose informative title, band-tagged lines, opening statement and
+# attachment project names use none of the SW product words (시스템, 소프트웨어, 홈페이지, 플랫폼, 데이터, 앱, 전산, 정보화,
+# 인터넷, 온라인, 디지털 …) and whose 나라장터 licences name no SW, IT or content trade, certifies a product that is not the
+# procured work, whatever the model read.
+V12_SW_LICENCE = re.compile(r'소\s*프\s*트\s*웨\s*어|정\s*보\s*통\s*신|정\s*보\s*보\s*호|전\s*기\s*통\s*신|정\s*보\s*처\s*리|컴\s*퓨\s*터|전\s*산'
+                            r'|데\s*이\s*터|콘\s*텐\s*츠|방\s*송|엔\s*지\s*니\s*어\s*링|측\s*량|공\s*간\s*정\s*보')
+V12_SW_WORDS = next(words for prod, words in V12_PRODUCT_WORDS if prod.search('소프트웨어'))
+
+
+def v12_sw_overrides(b, clause, cat):
+    if b.meta.work != '용역':
+        return False
+    prods = [p for p in catalog.cited_products(clause, cat) if catalog.admits(p, b.meta.P)]
+    if not prods or not all('제48조' in (p.note or '') for p in prods):
+        return False
+    if any(V12_SW_LICENCE.search(n) for n in v12_licences(b)):
+        return False
+    title = v12_informative_title(b)
+    return bool(title) and not any(V12_SW_WORDS.search(t) for t in [title] + v12_work_texts(b))
+
+
+# Switch V12_OBJECT_WIDE (with V12_OBJECT_WORK or V12_OBJECT_SW on): where those rules show that the procured work is not
+# the listed product a certificate line cites, that line is read like any other certificate line by V12_EXPLICIT_WIDE and
+# V12_MORE_FORMS (any 공고문 section but evaluation, any attachment section), instead of being left to the model's reading of
+# the qualification section.
+def v12_object_wide_lines(b, cat, known):
+    out = []
+    for ln in v12_wide_lines(b, listed_ok=True) + (v12_more_lines(b, listed_ok=True) if switches.V12_MORE_FORMS else []):
+        if ln in known or ln in out:
+            continue
+        clause = clause_text(b.notice, ln)
+        if not catalog.cites_listed(clause, cat, b.meta.P):
+            continue
+        if switches.V12_OBJECT_WORK and v12_work_overrides(b, clause, cat) \
+                or switches.V12_OBJECT_SW and v12_sw_overrides(b, clause, cat) \
+                or switches.V12_OBJECT_EVENT and v12_event_overrides(b, clause, cat) \
+                or switches.V12_OBJECT_TRADE and v12_trade_overrides(b, clause, cat):
+            out.append(ln)
+    return out
+
+
+# Switch V12_OBJECT_EVENT (판로지원법 제9조; talkboard: v12 is judged by the procured object): a 직접생산확인 demand whose
+# cited products admitted at the 추정가격 are all event, exhibition, festival or conference products (기타행사·전시회·축제·
+# 회의·국제행사 기획및대행, 전시부스·전시홍보관 설치및디자인), in a service notice whose title, band-tagged line, opening
+# statement or attachment project name ends with maintenance, repair, inspection, construction, design, supervision,
+# survey, waste, cleaning, disinfection, security, catering, laundry, rental, purchase, manufacture, testing, insurance,
+# translation or printing work, where no name mentions an event or exhibition and no 나라장터 licence is an event,
+# exhibition, advertising, design or interior trade, certifies a product that is not the procured work.
+V12_EVENT_CODES = ('8014199001', '8014198801', '9015189001', '8014190201', '8014198901', '7215409901', '7215409902')
+V12_NONEVENT_WORK = re.compile(r'(유\s*지\s*(관\s*리|보\s*수)|시\s*설\s*(물\s*)?관\s*리|점\s*검|정\s*비|수\s*리|보\s*수|공\s*사|설\s*계|감\s*리|측\s*량'
+                               r'|폐\s*기\s*물(\s*(처\s*리|수\s*집|운\s*반))?|수\s*거|운\s*반|청\s*소|방\s*역|소\s*독|경\s*비|급\s*식|조\s*리|세\s*탁'
+                               r'|임\s*차|임\s*대|구\s*매|구\s*입|제\s*조|납\s*품|검\s*사|시\s*험|보\s*험|번\s*역|통\s*역|인\s*쇄|발\s*간)'
+                               r'(\s*(위\s*탁\s*)?운\s*영)?\s*$')
+V12_EVENT_LICENCE = re.compile(r'행\s*사|회\s*의|전\s*시|공\s*연|광\s*고|이\s*벤\s*트|축\s*제|디\s*자\s*인|실\s*내\s*건\s*축')
+V12_EVENT_WORDS = [words for prod, words in V12_PRODUCT_WORDS if prod.search('행사') or prod.search('전시')]
+
+
+def v12_event_overrides(b, clause, cat):
+    if b.meta.work != '용역':
+        return False
+    prods = [p for p in catalog.cited_products(clause, cat) if catalog.admits(p, b.meta.P)]
+    if not prods or not all(p.code in V12_EVENT_CODES for p in prods):
+        return False
+    if any(V12_EVENT_LICENCE.search(n) for n in v12_licences(b)):
+        return False
+    texts = v12_work_texts(b)
+    if any(V12_EVENT_HEAD.search(t) or any(w.search(t) for w in V12_EVENT_WORDS) for t in texts):
+        return False
+    return any(V12_NONEVENT_WORK.search(v12_work_head(t)) for t in texts)
+
+
+# Switch V12_OBJECT_TRADE (판로지원법 제9조; talkboard: v12 is judged by the procured object): 나라장터 limits bidders to
+# the registered licences, so the procured work is those trades' work. A 직접생산확인 demand whose cited service products
+# (admitted at the 추정가격) all belong to families none of whose related trades (V12_TRADE_RELATED) is registered, in a
+# service notice with at least one licence other than the generic 기타자유업종 and no name mentioning the cited products'
+# own words, certifies a product that is not the procured work (e.g. 행사기획 for 건설폐기물 처리, 인터넷지원개발 for 위탁급식),
+# whatever the model read. Related-trade lists are broad on purpose: any licence that could perform the certified work
+# keeps the current reading.
+V12_EVENT_TRADES = (r'행\s*사|회\s*의|전\s*시|박\s*람|공\s*연|이\s*벤\s*트|광\s*고|디\s*자\s*인|실\s*내\s*건\s*축|인\s*테\s*리\s*어|기\s*획|관\s*광|여\s*행'
+                    r'|문\s*화|예\s*술|콘\s*텐\s*츠|소\s*프\s*트\s*웨\s*어|비\s*디\s*오|영\s*상|방\s*송|출\s*판|인\s*쇄|옥\s*외|조\s*형|체\s*육|스\s*포\s*츠|홍\s*보'
+                    r'|마\s*케\s*팅|통\s*역|숙\s*박|음\s*식|접\s*객|케\s*이\s*터\s*링')
+V12_TRADE_RELATED = {
+    'festival': V12_EVENT_TRADES, 'exhibition': V12_EVENT_TRADES, 'international': V12_EVENT_TRADES,
+    'conference': V12_EVENT_TRADES, 'event': V12_EVENT_TRADES,
+    'video': r'비\s*디\s*오|영\s*상|방\s*송|콘\s*텐\s*츠|광\s*고|디\s*자\s*인|소\s*프\s*트\s*웨\s*어|출\s*판|인\s*쇄|행\s*사|전\s*시|공\s*연|미\s*디\s*어|영\s*화|사\s*진|홍\s*보|정\s*보\s*통\s*신',
+    'design': r'디\s*자\s*인|광\s*고|인\s*쇄|출\s*판|실\s*내\s*건\s*축|건\s*축|행\s*사|전\s*시|옥\s*외|소\s*프\s*트\s*웨\s*어|콘\s*텐\s*츠|조\s*형|간\s*판|홍\s*보|사\s*진|영\s*상',
+    'sw': r'소\s*프\s*트\s*웨\s*어|컴\s*퓨\s*터|정\s*보|통\s*신|전\s*산|데\s*이\s*터|콘\s*텐\s*츠|엔\s*지\s*니\s*어\s*링|전\s*기|방\s*송|측\s*량|공\s*간|디\s*지\s*털|전\s*자',
+    'cleaning': r'청\s*소|위\s*생|미\s*화|방\s*역|소\s*독|시\s*설|건\s*물|환\s*경|관\s*리',
+    'security': r'경\s*비|보\s*안|경\s*호|시\s*설|관\s*리',
+    'transport': r'여\s*객|자\s*동\s*차|운\s*수|운\s*송|버\s*스|택\s*시|화\s*물|관\s*광|여\s*행|물\s*류',
+    'mail': r'우\s*편|인\s*쇄|출\s*판|발\s*송|물\s*류|택\s*배|광\s*고|정\s*보',
+    'elevator': r'승\s*강\s*기|전\s*기|기\s*계|설\s*비|시\s*설',
+    'geology': r'지\s*질|지\s*하\s*수|엔\s*지\s*니\s*어\s*링|측\s*량|건\s*설|토\s*질|광\s*업|토\s*목|지\s*반|환\s*경',
+    'water': r'상\s*하\s*수\s*도|수\s*도|누\s*수|엔\s*지\s*니\s*어\s*링|환\s*경|전\s*기|설\s*비|측\s*정',
+}
+V12_TRADE_RELATED = {k: re.compile(v) for k, v in V12_TRADE_RELATED.items()}
+
+
+def v12_trade_overrides(b, clause, cat):
+    if b.meta.work != '용역':
+        return False
+    prods = [p for p in catalog.cited_products(clause, cat) if catalog.admits(p, b.meta.P)]
+    fams = {cat.service_family.get(p.code) for p in prods}
+    if not prods or not all(p.code[0] in '789' for p in prods) or None in fams:
+        return False
+    lic = v12_licences(b)
+    if not any(not V12_NEUTRAL_LICENCE.search(n) for n in lic):
+        return False
+    if any(V12_TRADE_RELATED[f].search(n) for f in fams for n in lic):
+        return False
+    texts = v12_work_texts(b)
+    return not any(v12_product_named(p, t) for p in prods for t in texts)
+
+
+def v12_cited_scope_trade(b, scope):
+    """A service that only a cited certificate made competitive because its title is withheld is judged by v12 when its
+    licences show another trade (as v12_trade_overrides reads them for that certificate's family)."""
+    if scope is None or not str(scope.basis).startswith('service_cited:') or not catalog.placeholder_title(scope.detail):
+        return False
+    fam = str(scope.basis).split(':', 1)[1]
+    if fam not in V12_TRADE_RELATED:
+        return False
+    lic = v12_licences(b)
+    if not any(not V12_NEUTRAL_LICENCE.search(n) for n in lic) or any(V12_TRADE_RELATED[fam].search(n) for n in lic):
+        return False
+    cat = catalog.load()
+    prods = [cat.by_code[c] for c, f in cat.service_family.items() if f == fam and c[0] in '789' and c in cat.by_code]
+    return not any(v12_product_named(p, t) for p in prods for t in v12_work_texts(b))
+
+
 # C2_DP_VERIFY_SUBJECT: verification-only means the certificate is the verified subject and nothing is possessed.
 DP_CERT_SUBJECT2 = re.compile(r'(증\s*명\s*서|확\s*인\s*서)\s*[」’”>〉)]?\s*(가|이|는|및|와|과)(?![가-힣])')
 DP_POSSESS2 = re.compile(r'(소\s*지|보\s*유|발\s*급\s*받|취\s*득)\s*(한|하고|하여야|해야|은|는|하는)|받\s*은\s*(자|업\s*체)|갖\s*춘'
@@ -3142,13 +3353,13 @@ V12_ADMIT = re.compile(r'(않\s*은|없\s*는|미\s*소\s*지|미\s*보\s*유)\s
 V12_COMPETITION = re.compile(r'경\s*쟁\s*(제\s*품|품\s*목)')
 
 
-def v12_wide_lines(b):
+def v12_wide_lines(b, listed_ok=False):
     # A notice whose certificate lines cite a listed competition product (세부품명 or 10-digit code) certifies that product:
     # the reading of those lines decides v12, and a line naming no product restates the same certificate.
     from .families import DOC_LIST
     cat = catalog.load()
     cert = [ln for ln in b.notice.lines if DP_CERT.search(ln.text)]
-    if any(catalog.cites_listed(clause_text(b.notice, ln), cat, b.meta.P) for ln in cert):
+    if not listed_ok and any(catalog.cites_listed(clause_text(b.notice, ln), cat, b.meta.P) for ln in cert):
         return []
     out = []
     for ln in cert:
@@ -3191,13 +3402,23 @@ V12_MORE = re.compile(
 V12_STANDARD_NAME = re.compile(r'중\s*소\s*기\s*업\s*자\s*간\s*경\s*쟁\s*제\s*품\s*직\s*접\s*생\s*산\s*확\s*인\s*기\s*준')
 V12_REVOKED = re.compile(r'확\s*인\s*(이|을|의)?\s*취\s*소|제\s*11\s*조|하\s*청|위\s*반|부\s*정\s*당|타\s*사\s*제\s*품'
                          r'|완\s*제\s*품|허\s*위|위\s*조|변\s*조')
+# Switch V12_MORE_FORMS2 (판로지원법 제9조; with V12_MORE_FORMS): more holder wordings of the possession requirement on the
+# lines V12_MORE_FORMS reads, with its exclusions: "…를 발급받아 유효기간 내에 있는 업체", "…를 보유하고 있는 (중소)기업·업체·자"
+# (not followed by a topic or subject particle, which makes a condition: "보유하고 있는 업체는 …"), "…보유(세부품명) 업체",
+# a qualification label followed by 구비 ("자격요건: … 구비"), and a qualification table row whose value ends in 소지·보유·구비.
+# A line in one of these forms states possession, so its validity wording (유효기간 내) does not make it a note.
+V12_MORE2 = re.compile(r'발\s*급\s*받\s*아[^.。]{0,30}있\s*는\s*(중\s*소\s*)?(기\s*업|업\s*체|자|사\s*업\s*자)(?!\s*(는|은|의|가|도|에\s*게))'
+                       r'|(보\s*유|소\s*지|구\s*비)\s*하\s*고\s*있\s*는\s*(중\s*소\s*)?(기\s*업|업\s*체|자|사\s*업\s*자)(?!\s*(는|은|의|가|도|에\s*게))'
+                       r'|(보\s*유|소\s*지)\s*[\(（][^)）]{0,60}[\)）]\s*(업\s*체|자(?!\s*격))(?!\s*(는|은|의|가|도|에\s*게))'
+                       r'|(참\s*가\s*자\s*격|자\s*격\s*요\s*건)\s*[:：][^.。]{0,60}구\s*비'
+                       r'|^\W*\|?\s*[^|]{0,12}(자\s*격|요\s*건)[^|]{0,6}\|[^|]{0,120}(소\s*지|보\s*유|구\s*비)\s*\|?\s*$')
 
 
-def v12_more_lines(b):
+def v12_more_lines(b, listed_ok=False):
     from .families import DOC_LIST
     cat = catalog.load()
     cert = [ln for ln in b.notice.lines if DP_CERT.search(ln.text) or V12_CERT_STATUTE.search(ln.text)]
-    if any(catalog.cites_listed(clause_text(b.notice, ln), cat, b.meta.P) for ln in cert):
+    if not listed_ok and any(catalog.cites_listed(clause_text(b.notice, ln), cat, b.meta.P) for ln in cert):
         return []
     out = []
     for ln in cert:
@@ -3212,10 +3433,10 @@ def v12_more_lines(b):
             continue
         # A validity or verification note on a certificate required elsewhere, or a line that admits another document or
         # route instead of the certificate, is not the possession requirement.
-        if DP_NOTE.search(t) and not DP_POSSESS_STEM.search(t) or DP_VERIFY.search(t) or V12_VERIFY2.search(t) \
+        if DP_NOTE.search(t) and not DP_POSSESS_STEM.search(t) and not (switches.V12_MORE_FORMS2 and V12_MORE2.search(t)) or DP_VERIFY.search(t) or V12_VERIFY2.search(t) \
                 or V12_ALT.search(clause) or V12_ALT_LIST.search(t) or V12_ALT_ROUTE.search(clause):
             continue
-        if conseq or V12_MORE.search(t) or (V12_CERT_STATUTE.search(t) or named_only) \
+        if conseq or V12_MORE.search(t) or switches.V12_MORE_FORMS2 and V12_MORE2.search(t) or (V12_CERT_STATUTE.search(t) or named_only) \
                 and (V12_PART.search(t) and not V12_EXEMPT.search(t) or V12_BAR.search(t)):
             out.append(ln)
     return out
@@ -3224,15 +3445,20 @@ def v12_more_lines(b):
 def v12(b):
     """v12 is judged by the procured object (talkboard): a certificate for a listed competition product that the model
     reads as the procured work itself shows the purchase is that product, whatever our title families say."""
-    if b.scope.competitive is not False:
+    if b.scope.competitive is not False and not (switches.V12_OBJECT_WORK and v12_cited_scope_work(b, b.scope)) \
+            and not (switches.V12_OBJECT_TRADE and v12_cited_scope_trade(b, b.scope)):
         return None
-    if switches.V12_STRICT_OBJECT and b.meta.work == '용역' and strict_service_scope(b):
+    if switches.V12_STRICT_OBJECT and b.meta.work == '용역' and strict_service_scope(b) \
+            and not (switches.V12_OBJECT_WORK and v12_cited_scope_work(b, getattr(b, '_strict_scope', None))) \
+            and not (switches.V12_OBJECT_TRADE and v12_cited_scope_trade(b, getattr(b, '_strict_scope', None))):
         return None
     cat = catalog.load()
     lines = []
     wide = v12_wide_lines(b) if switches.V12_EXPLICIT_ANY and switches.V12_EXPLICIT_WIDE else []
     if switches.V12_MORE_FORMS and switches.V12_EXPLICIT_ANY and switches.V12_EXPLICIT_WIDE:
         wide = wide + [ln for ln in v12_more_lines(b) if ln not in wide]
+    if switches.V12_OBJECT_WIDE and switches.V12_EXPLICIT_ANY and switches.V12_EXPLICIT_WIDE:
+        wide = wide + v12_object_wide_lines(b, cat, wide)
     for ln in dp_required(b, positive=True) + (v12_explicit_lines(b) if switches.V12_EXPLICIT_ANY else []) + wide:
         clause = clause_text(b.notice, ln)
         # Audit E: the verification, possession and condition wording is read on the clause (a layout break splits "…확인(" /
@@ -3241,7 +3467,11 @@ def v12(b):
         if b.read('dp', ln).get('인증 품목') == '과업과 같은 종류' and catalog.cites_listed(clause, cat, b.meta.P) and not (switches.V12_GOODS_OBJECT and b.scope.basis == 'goods:none_listed') \
                 and not (switches.V12_TITLE_OBJECT and catalog.title_names_other_work(b.titles, clause, cat)) \
                 and not (switches.V12_TITLE_OBJECT2 and v12_object_overrides(b, clause, cat)) \
-                and not (switches.V12_OBJECT_VOCAB and v12_vocab_overrides(b, clause, cat)):
+                and not (switches.V12_OBJECT_VOCAB and v12_vocab_overrides(b, clause, cat)) \
+                and not (switches.V12_OBJECT_WORK and v12_work_overrides(b, clause, cat)) \
+                and not (switches.V12_OBJECT_SW and v12_sw_overrides(b, clause, cat)) \
+                and not (switches.V12_OBJECT_EVENT and v12_event_overrides(b, clause, cat)) \
+                and not (switches.V12_OBJECT_TRADE and v12_trade_overrides(b, clause, cat)):
             continue
         if dp_verify_only(t) or DP_CONDITIONAL.search(t):
             continue
@@ -5601,6 +5831,22 @@ def _w4a_rule(base):
 
 
 v14, v15, v16, v17, v18 = (_w4a_rule(f) for f in (v14, v15, v16, v17, v18))
+
+
+# V24_TAG_ANY, V24_AMOUNT_SENTENCE, V24_BASE_VERTICAL, V24_ATTACH_LICENCE, V24_ATTACH_REGION, V24_REGION_STATED,
+# V24_BASIC_SUPERSET, V24_LICENCE_FIELD, V24_AMOUNT_LATE: v24 reads more statements of the four compared values when
+# every other v24 rule is silent (pps_c/v24_statements.py).
+def _v24_statements_rule(base):
+    def rule(b):
+        hit = base(b)
+        if hit is not None:
+            return hit
+        from .v24_statements import extra
+        return extra(b)
+    return rule
+
+
+v24 = _v24_statements_rule(v24)
 
 
 RULES = {'v1': v1, 'v2': v2, 'v3': v3, 'v4': v4, 'v5': v5, 'v6': v6, 'v7': v7, 'v8': v8, 'v9': v9, 'v10': v10,
