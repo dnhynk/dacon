@@ -1035,3 +1035,6 @@ V7_ONE_CLAUSE = False
 # 않습니다") or next to a restriction that applies ("대표사 지역 제한적용") leaves the notice's own restriction in place; it
 # is no statement that the notice has none. False = current behaviour.
 V24_NONE_SCOPED = False
+# RT-B: compare explicit competitive method fields and complete licence alternatives.
+RTB_V24_METHOD_BODY = False
+RTB_V24_LICENCE_OR = False

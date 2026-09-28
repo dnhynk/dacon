@@ -5990,6 +5990,20 @@ def _v24_statements_rule(base):
 
 
 v24 = _v24_statements_rule(v24)
+# RT-B: literal body fields and closed licence alternatives, default off.
+def _rtb_v24_literal_rule(base):
+    def run(b):
+        hit = base(b)
+        if hit is not None:
+            return hit
+        if not (switches.RTB_V24_METHOD_BODY or switches.RTB_V24_LICENCE_OR):
+            return None
+        from .rtb_v24_literal import extra
+        return extra(b)
+    return run
+
+
+v24 = _rtb_v24_literal_rule(v24)
 
 
 RULES = {'v1': v1, 'v2': v2, 'v3': v3, 'v4': v4, 'v5': v5, 'v6': v6, 'v7': v7, 'v8': v8, 'v9': v9, 'v10': v10,
