@@ -429,3 +429,17 @@ RTD_SIZE_TYPOGRAPHY = False
 # The one retry of a reply that did not parse gets max_tokens x this factor, within the engine context; at temperature 0
 # a reply cut at max_tokens otherwise fails again. 1 = current.
 RETRY_TOKEN_FACTOR = 1
+
+# v20 stage: a notice whose own qualification asks for SW사업자 registration (or an IT-service code) is an SW project also when
+# the model reads its object as hardware or equipment only (DEV-132: 전산기기 임차·유지보수 under that qualification is
+# v20 = 1); a general service or goods reading still keeps it out. False = current.
+V20_STAGE_SELF_SW_HW = False
+# v20 stage: a candidate found by SW-project vocabulary also fires when the model reads its object as hardware or unclear
+# (a general service or goods reading still keeps it out). False = current.
+V20_STAGE_CONTENT_HW = False
+
+# v9 stage: a maker or model named for a part of a supplied computer (CPU, GPU, chipset, board, OS: 'Intel Xeon Gold 6544Y',
+# 'Windows 11 Pro 탑재') fires like any supplied item. False = current.
+V9_STAGE_COMPUTER_PARTS = False
+# v9 stage: in a service notice a maker or model named for the item the contractor supplies fires too. False = current.
+V9_STAGE_SERVICE_ITEMS = False

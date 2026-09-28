@@ -360,6 +360,11 @@ def decide(sig, reading):
     clause = reading['band_clause'] if reading else UNKNOWN
     if clause in COMPLIANT_CLAUSES:
         return None
+    from .. import switches
+    if sig['cand'] == 'self_sw' and switches.V20_STAGE_SELF_SW_HW and obj == 'hardware_or_equipment_only':
+        return True
+    if sig['cand'] == 'content_sw' and switches.V20_STAGE_CONTENT_HW and obj in ('hardware_or_equipment_only', 'unclear', UNKNOWN):
+        return True
     if sig['cand'] == 'self_sw':
         # The notice's own SW사업자/IT-service requirement establishes the SW project (organizer on DEV-132); the model may
         # override it only when the object is plainly not software (진흥법 제2조).

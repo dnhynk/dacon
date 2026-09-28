@@ -392,7 +392,8 @@ def consume(b, cands, text):
 def fires(kind, role):
     if kind not in FIRE_KINDS:
         return False
-    return role in FIRE_ROLES or (COMPUTER_PARTS_FIRE and role == 'computer_component')
+    from .. import switches
+    return role in FIRE_ROLES or ((COMPUTER_PARTS_FIRE or switches.V9_STAGE_COMPUTER_PARTS) and role == 'computer_component')
 
 
 def cpu_fallback(notice):
@@ -413,13 +414,18 @@ def cpu_fallback(notice):
     return best[1] if best else None
 
 
+def _switches():
+    from .. import switches
+    return switches
+
+
 def verdict(b):
     """Evidence line of the first firing designation; None otherwise. Without a reading, the CPU fallback decides."""
     reading = getattr(b, FAM, None)
     if reading is None:
         return cpu_fallback(b.notice)
     for ln, _expr, kind, role in reading.get('designations', ()):
-        if role == 'supplied_item' and b.meta.work == '용역':
+        if role == 'supplied_item' and b.meta.work == '용역' and not _switches().V9_STAGE_SERVICE_ITEMS:
             continue    # in service notices these were flight numbers, the app to build, line-ups (9/27 reading: 9 of 10 not v9)
         if fires(kind, role):
             return ln

@@ -1,14 +1,16 @@
 {
   "schema_version": 2,
-  "updated_utc": "2026-09-27T19:10:04+00:00",
+  "updated_utc": "2026-09-27T21:25:00+00:00",
   "competition": "DACON 236754",
   "goal_official_macro_f1": 0.8,
   "official": {
     "best": {
-      "name": "THKA",
-      "score": 0.7253205225,
-      "zip": "artifacts/rebuild_c/THKA_think8_r0927b/submit.zip",
-      "zip_sha256": "dfb2ebf17948ec0c687c946ad0f6ef008f5980543c21032e78e7c32fdea5a0b6"
+      "name": "R0928",
+      "score": 0.7360846704,
+      "zip": "artifacts/rebuild_c/MAIN0928b_union/submit.zip",
+      "zip_sha256": "dc71c65f65e1c73838d904beb8a7d0c7c8a5ebb88fc9bd24988d72e117e0dfb4",
+      "slot": "spare1",
+      "main_team_best": "THKA 0.7253205225 (no main submission since 9/27)"
     },
     "adopted_overrides": "union of the switch overrides of CG V9B REX6 AFBbR8 PRX4X V24W1PG X4OBJ AFBaR2 V20OR (runs/rebuild_c/transfer_20260925/final_calc.py merge)",
     "combined_estimate": {
@@ -304,76 +306,86 @@
         "name": "R0928",
         "kst": "2026-09-28",
         "slot": "spare1",
-        "score": null
+        "score": 0.7360846704,
+        "outcome": "union of the adopted probes: -0.0021 vs the item-additive estimate 0.7381417"
       },
       {
         "row": "89",
         "name": "Z9",
         "kst": "2026-09-28",
         "slot": "spare2",
-        "score": null
+        "score": 0.7222725157,
+        "outcome": "diagnostic, v9 zeroed: F1_v9 = 0.3315"
       },
       {
         "row": "107",
         "name": "D10x",
         "kst": "2026-09-28",
         "slot": "spare3",
-        "score": null
+        "score": 0.6944693967,
+        "outcome": "-0.00038 vs its base: v10 stage OR dropped"
       },
       {
         "row": "92",
         "name": "Z12",
         "kst": "2026-09-28",
         "slot": "spare4",
-        "score": null
+        "score": 0.7086585101,
+        "outcome": "diagnostic, v12 zeroed: F1_v12 = 0.6582"
       },
       {
         "row": "99",
         "name": "O12",
         "kst": "2026-09-28",
         "slot": "spare5",
-        "score": null
+        "score": 0.7120246416,
+        "outcome": "diagnostic, v12 all ones: F1 0.0808, test positives P = 78.0"
       },
       {
         "row": "109",
         "name": "D11x",
         "kst": "2026-09-28",
         "slot": "spare6",
-        "score": null
+        "score": 0.6951207858,
+        "outcome": "+0.00027 vs its base: v11 stage OR adopted"
       },
       {
         "row": "103",
         "name": "D12",
         "kst": "2026-09-28",
         "slot": "spare7",
-        "score": null
+        "score": 0.7211386905,
+        "outcome": "-0.00113 vs its base: v12 stage OR dropped"
       },
       {
         "row": "104",
         "name": "D20",
         "kst": "2026-09-28",
         "slot": "spare8",
-        "score": null
+        "score": 0.6994061038,
+        "outcome": "+0.00456 vs its base: v20 stage OR adopted"
       },
       {
         "row": "105",
         "name": "D24",
         "kst": "2026-09-28",
         "slot": "spare9",
-        "score": null
+        "score": 0.6951891267,
+        "outcome": "+0.00034 vs its base: v24 stage OR adopted"
       },
       {
         "row": "106",
         "name": "D9",
         "kst": "2026-09-28",
         "slot": "spare10",
-        "score": null
+        "score": 0.7100332713,
+        "outcome": "+0.00137 vs its base: v9 stage OR adopted"
       }
     ]
   },
   "task": {
-    "status": "probes_0928_submitted_scores_pending",
-    "next_action": "9/28 00:00:01 KST: the ten probes (rows 88, 89, 92, 99, 103-107, 109) were accepted between 00:00:05 and 00:00:16; scores pending. The canonical tree carries the red-team 0928 coverage switches (commit c40017a: 41 new switches, all off, union replay byte-identical on dev, t2500 and para, tests 513). 9/28 main: the union + every dedicated-stage OR with a positive gain (prereg merge rules: DEDICATED_X4 with v10/v11/v13, V12_TITLE_OBJECT2 and V12_MANUF with v12) + the coverage set runs/rebuild_c/main0928/cov28.json (dev 0, t2500 +9, para +16 cells), built and replayed by runs/rebuild_c/main0928/build_main_0928.py, submitted with the user's approval as soon as the stage scores are in; its score minus (R0928 + positive gains) measures the coverage set. 9/29: spares at 00:00:01 (tasks start 23:58) carry per-item probes, but their scores may not arrive before the 10:00 deadline, so the final main is prebuilt for both cases and takes every change with a positive measured or expected gain (user 9/28: no gain is too small).",
+    "status": "probes_0928_scored_hidden_scores_pending",
+    "next_action": "9/28 probes all scored by 06:22 KST. Visible: R0928 0.7360846704, Z9 0.7222725157 (F1_v9 0.3315), Z12 0.7086585101 (F1_v12 0.6582), O12 0.7120246416 (78 test v12 positives), D12 0.7211386905 (-0.00113 vs Z9: v12 stage and V12_TITLE_OBJECT2/V12_MANUF dropped). D10x, D11x, D20, D24 and D9 scored below their teams' earlier bests, so the public leaderboard hides them; the user reads them from the site. Gains: D10x/D11x/D20/D24 minus Z9Z12 0.6948463554, D9 minus Z12. Then runs/rebuild_c/main0928/make_m28_spec.py (positive stages + cov30 + literal fixes RTD_SIZE_EXPLICIT_EXCEPTION, RTD_SIZE_TYPOGRAPHY, RTD_V21_MODE_SCOPE; --retry for RETRY_TOKEN_FACTOR=2 when D9 or D24 wins, checked on L40S) and build_main_0928.py spec_M28.json; the clean zip goes to the main slot with the user's approval. 9/29 candidates: runs/rebuild_c/main0929/m29_groups.json.",
     "main_slot_rule": "From 9/28 the main slot carries the strongest supported package; spare probes keep minimal bases below 0.75 (user).",
     "held": "CODE_AUDIT_BASE=False keeps the 9/26 audit estimate/article/date-role repairs dormant until measured separately; THINKING_FAMILIES=() keeps thinking off by default.",
     "lesson_0927": "preregistered estimates were about 4x too high in total (+0.012 measured vs about +0.05); practitioner-standard removals paid in v19/v20/v22 and v1 but lost in v9, v14-v18 and competition scope; the organizer mostly labels literally",
