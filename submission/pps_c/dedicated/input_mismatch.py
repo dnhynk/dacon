@@ -9,7 +9,7 @@ import collections
 import json
 import re
 
-from .. import families as F, regions
+from .. import families as F, regions, switches
 from ..v24 import parse as vparse
 
 FAM = 'd_input_mismatch'
@@ -458,9 +458,33 @@ def standin(b):
 
 # ========================================================================================================== decision
 
+def typed_amount_mismatch(b, reading):
+    """Compare explicit total amounts with the registered field of their kind.
+
+    No VAT conversion or cross-field/other-item agreement cancels a mismatch.
+    The schema normalizes budget labels to 사업예산; aliases support equivalent
+    typed readings without changing the request schema or the selector.
+    """
+    # Keep the legacy unit-contract exclusion: registered B/P may be unit prices.
+    if any(scope == '단가' for *_, scope in reading['budget']) or UNIT_PRICE.search(select(b)[2]['text']):
+        return None
+    B, P = registered_amounts(b)
+    for ln, kind, amount, vat, scope in reading['budget']:
+        if scope != '총액' or amount < 1e5:
+            continue
+        ref = P if kind == '추정가격' else (B if kind in ('예산', '배정예산', '사업예산') else None)
+        if ref is not None and not near(ref, [amount]):
+            return ln
+    return None
+
+
 def decide(b, r):
     """The evidence Line of the first axis that fires (예산 → 계약방법 → 지역 → 업종), else None. The 조항호내용 band is
     not compared: it is outside v24 (organizer Q&A boundary)."""
+    if switches.V24_TYPED_AMOUNT:
+        typed_hit = typed_amount_mismatch(b, r)
+        if typed_hit is not None:
+            return typed_hit
     meta = b.meta
     B, P = registered_amounts(b)
     unit = any(scope == '단가' for *_, scope in r['budget']) or bool(UNIT_PRICE.search(select(b)[2]['text']))
