@@ -91,7 +91,21 @@ def first_pass_request(engine, b, k):
     return make_request(engine, b, k, 'inst')
 
 
+def resolve_dirs(args):
+    """The server runs script.py beside data/ and output/. When the working directory is elsewhere and the relative
+    data folder is missing there, look beside the package (the folder holding script.py) before failing."""
+    base = Path(__file__).resolve().parent.parent
+    if args.input or (Path(args.data_dir) / 'test.jsonl.gz').exists():
+        return
+    if (base / args.data_dir / 'test.jsonl.gz').exists():
+        args.data_dir = str(base / args.data_dir)
+        if not Path(args.output_dir).is_absolute():
+            args.output_dir = str(base / args.output_dir)
+        log(f'data folder resolved beside the package: {args.data_dir}')
+
+
 def run(args):
+    resolve_dirs(args)
     t0 = time.time()
     budget = args.runtime_seconds - args.margin_seconds
     input_path = args.input or str(Path(args.data_dir) / 'test.jsonl.gz')
