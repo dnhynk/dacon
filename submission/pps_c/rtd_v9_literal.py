@@ -72,6 +72,7 @@ def _scope(b, ln):
 
 
 def find(b, *, wrapped=False, fields=False):
+    from .judge import x3_plus_drop
     if b.meta.work != '물품':
         return None
     previous = None
@@ -81,6 +82,8 @@ def find(b, *, wrapped=False, fields=False):
             continue
         prev = previous
         previous = ln
+        if x3_plus_drop(ln):
+            continue
         if ln.doc_type not in _DOCS or ln.sec in ('EVAL','DOCS') or len(text) > 220:
             continue
         if _NOT.search(text) or _NOT.search(_scope(b, ln)):

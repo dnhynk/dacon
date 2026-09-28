@@ -3,6 +3,14 @@ differs from C2 only in this file."""
 
 # v10·v11·v13 judged on software services (scope family sw) as on other competition services.
 SW_SERVICE_COMPETITIVE = True
+# RT-Q: opt-in source-reading correction.
+V20_SME41_STATEMENT = False
+# RT-Q: opt-in source-reading correction.
+V19_BIDDER_AS_ALTERNATIVE = False
+# RT-Q: opt-in source-reading correction.
+V19_STAGE_ITEM_BOUNDARY = False
+# RT-Q: opt-in source-reading correction.
+V19_PRE_AWARD_ROLE = False
 # v20 judged only at or above this 추정가격 (0 = every amount, 지침 제3조②).
 V20_MIN_ESTIMATE = 0
 # v11 judged on 수의계약 too (판로지원법 제7조① names 입찰; default excludes 수의계약).
@@ -32,6 +40,12 @@ V9_STAGE2 = False
 # Probe (expert audit X3): v9 drops clause-level 동등 이상 references, SW licence objects, consumables and installed-equipment
 # upgrades, service contracts, and grade/colour/flight/same-maker/empty-label/platform noise. False = current behaviour.
 V9_X3 = False
+# Extend V9_X3 with component floors, open example lists and the 등등 equivalence typo.
+# Effective only together with V9_X3; default-off experiment.
+V9_X3_PLUS = False
+# Quote a stated bidder-region clause for positive v6/v7 cells with no evidence.
+# Evidence only; never changes a verdict and never invents a metadata quote.
+EVIDENCE_REGION_FILL = False
 # Probe (expert audit X3 direction b): v9 also fires on a vehicle purchase naming the car model or a goods line naming a
 # maker's brand product, without 동등 wording. False = current behaviour.
 V9_X3B = False
@@ -1056,3 +1070,21 @@ READ_SKIP_EMPTY_LABELS = False
 
 # RT-E2: all-document industry absence, independent of the legacy switch.
 V24_LICENCE_SILENT2 = False
+
+# RT-P: narrow source-reading correction; opt-in.
+RTP_V24_ANNUAL_PARTS = False
+
+# RT-P: narrow source-reading correction; opt-in.
+RTP_V24_CAPABILITY_OR = False
+
+# RT-P: narrow source-reading correction; opt-in.
+RTP_V24_FACTORY_CODE = False
+
+# RT-P: narrow source-reading correction; opt-in.
+RTP_V24_PARTNER_REGION = False
+
+# RT-P: narrow source-reading correction; opt-in.
+RTP_V24_REGION_ALIASES = False
+
+# RT-R: delivery record OR prior quality approval; CPU matching only.
+V4_CERT_ALTERNATIVE = False

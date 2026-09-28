@@ -459,4 +459,9 @@ def verdict(b):
     alone (self_sw fires, content_sw does not)."""
     if EXEMPT_SMALL_FIRM_OR_PRIVATE and small_firm_or_private(b):
         return None
+    from .. import switches
+    if getattr(switches, 'V20_SME41_STATEMENT', False):
+        from .. import rtq_v20_sme41, x3_v20
+        if rtq_v20_sme41.present(b.notice) and not x3_v20.band_misfit(b.notice, x3_v20.amount_of(b.notice)):
+            return None
     return decide(cpu(b), getattr(b, FAM, None))

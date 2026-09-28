@@ -400,8 +400,11 @@ def fires(kind, role):
 def cpu_fallback(notice):
     """Without a model reading: only an explicit designation label whose value is a model code, a Latin-glossed name or a
     listed maker ("제조사·모델명 : 아크론브라스(Akron Brass) 터보젯(TurboJet)", "모델명 : AP5114"), never an instruction or form."""
+    from ..judge import x3_plus_drop
     best = None
     for ln in notice.lines:
+        if x3_plus_drop(ln):
+            continue
         s = clean(ln.text)
         m = P1_RE.search(s)
         if not m or VALUE_STOP_RE.match(m.group(1)) or INSTRUCTION_RE.search(s) or BOILERPLATE_RE.search(s):
@@ -446,10 +449,13 @@ def _switches():
 
 def verdict(b):
     """Evidence line of the first firing designation; None otherwise. Without a reading, the CPU fallback decides."""
+    from ..judge import x3_plus_drop
     reading = getattr(b, FAM, None)
     if reading is None:
         return cpu_fallback(b.notice)
     for ln, _expr, kind, role in reading.get('designations', ()):
+        if x3_plus_drop(ln):
+            continue
         if role == 'supplied_item' and b.meta.work == '용역' and not _switches().V9_STAGE_SERVICE_ITEMS:
             if not (_switches().V9_SERVICE_PRODUCT and service_product(ln, _expr)):
                 continue    # in service notices these were flight numbers, the app to build, line-ups (9/27 reading: 9 of 10 not v9)

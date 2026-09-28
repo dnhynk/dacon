@@ -176,6 +176,10 @@ def _timed(b, ln, r):
 
 
 def _passes(b, ln, r):
+    if _on('V19_BIDDER_AS_ALTERNATIVE'):
+        from . import rtq_v19_alternative
+        if rtq_v19_alternative.exempt(b.notice, ln):
+            return False
     if not _issuer_wide(b, ln, r):
         return False
     timed, qual = _timed(b, ln, r)

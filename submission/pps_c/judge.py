@@ -1304,6 +1304,10 @@ def x4_buyer_more(text):
 def buyer_limit(text):
     """'specific' when the required record is limited to a named kind of buyer or customer, 'open' when the buyer list
     admits private parties, None when the text names no buyer. Law names are not buyers."""
+    if getattr(switches, 'V4_CERT_ALTERNATIVE', False):
+        from .rt_r_v4_cert import admits_certificate
+        if admits_certificate(text):
+            return 'open'
     raw = text
     text = LAW_REF.sub(' ', text)
     if BENEFICIARY.search(text) or switches.V4_BUYER_WIDE and CLIENTELE.search(text):
@@ -1933,6 +1937,8 @@ def v9_text(t):
 
 def v9_read2(b):
     for ln in lines_where(b, 'model2', 대상=('납품 물품', '과업용 장비·SW'), 방식='지정'):
+        if x3_plus_drop(ln):
+            continue
         t = v9_text(ln.text)
         if V9_EMPTY_LABEL.search(ln.text.strip()) or not (DESIGNATION.search(t) or model_code(t)):
             continue
@@ -2097,13 +2103,101 @@ def x3_equivalent(b, ln):
     return ln.doc in common and not qualification
 
 
+X3P_COMPONENT = re.compile(
+    r'(?<![A-Za-z가-힣])(?:C\s*[.．·ㆍ]?\s*P\s*[.．·ㆍ]?\s*U|G\s*[.．·ㆍ]?\s*P\s*[.．·ㆍ]?\s*U|'
+    r'O\s*[/／．.]?\s*S|RAM|SSD|HDD|Chipset|Processor|Memory|Storage|Graphics(?:\s*Card)?|VGA|Operating\s*System|'
+    r'프로세서|칩\s*셋|메모리|저장\s*장치|운영\s*체제|그래픽(?:\s*카드)?)(?![A-Za-z가-힣])', re.I)
+X3P_FLOOR = re.compile(r'이\s*상(?:(?![가-힣])|급|의|으\s*로|이\s*어\s*야)|동\s*등|상\s*당(?![가-힣])|동\s*급')
+X3P_DENY = re.compile(
+    r'불\s*가|불\s*허|불\s*인\s*정|금\s*지|배\s*제|제\s*외|'
+    r'허\s*용\s*(?:하\s*지|되\s*지)|인\s*정\s*(?:하\s*지|되\s*지)|대\s*체\s*할\s*수\s*없|'
+    r'지\s*원\s*(?:하\s*지\s*않|불\s*가)|가\s*능\s*여\s*부|'
+    r'한\s*정|만\s*(?:납\s*품|허\s*용|인\s*정|사\s*용)|반\s*드\s*시|필\s*히')
+X3P_DEMAND = re.compile(r'동\s*일\s*(?:한\s*)?제\s*조\s*사|호\s*환|연\s*동')
+X3P_TYPO = re.compile(r'또\s*는\s*등\s*등\s*(?:[（(]?\s*제\s*품\s*[）)]?\s*)?이\s*상')
+X3P_EXAMPLE = re.compile(r'(?<![가-힣])등\s*(?:지\s*원|다\s*양\s*한|[)）])')
+X3P_OTHER = re.compile(r'제\s*조\s*사\s*[:：]|모\s*델\s*명?\s*[:：]|수\s*량\s*[:：]?|\d+\s*(?:대|개|명|회)\s*이\s*상')
+X3P_CLAUSE = re.compile(r'[;；|\n]|[,，](?=\s*(?:' + X3P_COMPONENT.pattern
+                         + r'|제\s*조\s*사|모\s*델\s*명?|예\s*시|참\s*고)\s*[:：])', re.I)
+X3P_ALIASES = {'processor': 'cpu', '프로세서': 'cpu', '그래픽카드': 'gpu', '그래픽': 'gpu',
+               'graphics': 'gpu', 'graphicscard': 'gpu', 'vga': 'gpu', 'operatingsystem': 'os',
+               '운영체제': 'os', '메모리': 'ram', 'memory': 'ram', '칩셋': 'chipset'}
+
+
+def x3_plus_reason(text):
+    """Own-line additions only: never borrow a floor/example from another item.
+
+    A restriction, compatibility demand, or independent designation on the same
+    line keeps the evidence. No notice IDs, labels or model-specific exceptions.
+    """
+    if X3P_DENY.search(text) or X3P_DEMAND.search(text):
+        return None
+    clauses = X3P_CLAUSE.split(text)
+    if len(clauses) > 1:
+        reasons = []
+        for clause in clauses:
+            reason = x3_plus_reason(clause)
+            if reason:
+                reasons.append(reason)
+            elif (X3P_COMPONENT.search(clause) or DESIGNATION.search(clause) or model_code(clause)
+                  or V9_CODE_BRAND.search(clause) or maker_named(clause)):
+                return None
+        return reasons[0] if reasons else None
+    if X3P_TYPO.search(text):
+        return 'equivalence_typo'
+    for m in X3P_EXAMPLE.finditer(text):
+        # Only names inside the open list, not an unrelated '(규격 등)' suffix.
+        prefix = re.split(r'[;；|\n(（]', text[:m.start()])[-1]
+        outer = text[:m.start() - len(prefix)]
+        if model_code(outer) or V9_CODE_BRAND.search(outer) or maker_named(outer):
+            continue
+        if model_code(prefix) or V9_CODE_BRAND.search(prefix) or maker_named(prefix):
+            # A separate assertion after the example still designates a product.
+            tail = text[m.end():]
+            if not (model_code(tail) or V9_CODE_BRAND.search(tail) or maker_named(tail) or X3P_OTHER.search(tail)):
+                return 'example_list'
+    parts, kinds = [], []
+    for part in X3P_COMPONENT.finditer(text):
+        token = re.sub(r'[\s.．·ㆍ/／]', '', part.group()).lower()
+        kind = X3P_ALIASES.get(token, token)
+        # 'CPU: Intel ... processor 동급 이상' names one component twice.
+        # Another colon-labelled field still starts a separate specification.
+        if kinds and kind == kinds[-1] and not re.match(r'\s*[:：]', text[part.end():]):
+            continue
+        parts.append(part)
+        kinds.append(kind)
+    if not parts or X3P_OTHER.search(text):
+        return None
+    # Every component field on a combined line must be a floor; an exact second
+    # component remains evidence. Semicolons and table cells are field boundaries.
+    if model_code(text[:parts[0].start()]):
+        return None
+    for i, part in enumerate(parts):
+        value = text[part.end():parts[i + 1].start() if i + 1 < len(parts) else len(text)]
+        fields = re.split(r'[,，;；|\n]', value)
+        floor = X3P_FLOOR.search(fields[0])
+        if not fields[0].strip(' :：-') or not floor:
+            return None
+        tail = fields[0][floor.end():]
+        if model_code(tail) or V9_CODE_BRAND.search(tail) or maker_named(tail):
+            return None
+        if any(X3P_COMPONENT.search(field) or model_code(field) or V9_CODE_BRAND.search(field)
+               or maker_named(field) for field in fields[1:]):
+            return None
+    return 'component_floor'
+
+
+def x3_plus_drop(ln):
+    return switches.V9_X3 and switches.V9_X3_PLUS and bool(x3_plus_reason(ln.text))
+
+
 def x3_drop(b, ln):
     """True when a v9 line is lawful practice or noise under the practitioner standard (C1-C5)."""
     clause = clause_text(b.notice, ln)
     title = ' '.join(b.titles)
     names = [n for n, _ in b.meta.codes]
     goods = b.meta.work == '물품'
-    if x3_equivalent(b, ln):
+    if x3_plus_drop(ln) or x3_equivalent(b, ln):
         return True
     if goods and names and all(X3_SW_NAME.search(n) for n in names) or X3_SW_TITLE.search(title) \
             or X3_SW_LINE.search(ln.text) and X3_LICENCE.search(clause):
@@ -2185,6 +2279,8 @@ def v9_brand_line(b):
         shown |= set(stage.get('shown', ()))
     titles = [x for x in b.titles if len(x.strip()) >= 6]
     for ln in b.notice.lines:
+        if x3_plus_drop(ln):
+            continue
         t = ln.text
         if ln.i in shown or ln.sec in ('EVAL', 'DOCS') or len(t.strip()) > 160 or V9_BRAND_NOT.search(t) \
                 or any(x in t for x in titles) or V9_BRAND_TITLE.search(t) \
@@ -4094,7 +4190,12 @@ POST_AWARD = re.compile(r'계\s*약\s*체\s*결|낙\s*찰\s*(후|이\s*후|된\s
 
 
 def before_award(text):
-    return bool(PRE_AWARD.search(text)) and not POST_AWARD.search(text)
+    pat = PRE_AWARD
+    if getattr(switches, 'V19_PRE_AWARD_ROLE', False):
+        # A proposing firm is a subject, not a proposal-submission time.
+        pat = re.compile(PRE_AWARD.pattern.replace(
+            r'제\s*안\s*서?', r'제\s*안\s*서?(?!\s*(?:업\s*체|자|사|된))'))
+    return bool(pat.search(text)) and not POST_AWARD.search(text)
 
 
 def pledge_document(b, ln):
@@ -4181,6 +4282,10 @@ def x6_pledge_stage(b, ln):
     if not X6_SENT_END.search(t) and not X6_LIST_ENTRY.search(t):      # a list entry ("… 각 1부") is complete
         for x in doc[k + 1:k + 3]:
             if x.text.strip():
+                if getattr(switches, 'V19_STAGE_ITEM_BOUNDARY', False) and re.match(
+                        r'^\s*(?:\(?\d{1,2}(?:\s*[-.]\s*\d{1,2})*\s*[.)]|[가-하]\s*[.)]|[①-⑳])',
+                        x.text):
+                    break
                 t = t + ' ' + x.text.strip()
                 break
     if X6_LAWFUL.search(t):
@@ -4313,6 +4418,10 @@ def v19(b):
     if not switches.V19_PRIVATE and b.meta.private:
         return None
     for ln in b.cands.get('pledge', []):
+        if getattr(switches, 'V19_BIDDER_AS_ALTERNATIVE', False):
+            from . import rtq_v19_alternative
+            if rtq_v19_alternative.exempt(b.notice, ln):
+                continue
         r = b.read('pledge', ln)
         timed = (str(r.get('시점', '')).startswith('입찰 전') or (switches.AUDIT_FIXES and before_award(ln.text))
                  or switches.V19_HOLD_BY_BID and bool(HOLD_BY_BID.search(clause_text(b.notice, ln))))
@@ -4371,6 +4480,10 @@ def sw_statement_match(pat, t):
     """Red team A2: the line states the 제48조 participation restriction (V20_STATEMENT_STRICT reading)."""
     if BARE_GUIDE.match(t):
         return False
+    if getattr(switches, 'V20_SME41_STATEMENT', False):
+        from . import rtq_v20_sme41
+        if rtq_v20_sme41.statement(t):
+            return True
     if switches.V20_CITATION_ONLY:
         t = SW_CITATION.sub(' ', t)
     for m in pat.finditer(t):
@@ -4868,6 +4981,30 @@ def v24_transposed(b):
     return None
 
 
+
+
+def annual_estimate_part(b, ln):
+    """An explicit annual breakdown whose stated total and sum both equal P."""
+    annual = re.compile(r'(\d+)\s*차\s*년\s*도\s*추\s*정\s*가\s*격')
+    if b.meta.P is None or not annual.search(ln.text):
+        return False
+    parts, total = {}, False
+    for row in b.notice.window(ln.i, 12, 12):
+        if row.doc != ln.doc:
+            continue
+        m = EST_LINE.search(row.text)
+        if m is None:
+            continue
+        value = float(m.group(1).replace(',', ''))
+        tag = annual.search(row.text)
+        if tag:
+            year = tag.group(1)
+            if year in parts and abs(parts[year] - value) > 1.5:
+                return False
+            parts[year] = value
+        elif abs(value - b.meta.P) <= 1.5:
+            total = True
+    return total and len(parts) >= 2 and abs(sum(parts.values()) - b.meta.P) <= 1.5
 def v24_amount(b):
     if switches.AUDIT_FIXES:
         return v24_amount_parts(b)
@@ -4876,6 +5013,8 @@ def v24_amount(b):
         # Same field only: a value far from the registered one (unit price, one lot) is a different amount.
         m = EST_LINE.search(t)
         if m and b.meta.P is not None and '단가' not in t:
+            if switches.RTP_V24_ANNUAL_PARTS and annual_estimate_part(b, ln):
+                continue
             v = float(m.group(1).replace(',', ''))
             if v >= 1e5 and abs(v - b.meta.P) > 1.5 and 0.5 <= v / b.meta.P <= 2:
                 return ln
@@ -5063,6 +5202,22 @@ def v24_region(b):
     if b.meta.region_flag != 'Y' or not b.meta.region_sido:
         return None
     lines, sido, _ = region_restriction(b)
+    if switches.RTP_V24_PARTNER_REGION and lines:
+        # Re-read only an explicit licence-supplement / JV clause. Regions
+        # belonging to the optional partner do not change the bidder's seat.
+        own, partner_seen = set(), False
+        for ln in lines:
+            text = region_clause_text(b.notice, ln)
+            partner = JV_PARTNER3.search(text)
+            if partner is not None:
+                partner_seen = True
+                subject = REGION_BIDDER_SUBJECT.search(text, 0, partner.start())
+                text = text[:subject.end()] if subject else ''
+                if not LOCATION_CUE.search(text):
+                    continue
+            own |= regions.mentions(text)['sido']
+        if partner_seen and own and own == set(b.meta.region_sido):
+            return None
     if switches.AUDIT_FIXES and lines:
         lines = [ln for ln in lines if region_clause(b, ln) is not None] if switches.AUDIT_FIXES3 else [
             ln for ln in lines if not JV_PARTNER.search(clause_text(b.notice, ln))]
@@ -5075,6 +5230,18 @@ def v24_region(b):
     if switches.V24_REGION_CPU and not sido:
         lines, sido = v24_cpu_region(b)
     if lines and sido and sido != b.meta.region_sido:
+        if switches.RTP_V24_REGION_ALIASES:
+            # Complete text the region reader already selected; do not infer
+            # extra regions from meta or change other items' region parsing.
+            expanded = set(sido)
+            for ln in lines:
+                text = re.sub(r'[・∙‧]', ',', ln.text)
+                expanded |= regions.mentions(text)['sido']
+                for pattern, members in regions._GROUPS:
+                    if pattern.search(text):
+                        expanded.update(members)
+            if expanded == set(b.meta.region_sido):
+                return None
         return lines[0]
     return None
 
@@ -5124,6 +5291,9 @@ def v24_license(b):
             continue
         if switches.AUDIT_FIXES2 and LICENSE_ALT.search(t):
             continue
+        if switches.RTP_V24_CAPABILITY_OR and len({x for g in LICENSE_CODE.findall(t) for x in g if x}) == 1 and re.search(
+                r'또\s*는[^。\n]{0,220}장비\s*기준(?:을|를)?\s*충족(?:한|하는)\s*자', t):
+            continue  # the licence is an alternative to explicitly stated equipment capability
         if switches.V24P_GUARDS and alternative_item(b.notice, ln):
             continue
         codes = {x for g in LICENSE_CODE.findall(t) for x in g if x}
@@ -6148,6 +6318,9 @@ def judge(b):
             out[it] = (0, '')
             continue
         ev = '' if (it in ABSENCE or hit is True) else evidence(hit.text)
+        if switches.EVIDENCE_REGION_FILL and it in ('v6', 'v7') and not ev:
+            from .evidence_region import fill
+            ev = fill(b)
         out[it] = (1, ev)
     if switches.SEGMENT_OFF:
         seg = segment_of(b)

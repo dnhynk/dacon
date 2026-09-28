@@ -521,6 +521,15 @@ def decide(b, r):
     codes, names, iline = r['industry']
     mc = meta_codes(meta)
     if meta.license_flag == 'Y' and mc and iline is not None:
+        if switches.RTP_V24_FACTORY_CODE and codes:
+            # A factory classification has five digits. A model-truncated
+            # prefix is not a four-digit G2B industry registration code.
+            text = iline.text
+            if re.search(r'공장\s*등록|산업\s*분류', text):
+                grounded = {c for c in codes if re.search(r'(?<!\d)' + re.escape(c) + r'(?!\d)', text)}
+                truncated = {c for c in codes if re.search(r'(?<!\d)' + re.escape(c) + r'\d+(?!\d)', text)}
+                if not grounded and truncated == codes:
+                    return None
         if codes and not (codes & mc):
             return iline
         if not codes and names:
