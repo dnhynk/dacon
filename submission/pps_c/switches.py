@@ -137,6 +137,11 @@ V24_LICENSE_WIDE = False
 # Probe (audit fable_v24 S1): v24 also compares each 기초금액 the 공고문 states with the nearest registered amount (B, 1.1·P, P,
 # B/1.1): silent when one agrees within 5%, fires at 0.5–0.95× or 1.05–2×. False = current behaviour.
 V24_BASE_ZONE = False
+# User-directed budget-axis hypothesis: a stated 기초금액 >= 1,000,000 won
+# disagrees when no labelled notice budget amount equals registered 입찰추정가격.
+# 'base' applies to all awards; 'nego' requires 낙찰방법 == 협상에의한계약.
+# VAT-inclusive amounts are compared literally; False preserves current behaviour.
+V24_BUDGET_VS_P = False
 # Families read with the reasoning channel on (main.py; --thinking-families overrides; budget --thinking-budget, 256).
 # () = thinking off (current behaviour). Changes model requests and server time: verify on GPU before a probe.
 THINKING_FAMILIES = ()

@@ -5821,6 +5821,42 @@ def v24_licence_reverse(b):
     return None
 
 
+# V24_BUDGET_VS_P: literal line-level budget/estimate hypothesis. VAT does not
+# establish agreement in this additional axis.
+BUDGET_P_BASE = re.compile(r'기\s*초\s*금\s*액')
+BUDGET_P_LABEL = re.compile(
+    BUDGET_P_BASE.pattern + r'|추\s*정\s*(?:가\s*격|금\s*액)|'
+    r'(?:배\s*정|사\s*업|소\s*요|구\s*매)\s*예\s*산(?:\s*금\s*액)?|'
+    r'(?:사\s*업|용\s*역|계\s*약)\s*금\s*액|총\s*사\s*업\s*비|예\s*산\s*액?')
+
+
+def v24_budget_vs_p(b):
+    mode = switches.V24_BUDGET_VS_P
+    if mode not in ('base', 'nego'):
+        return None
+    P = b.meta.P
+    if b.meta.P_source != 'meta' or P is None or not math.isfinite(P) or P <= 0:
+        return None
+    if mode == 'nego' and b.meta.award != '협상에의한계약':
+        return None
+    evidence = None
+    for ln in b.notice.notice_lines():
+        if not BUDGET_P_LABEL.search(ln.text):
+            continue
+        # The hypothesis is line-level, so amounts may precede the label or be
+        # separated by words such as 전체/연간. Reuse the existing money reader:
+        # explicit 원/천원 expressions are converted to won; bare bands are not.
+        vals = [m.value for m in amounts.money(ln.text) if '원' in m.raw and m.value >= 1e6]
+        # Keep v24's 1.5-won / optional rounding tolerance. Do not use agrees()
+        # or a VAT/reference-based unit inference: this hypothesis compares P
+        # with the amounts actually written in the notice.
+        if any(abs(v - P) <= 1.5 or rounding_gap(v, P) for v in vals):
+            return None
+        if evidence is None and vals and BUDGET_P_BASE.search(ln.text):
+            evidence = ln
+    return evidence
+
+
 def v24_axes(b):
     for axis in V24_AXES:
         if switches.V24_NO_METHOD and axis is v24_method:
@@ -5836,6 +5872,7 @@ def v24_axes(b):
             return ln
     for on, extra in ((switches.V24_LICENCE_PARTIAL, v24_licence_partial), (switches.V24_BASIC_REGION, v24_basic_region), (switches.V24_BASIC_SCOPE, v24_basic_scope),
                       (switches.V24_POW10, v24_pow10),
+                      (switches.V24_BUDGET_VS_P, v24_budget_vs_p),
                       (switches.V24_REGION_ONESIDED, v24_region_onesided), (switches.V24_LICENCE_ONESIDED, v24_licence_onesided),
                       (switches.V24_REGION_NONE_STATED or switches.V24_REGION_SILENT, v24_region_reverse),
                       (switches.V24_LICENCE_NONE_STATED or switches.V24_LICENCE_SILENT, v24_licence_reverse),
