@@ -47,6 +47,12 @@ WS_RE = re.compile(r'\s+')
 SWQ_TOKEN = re.compile(SW + r'\s*사업자|컴퓨터\s*관련\s*서비스|(?<!\d)1468(?!\d)')
 QUAL_CTX = re.compile(r'등록|신고|자격|업종|면허|소지|확인서|보유')
 IT_SERVICE_CODE = re.compile(r'(?<!\d)8111\d{6}(?!\d)')
+# V20_STAGE_IT_NAME: a listed IT-service 세부품명 written out (정보시스템개발서비스, 정보시스템유지관리서비스, 패키지소프트웨어
+# 개발및도입서비스, 정보인프라구축서비스, 데이터처리서비스, 빅데이터분석서비스, 인터넷지원개발서비스, 소프트웨어유지및지원서비스;
+# the generic 운영위탁서비스 aside).
+IT_SERVICE_NAME = re.compile(r'(정\s*보\s*시\s*스\s*템\s*(개\s*발|유\s*지\s*관\s*리)|패\s*키\s*지\s*소\s*프\s*트\s*웨\s*어\s*개\s*발\s*및\s*도\s*입'
+                             r'|정\s*보\s*인\s*프\s*라\s*구\s*축|데\s*이\s*터\s*처\s*리|빅\s*데\s*이\s*터\s*분\s*석|인\s*터\s*넷\s*지\s*원\s*개\s*발'
+                             r'|소\s*프\s*트\s*웨\s*어\s*유\s*지\s*및\s*지\s*원)\s*서\s*비\s*스')
 STRONG_SW = re.compile(
     r'(시스템|홈페이지|웹\s*사이트|앱|어플리케이션|애플리케이션|플랫폼|솔루션|프로그램|' + SW +
     r'|S/W|SW|DB|데이터베이스|포털|ERP|LMS|CMS|클라우드|챗봇|AI\s*서비스)\s*'
@@ -172,6 +178,9 @@ def signals(notice):
                or any(c[:4] in ('8111', '4323') for c in codes))
     hits = len(STRONG_SW.findall(head_text(notice)))
     from .. import switches
+    # The notice naming a listed IT-service 세부품명 (a certificate "직접생산확인(정보시스템개발서비스) 증명서", "세부품명:
+    # 소프트웨어유지및지원서비스") states its own IT-service object, as its 8111 code does.
+    self_sw = self_sw or (switches.V20_STAGE_IT_NAME and bool(IT_SERVICE_NAME.search(full)))
     cand = 'self_sw' if self_sw else ('content_sw' if hits >= switches.V20_STAGE_CONTENT_HITS else None)
     return {'cand': cand, 'band': band_status(full_lines(notice)) if cand else None, 'content_hits': hits}
 

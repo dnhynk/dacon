@@ -597,6 +597,61 @@ REGION_CLAUSE_FORMS = False
 # evaluation text that bars bidders without the record ("실적증명서 미제출 시 입찰참가를 제한", "실적이 있는 업체만 견적서를
 # 제출할 수 있습니다") states the requirement when no other record line does. False = current behaviour.
 X3_RECORD_FORMS = False
+# v8 (시행규칙 제25조): a participation region written as a requirement label and its value in a line outside the evaluation text
+# and the document list ("입찰참가자격 지역 : 충청북도", "참가 지역 요건 : 대구광역시 소재 업체", "소재지 요건 : 광주광역시 관내")
+# is the bidder-location restriction; values stating no restriction (없음, 해당 없음, 전국) are not. Used for v8's location side
+# only when the other location readers find nothing. False = current behaviour.
+U1_V8_REGION_LABEL2 = False
+# v8: an attachment sentence outside evaluation and document lists that limits bidders to a region by their location — a bidder
+# subject ("입찰참가자는 대전광역시에 본점을 둔 업체로 한다", "제안사는 법인등기부상 본점이 강원특별자치도에 있어야 한다"), a
+# location-requirement label ("지역 요건 : 부산광역시 소재 업체") or a participation clause ("울산광역시에 소재하는 업체에 한하여
+# 제안서를 제출할 수 있다") — is the bidder-location restriction wherever the notice states it (시행규칙 제25조; context, not
+# placement). Partner, subcontract, delivery-place, service-centre, preference and evaluation text is not. Used for v8's location
+# side only when the other location readers find nothing. False = current behaviour.
+U1_V8_ATTACH_REGION = False
+# v4 (item name "특정실적"; 정부 입찰·계약 집행기준 제5조④2: 특정한 명칭의 실적으로 제한함으로써 유사한 실적이 있는 자의
+# 입찰참가기회를 제한하는 경우, e.g. "농공단지 조성실적이 있는 업체만"): a 공고문 line outside the evaluation text that admits
+# only the record of one named work, without a refusal word ("실적 인정 범위 : 세계유산 축전 운영 실적에 한함", "수행실적은
+# 농공단지 조성 실적만을 인정함", "…무대기계 설치 실적이 있는 업체만 참가 가능"), limits the record to a named one. A named work
+# is one without kind, time, amount, status, buyer or bidder words (동종·유사·관련, 최근·이내, 원·이상, 완료·준공, 발주·기관 …);
+# evaluation, subcontract and joint-contract text is not. False = current behaviour.
+U1_V4_NAMED_ONLY = False
+# v4 (정부 입찰·계약 집행기준 제5조④3: 특정기관이 발주한 실적만을 요구하고 다른 기관 및 민간의 실적을 인정하지 않는 경우): a
+# 공고문 line outside the evaluation text — 유의사항, 제출서류 and other sections included — or an attachment line with a bidder
+# subject or a record label that counts only records of a public-buyer kind ("※ 수행실적은 국가기관 및 지방자치단체 발주
+# 실적만 인정합니다", "실적증명서(공공기관 발주분에 한함) 1부", "입찰참가자의 실적은 … 계약한 실적만 인정됩니다") or refuses
+# private records ("※ 민간 발주 실적은 인정하지 않습니다") limits the record to specific buyers. Lists that admit private
+# buyers, proof and certificate notes, and evaluation or record-form text are not. False = current behaviour.
+U1_V4_BUYER_NOTE = False
+# v4 (정부 입찰·계약 집행기준 제5조④3; item note "특정기관 표현 다양"): a required record whose clause names a ministry, agency
+# or commission with its affiliates as the buyer ("행정안전부 또는 그 소속기관의 … 수행 실적", "…청 및 산하기관에서 발주한 …
+# 실적"), a public office, constitutional body, public broadcaster or public facility ("행정복지센터에 … 납품한 실적", "국회 또는
+# 법원에 … 납품한", "공영방송사가 발주한", "공공 체육시설 위탁운영 실적", "시립도서관 납품 실적") or asks for public-order records
+# ("공공발주 실적 1억원 이상 보유 업체") limits the record to specific buyers. Clauses admitting private buyers are not.
+# False = current behaviour.
+U1_V4_BUYER_KINDS = False
+# v2, v8: a bare list item of the 공고문 qualification section that names a held record ("- 동종 물품 공급 경험", "○ 유사 행사
+# 대행 경력", "- 최근 3년 이내 동종 과업 수행 경험 보유") under a lead-in requiring the listed items ("아래 요건을 모두 갖춘
+# 업체", "다음 요건을 충족하는 자", "입찰참가자는 다음 요건을 갖추어야 함") is a record requirement (시행령 제21조; the organizer
+# reads context, not placement). Items with their own predicate, staffing, document, evaluation, exclusion and preference lists
+# are not. Consulted only when no other record line is found. False = current behaviour.
+U1_RECORD_LIST = False
+# v2, v8 (and v4 through V4_UNREAD, v2-v4 through PERF_UNREAD; with X3_RECORD_FORMS): more held-record wordings count as
+# X3 record forms: "…수주 후 완료한 업체", "…수행 완료 업체", "…납품 경력 업체", "…수행 여부 : 있음(필수)", "…을 1회 이상
+# 완수한 업체", a line ending in "…대행 이력 보유". The X3 staff, evaluation and sanction exclusions apply unchanged.
+# False = current behaviour.
+U1_RECORD_FORMS2 = False
+# v2, v8: a 공고문 line outside the evaluation text and the document list that admits only record holders ("※ 동종 실적 보유
+# 업체만 참가 가능합니다", "※ 본 입찰은 동종 물품 납품 경험 보유 업체에 한함") states the record requirement (시행령 제21조;
+# context, not placement). Document entries ("증명서(실적 있는 업체에 한함) 1부"), staffing, waivers, preferences and
+# evaluation text are not. Consulted only when no other record line is found. False = current behaviour.
+U1_NOTE_ONLY = False
+# v2, v8: an attachment sentence (과업지시서, 제안요청서, 규격서) outside evaluation and document lists whose subject is the
+# bidder ("입찰참가자는", "제안사는", "참가업체 자격 :", "본 사업에 참여하는 업체는") and whose predicate requires holding a
+# record ("…실적이 있는 업체이어야 한다", "…실적을 보유하여야 한다", "…실적 보유 업체") is the record requirement wherever the
+# notice states it (시행령 제21조; the organizer reads context, not placement). Proof, submission, staffing, subcontract,
+# joint-contract and preference text is not. Consulted only when no other record line is found. False = current behaviour.
+U1_ATTACH_RECORD = False
 # v14/v15/v17: a clause limiting bidders to a size class (…만 참가, …에 한함, …로 제한, …이어야, 참가대상·참가자격: …)
 # counts in the 공고문's notes and opening lines and in attachments outside a qualification heading, when the
 # qualification section states no class (t4_size_wide). False = current.
@@ -613,6 +668,17 @@ T4_V17_NOTICE_CLASS = False
 # 제한") is the possession requirement, whether or not the reader selected the line; lines admitting non-holders, sanctions,
 # preferences or points for holders, and document-list entries without a bar are not. False = current behaviour.
 V12_EXPLICIT_WIDE = False
+# v12 (with V12_EXPLICIT_ANY and V12_EXPLICIT_WIDE): more wordings of the requirement to hold the 직접생산확인 certificate,
+# on the same lines and with the same exclusions as V12_EXPLICIT_WIDE: losing the award, contract or qualification without it
+# ("…미보유 시 낙찰을 취소", "…보유하지 않은 업체는 계약 대상에서 배제", "…가 없으면 입찰할 수 없음"), a required mark ("…보유
+# 필수", "직접생산확인 : 필수"), an imperative ("…를 보유할 것", "…를 구비할 것", "…를 보유하고 있어야"), holders named as 법인,
+# 제조사 and the like, a demand on the winner or contractor ("낙찰자는 … 제출하여야", "…유지하여야") or to submit it at a stage
+# ("입찰참가 신청 시 … 사본을 제출하여야"), "…를 제출할 수 있는 업체", a contract
+# limited to holders, certified goods ("…확인을 받은 제품으로 납품"), the statute's wording ("…직접생산 여부를 확인받은 업체",
+# "판로지원법 제9조에 따른 확인을 받은 자")
+# and holder clauses citing the 고시 "중소기업자간 경쟁제품 직접생산 확인기준". A revocation of the certificate for a breach
+# (확인 취소, 제11조, 하청생산, 위반, 부정당) stays a sanction. False = current behaviour.
+V12_MORE_FORMS = False
 # v19: a third-party pledge whose absence voids the bid or bars the bidder ("…확약서 미제출 시 입찰 무효", "…확약서를
 # 제출하지 아니한 자의 입찰은 무효", "…제출하지 않으면 입찰참가 자격이 없습니다", "…를 제출하여야 입찰에 참가할 수 있습니다"), or that is set
 # at the bid-participation application ("입찰참가 신청 마감일까지"), in a 참가자격 label ("입찰참가자격: …확약서를 제출한 업체")
@@ -624,12 +690,27 @@ V19_BID_BAR = False
 # amounts, so "3,500만원" was 3,500); a band ("…2억원 미만") is no value, and a unit amount equal to a registered value at its own
 # precision agrees with it. False = current behaviour.
 V24_AMOUNT_UNITS = False
+# v24 (budget axis): a budget or 추정가격 stated only in an attachment (제안요청서, 과업지시서, 규격서) is the notice's statement
+# too: an attachment amount whose digits permute a registered value (a transposition), or a labelled attachment budget or
+# estimate field that agrees with neither registered value, is not a VAT or rounding relation, differs from its registered
+# value by at least a fifth (within half to double) and is stated nowhere in the 공고문, disagrees with 나라장터. Breakdowns,
+# notes (※, *), settlement, annual, monthly, per-unit and variable amounts, compound labels ("홍보용역비"), exact shares and
+# lines that also state a registered value stay out. False = current behaviour.
+V24_ATTACH_AMOUNT = False
 # v9: a specification line that neither the model family nor the model-name stage was shown, and that names a known maker or
 # brand as what must be supplied ("…한샘 제품으로 납품하여야 함", "(주)오텍 제품일 것", "냉장고는 삼성전자 비스포크 제품으로 납품",
 # "브랜드: 에이스침대", "규격: 한솔제지 A4 복사용지"), designates the maker (집행기준 제5조④5). Lines about existing or compatible
 # equipment, issuers of certificates or pledges, software named as a working environment and negated demands ("…으로 한정하지
 # 않음") are not. False = current behaviour.
 V9_BRAND_REQ = False
+# v9 (with V9_BRAND_REQ, goods): a line no reader was shown that lists a known maker (the V9_BRAND_REQ makers and more office,
+# IT, audio-visual, appliance and laboratory makers) with a model code at most two words after it ("HP LaserJet Pro M404dn
+# 프린터", "린나이 가스레인지 RTR-T3200", "- 복사기 : 신도리코 D450"; a code of four or more letters and digits with at least one of
+# each) names the model to be supplied (집행기준 제5조④5) without any demand word. Lines allowing an equivalent or an
+# alternative (동등, 이상, 상당, 동급, 호환, 유사, 재생, 또는), component spec fields of a larger product ("CPU : …", "Main
+# Board : …", "메모리 :"), the equipment a purchase serves ("적용대상") and the V9_BRAND_REQ and practitioner (X3) exclusions
+# stay out. False = current behaviour.
+V9_CODE_LISTING = False
 # Items judged as buying a listed competition service when a service notice without a catalog object names that service
 # (admitted at its 추정가격) for the 직접생산 certificate in a document list or caution ("직접생산확인증명서(세부품명: …)
 # 1부"): the notice subjects its purchase to 판로지원법 제9조 for that service; () = current behaviour.
@@ -668,3 +749,64 @@ V20_CITATION_ONLY = False
 # 소프트웨어사업자의 사업 참여 지원)") is a citation for the model to read, not a CPU statement, unless the line itself (names,
 # article titles and list labels removed) or its wrapped continuation has an application verb. False = current behaviour.
 V20_STAGE_CITATION = False
+# v23: a briefing date written with a two-digit year and no apostrophe is read when a weekday in parentheses follows it
+# ("사업설명회 : 26.3.5.(목) 14:00" is 2026-03-05), which a section or item number never has. Consulted only when
+# V23_DATE_FORMS finds no violation; requires V23_DATE_FORMS. False = current behaviour.
+V23_YY_WEEKDAY = False
+# v22 (negotiated contracts): attendance at a session named only "설명회" is a participation condition when its absence bars
+# the bid or the proposal itself ("설명회 미참석 시 입찰참가자격 박탈", "설명회 참석 업체만 입찰할 수 있음", "설명회 참석자 명부에
+# 서명한 업체만 제안서 제출 가능"): such a session precedes bidding, so it is the orderer's briefing, not the proposer's
+# presentation. Read with the V22_ATTEND_FORMS shapes only when no briefing or presentation is named on the line or in the
+# six lines above, outside evaluation sections and presentation contexts. Also reads, for a named or such a bare briefing,
+# attendees granted the right in other words ("과업설명회 참석 업체에 한하여 제안서 제출 자격이 주어짐"), absence that leaves the
+# bidder without it ("불참 업체에 대하여는 입찰참가자격을 인정하지 않음"), a qualification item naming the attendance certificate
+# ("사업설명회 참석 확인서를 발급받은 업체") and attendance as the bid's condition ("본 입찰은 사업설명회 참석을 조건으로
+# 합니다"). Attendance stated as not required stays out. Requires V22_ATTEND_FORMS. False = current behaviour.
+V22_ATTEND_FORMS2 = False
+# v21: a joint-member share floor stated as a part of the whole ("구성원별 최소 지분은 전체의 3%로 함", "각 구성원의 지분은
+# 전체 계약금액의 3% 이상", "구성원별 참여지분은 공동수급 총 지분의 3% 이상"): "전체의" / "총 지분의" / "전체 계약금액의" name the
+# base of the percentage, so the line is judged by the same literal share check without them (a representative's share
+# stays out); "최저" (최저한도, 최저선) reads as the floor word 최소, "최저가" does not. Requires V21_SHARE_FORMS.
+# False = current behaviour.
+V21_SHARE_FORMS2 = False
+# v5, v6, v7: a bidder-location restriction stated in an attachment line that states the participation qualification
+# ("입찰참가자격: X에 본점을 둔 업체", "입찰참가자는 X 관내에 본사가 소재하여야 함", "| 참가자격 | X 소재 업체 |", "본점 소재지가
+# X인 업체만 제안서를 제출할 수 있음"; for v7 an attachment's 시·도 count only when the 공고문 states no bidder-location
+# restriction of its own, since the 입찰공고 sets the qualification), or in the 공고문 outside evaluation and document lists as
+# a limit to firms proving their location ("X 소재 업체임을 증명하는 … 제출한 업체에 한함"), a location field of the
+# qualification section ("주사무소 소재지 : X", "소재지 : X"; not a street address), a restriction label valued by a region
+# ("| 참가제한 | X 소재 업체 |", "제한사항 | 지역(X)"), "X에 본사가 있는 기업" in the qualification section, "X 업체만 참가
+# 가능" / "입찰참가 자격 : X 업체", "X 외의 업체는 … 참가할 수 없음", "X에 소재하지 않는 업체의 입찰서는 무효", "X 지역업체
+# 대상 입찰" or "투찰 가능 업체: X 소재 업체". Delivery, work-site, facility, joint-partner and bonus clauses stay out.
+# Applies after REGION_CLAUSE_FORMS finds nothing. False = current behaviour.
+REGION_CLAUSE_FORMS2 = False
+# v11, v13-v18 (the shared size-class reading): a clause that names the SME class only to take its small part names
+# 소기업·소상공인: "중소기업(자) 중 / 중에서 / 가운데 [… 에 따른] 소기업·소상공인 …", "중소기업(소기업·소상공인에 한함 / 에
+# 한정 / 만 / 만 해당)", "소기업 또는 소상공인에 해당하는(인) 중소기업자", "중소기업자로서 소기업·소상공인에 해당하는 자"
+# (u2_size_subset). "중소기업 중소기업" and "(소기업·소상공인 포함)" name no part. False = current behaviour.
+U2_SIZE_SUBSET = False
+# v11, v13-v18 (the shared size-class reading): a clause that bars 중기업 in words the older readers miss ("중기업의 (입찰)
+# 참가를 제한", "중기업 확인서 소지자는 입찰에 참가할 수 없음", "중기업은 입찰참가자격이 없습니다", "중기업은 본 입찰의 참가대상이
+# 아닙니다") restricts to 소기업·소상공인; "…제한하지 않습니다", "…제한 없음" and "…제한하는 경우" bar nobody
+# (u2_size_subset). False = current behaviour.
+U2_MEDIUM_BARRED = False
+# v13 (with SMALL_TEXT_CLAUSE or V13_SMALL_ANYWHERE): the literal small-only clause detectors read "중소기업(자) 가운데 /
+# 중 [… 에 따른] 소기업·소상공인", "중소기업(소기업·소상공인에 한함)", "소기업·소상공인에 해당하는(인) 중소기업자" and
+# "중소기업자로서 소기업·소상공인에 해당하는 자" as naming the small class, not as admitting 중소기업자 (law names are then removed
+# as in the shared reading), and such a clause stating who may bid ("…인 자", "…에 해당하는 업체", "…만을 대상으로", "…과의
+# 우선조달계약 대상", "…으로서") is a participation clause (u2_size_subset). False = current behaviour.
+U2_V13_SUBSET_TEXT = False
+# v14/v15/v17 with T4_SIZE_WIDE (and v16/v18 with T4_SIZE_WIDE_ABS): outside the qualification section, a clause that bars
+# 중기업 ("중기업 확인서 소지자는 입찰에 참가할 수 없음") or names the small part of the SME class as who may bid ("중소기업
+# 중 소기업·소상공인인 자", "중소기업자로서 소기업·소상공인에 해당하는 자") limits bidders to 소기업·소상공인 when the size
+# reading gives it that class (U2_SIZE_SUBSET, U2_MEDIUM_BARRED) (u2_size_subset). False = current behaviour.
+U2_WIDE_SUBSET = False
+# Items judged as buying a competition service when a service notice without a catalog object still asks in its 공고문 for
+# the 직접생산 certificate ("⑤ 직접생산확인증명서 1부", "※ 직접생산확인증명서는 … 유효기간 내에 있어야 함"; conditional,
+# evaluation and sanction lines aside) and its licence names that service (행사대행업, 소프트웨어사업자, 비디오물제작업 …) at
+# an admitted 추정가격: the certificate exists only for 판로지원법 제9조 competition products; () = current behaviour.
+OBJ_DP_LICENSE = ()
+# v20 stage: a notice that writes out a listed IT-service 세부품명 (정보시스템개발서비스, 소프트웨어유지및지원서비스 …; e.g. in its
+# 직접생산 certificate or 세부품명 line) is an SW candidate as when it gives the 8111 code, also when its title is withheld
+# and no SW사업자 requirement remains. False = current behaviour.
+V20_STAGE_IT_NAME = False

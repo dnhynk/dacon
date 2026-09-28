@@ -381,6 +381,13 @@ def size_words(text):
         t = re.sub(r'(소\s*기\s*업|소\s*상\s*공\s*인)\s*(또\s*는|및|,|·|ㆍ)\s*(?=중\s*[·ㆍ・‧․]?\s*소\s*기\s*업\s*(\(\s*소\s*상\s*공\s*인\s*\)\s*)?확\s*인\s*서)', ' ', t)
     if switches.AUDIT_FIXES:
         t = PREFERENCE_PAREN.sub(' ', RESEARCH_FIRM.sub(' ', t))
+    if switches.U2_SIZE_SUBSET:
+        from .u2_size_subset import subset_small
+        t = subset_small(t)
+    if switches.U2_MEDIUM_BARRED:
+        from .u2_size_subset import medium_barred
+        if medium_barred(t):
+            return 'small'
     if NO_MEDIUM.search(t) or switches.C2_SIZE_NO_MEDIUM and small_only_c2(t):
         return 'small'
     if SMALL_LIMIT_ACTIVE[0] and SMALL_LIMIT.search(t):

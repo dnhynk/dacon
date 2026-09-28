@@ -78,6 +78,11 @@ def wide(b):
         if pm and not _states_none(own):
             out.append((ln, 'sme' if re.match(r'중', pm.group('cls')) else 'small'))
             continue
+        if switches.U2_WIDE_SUBSET and not _states_none(own):
+            from .u2_size_subset import wide_limit
+            if wide_limit(own) and _class(own) == 'small':
+                out.append((ln, 'small'))
+                continue
         if not _limits(ln, own) or _states_none(own):
             continue
         cls = _class(own)

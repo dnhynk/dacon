@@ -394,6 +394,10 @@ X3_PROOF_NOTE = re.compile(r'[\(（][^)）]{0,15}(?:증\s*빙|증\s*명)[^)）]{
 
 
 def x3_record_form(t):
+    if switches.U1_RECORD_FORMS2:
+        from . import u1_records
+        if u1_records.U1_FORMS2.search(t) and not X3_NOT_FORM.search(t):
+            return True
     return bool(X3_HELD_FORMS.search(t)) and not X3_NOT_FORM.search(t)
 
 
@@ -1059,10 +1063,13 @@ def _rtd_v2_base(b):
 
 def v2(b):
     hit = _rtd_v2_base(b)
-    if not switches.RTD_V2_COMPLETED_EXPERIENCE:
-        return hit
-    from .rtd_v2_experience import augment
-    return augment(b, hit)
+    if switches.RTD_V2_COMPLETED_EXPERIENCE:
+        from .rtd_v2_experience import augment
+        hit = augment(b, hit)
+    if hit is None:
+        from . import u1_records
+        hit = u1_records.v2_more(b)        # red team U1 sources (switches U1_*, default off)
+    return hit
 
 
 # Audit R2-E: the record amount may sit on a wrapped line of the clause or on a following line that is only a parenthetical
@@ -1421,6 +1428,9 @@ def v4(b):
         hit = v4_only_records(b)          # red team A2
     if hit is None and switches.V4_NAMED_RECORD:
         hit = x3_named_record(b)
+    if hit is None:
+        from . import u1_records
+        hit = u1_records.v4_more(b)        # red team U1 sources (switches U1_*, default off)
     return hit
 
 
@@ -1521,7 +1531,11 @@ def v5(b):
     if hit is not None or not switches.REGION_CLAUSE_FORMS:
         return hit
     from .region_clause_forms import v5 as clause_forms
-    return clause_forms(b, hit)
+    hit = clause_forms(b, hit)
+    if hit is not None or not switches.REGION_CLAUSE_FORMS2:
+        return hit
+    from .region_clause_forms2 import v5 as clause_forms2
+    return clause_forms2(b, hit)
 
 
 # Expert audit X7 (runs/rebuild_c/transfer_20260925/audit/expert/X7/REPORT.md): 국가계약법 시행규칙 제25조③ and 지방계약법 시행규칙
@@ -1637,7 +1651,11 @@ def v6(b):
     if hit is not None or not switches.REGION_CLAUSE_FORMS:
         return hit
     from .region_clause_forms import v6 as clause_forms
-    return clause_forms(b, hit)
+    hit = clause_forms(b, hit)
+    if hit is not None or not switches.REGION_CLAUSE_FORMS2:
+        return hit
+    from .region_clause_forms2 import v6 as clause_forms2
+    return clause_forms2(b, hit)
 
 
 def v7_clause_lines(b):
@@ -1714,10 +1732,22 @@ def v7(b):
     if got is not None or not switches.REGION_CLAUSE_FORMS:
         return got
     from .region_clause_forms import v7 as clause_forms
-    return clause_forms(b, None)
+    got = clause_forms(b, None)
+    if got is not None or not switches.REGION_CLAUSE_FORMS2:
+        return got
+    from .region_clause_forms2 import v7 as clause_forms2
+    return clause_forms2(b, got)
 
 
 def v8(b):
+    hit = _v8_base(b)
+    if hit is None:
+        from . import u1_records
+        hit = u1_records.v8_more(b)        # red team U1 sources (switches U1_*, default off)
+    return hit
+
+
+def _v8_base(b):
     """실적 and bidder-location restrictions together; the location restriction may be the one registered on 나라장터
     (meta 지역제한여부 Y), as for v5."""
     if b.meta.local_private:
@@ -2121,6 +2151,50 @@ def v9_brand_line(b):
     return None
 
 
+# Switch V9_CODE_LISTING (집행기준 제5조④5): a known brand followed, within two words, by a model code (four or more letters
+# and digits with at least one of each) lists the model to be supplied, on a goods line no reader was shown.
+V9_CODE_AFTER = re.compile(r'\s*[\(（]?\s*(?:[A-Za-z0-9가-힣]+\s+){0,2}?[\(（]?\s*((?=[A-Za-z0-9\-]*\d)(?=[A-Za-z0-9\-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9\-]{3,})(?![A-Za-z0-9])')
+V9_CODE_EQUIV = re.compile(r'동\s*등|이\s*상|상\s*당|동\s*급|호\s*환|유\s*사|재\s*생|또\s*는')
+# A component spec field of a larger product ("CPU : Intel Core i7-1185G7", "Main Board : …") lists a part, and "적용대상" names the
+# equipment the purchase serves, not the product bought.
+V9_CODE_COMPONENT = re.compile(r'(?<![A-Za-z])(CPU|GPU|Processor|Chipset|Memory|Storage|Graphics|VGA|RAM|SSD|HDD|OS|Main\s*Board|Mainboard|Motherboard)(?![A-Za-z])\s*[:：|]'
+                               r'|(프\s*로\s*세\s*서|칩\s*셋|그\s*래\s*픽\s*(카\s*드)?|메\s*모\s*리|저\s*장\s*장\s*치|운\s*영\s*체\s*제|메\s*인\s*보\s*드'
+                               r'|마\s*더\s*보\s*드)\s*[:：|]|적\s*용\s*대\s*상', re.I)
+# More makers of office, IT, audio-visual, appliance and laboratory goods (this switch only).
+V9_CODE_BRAND = re.compile(r'(?<![가-힣A-Za-z0-9])(' + V9_BRANDS
+                           + r'|엘지|에이치피|휴렛팩커드|델|한성컴퓨터|삼보|주연테크|뷰소닉|벤큐|알파스캔|후지제록스|교세라|리코|도시바|히타치'
+                           r'|미쓰비시|다이킨|위닉스|휴롬|시놀로지|큐냅|아이피타임|넷기어|포티넷|한화테크윈|하이크비전|제브라|가민|라이카|올림푸스'
+                           r'|후지필름|자이스|써모피셔|애질런트|시마즈|브루커|퍼킨엘머|에펜도르프|사토리우스|메틀러|호리바|지멘스|하니웰|오므론|키엔스'
+                           r'|야마하|옵토마|폴리콤|웨스턴디지털|씨게이트|킹스톤|아수스|플루크|텍트로닉스|키사이트'
+                           r'|Fujitsu|Toshiba|Hitachi|Ricoh|Kyocera|Synology|QNAP|ipTIME|NETGEAR|Netgear|Juniper|Fortinet|FortiGate|Aruba|Hikvision'
+                           r'|Dahua|Zebra|Motorola|Garmin|Trimble|Leica|Olympus|Nikon|Zeiss|Agilent|Shimadzu|Bruker|PerkinElmer|Beckman|Eppendorf'
+                           r'|Sartorius|Mettler|Horiba|Siemens|Honeywell|Omron|Keyence|Yamaha|Polycom|Yealink|Jabra|BenQ|ViewSonic|Seagate|SanDisk'
+                           r'|Kingston|Supermicro|Huawei|Xiaomi|Fluke|Tektronix|Keysight|Anritsu|Yokogawa|Mitsubishi|Daikin|Milwaukee|DeWalt|Hilti'
+                           r'|Fujifilm|GoPro|Shure|Sennheiser|Crestron|Extron|Barco|Optoma)(?![가-힣A-Za-z])')
+
+
+def v9_code_listing(b):
+    if b.meta.work != '물품':
+        return None
+    shown = {ln.i for ln in b.cands.get('model', [])}
+    stage = getattr(b, 'd_model_name', None)
+    if stage:
+        shown |= set(stage.get('shown', ()))
+    titles = [x for x in b.titles if len(x.strip()) >= 6]
+    for ln in b.notice.lines:
+        t = ln.text
+        if ln.i in shown or ln.sec in ('EVAL', 'DOCS') or len(t.strip()) > 160 or V9_BRAND_NOT.search(t) or V9_CODE_EQUIV.search(t) or V9_CODE_COMPONENT.search(t) \
+                or any(x in t for x in titles) or V9_BRAND_TITLE.search(t) \
+                or BRAND_NONPRODUCT.search(t) or MAKER_CONDITION.search(t) or PLACEHOLDER_LABEL.search(t):
+            continue
+        for m in V9_CODE_BRAND.finditer(t):
+            if m.group(1) == 'HP' and (re.search(r'\d\s*$', t[:m.start()]) or t[m.end():m.end() + 1] == '-'):
+                continue
+            if V9_CODE_AFTER.match(t, m.end()) and not x3_drop(b, ln):
+                return ln
+    return None
+
+
 def v9(b):
     if switches.V9_READ2:
         return v9_read2(b)
@@ -2131,6 +2205,8 @@ def v9(b):
         lines = [ln for ln in lines if not x3_drop(b, ln)]
     if not lines and switches.V9_X3B:
         return x3b_line(b)
+    if not lines and switches.V9_BRAND_REQ and switches.V9_CODE_LISTING:
+        return v9_brand_line(b) or v9_code_listing(b)
     if not lines and switches.V9_BRAND_REQ:
         return v9_brand_line(b)
     return lines[0] if lines else None
@@ -2698,6 +2774,23 @@ def dp_docs_object(b):
     return False
 
 
+# OBJ_DP_LICENSE: the 공고문 still asks for the 직접생산 certificate (a document-list entry, a validity or check note; not a
+# sanction, evaluation or conditional line) and the licence names a competition service admitted at P (the catalog's licence
+# words; 비디오물제작업·방송영상독립제작사 for 동영상제작서비스; 국제회의기획업 for 국제행사기획).
+DP_LICENSE_EXTRA = [(r'비디오물\s*제작업|방송\s*영상\s*독립\s*제작', None, None), (r'국제\s*회의\s*기획업', 10 * catalog.EOK, 'estimate_below')]
+DP_LICENSE_COND = re.compile(r'해\s*당\s*(시|자|하\s*는\s*경\s*우|되\s*는\s*경\s*우|업\s*체)|요\s*청\s*한\s*경\s*우|필\s*요\s*(시|한\s*경\s*우)|경\s*우\s*에\s*한'
+                             r'|제\s*출\s*대\s*상\s*에\s*서\s*제\s*외')
+
+
+def dp_license_object(b):
+    lic = str(b.meta.license or '')
+    fams = [(lp, lim, bas) for f, c, t, lp, lim, bas in catalog.service_families() if lp] + DP_LICENSE_EXTRA
+    if not lic or not any(re.search(lp, lic) and catalog.amount_ok(b.meta.P, lim, bas) is not False for lp, lim, bas in fams):
+        return False
+    return any(ln.doc_type == '공고문' and ln.sec != 'EVAL' and DP_CERT.search(ln.text) and not DP_SANCTION.search(ln.text)
+               and not DP_EVAL.search(ln.text) and not DP_LICENSE_COND.search(ln.text) for ln in b.notice.lines)
+
+
 def competitive_service(b, item=None):
     """v10·v11·v13 are judged on service purchases, and on goods only for the items in switches.COMPETITIVE_GOODS. Dev has
     no label on 16 competition-product goods, but C with goods judged would fire on only 2 of them (both v10), so that
@@ -2716,6 +2809,8 @@ def competitive_service(b, item=None):
     if item in switches.COMP_MIXED and b.scope.basis == 'goods:mixed':
         return True
     if item in switches.OBJ_DP_DOCS and b.meta.work == '용역' and b.scope.basis == 'service:none' and dp_docs_object(b):
+        return True
+    if item in switches.OBJ_DP_LICENSE and b.meta.work == '용역' and b.scope.basis == 'service:none' and dp_license_object(b):
         return True
     if item in switches.OBJ_VIDEO_LICENSE and b.meta.work == '용역' and b.scope.basis == 'service:none' \
             and (video_by_license(b) or booth_title(b)):
@@ -3026,6 +3121,64 @@ def v12_wide_lines(b):
     return out
 
 
+# Switch V12_MORE_FORMS (판로지원법 제9조; with V12_EXPLICIT_ANY and V12_EXPLICIT_WIDE): more wordings of the possession
+# requirement on the lines V12_EXPLICIT_WIDE reads, with its exclusions; a consequence of not holding the certificate (losing
+# the award, contract or qualification) is the requirement, not a sanction, unless the line revokes the certificate for a breach.
+V12_CERT_STATUTE = re.compile(r'직\s*접\s*생\s*산\s*여\s*부\s*(를|의)?\s*확\s*인\s*(을\s*)?받'
+                              r'|(판\s*로\s*지\s*원\s*법|판\s*로\s*지\s*원\s*에\s*관\s*한\s*법\s*률)\s*[」』>’"”]?\s*제\s*9\s*조[^.。]{0,30}?확\s*인\s*(을\s*)?받')
+V12_CONSEQ = (r'(취\s*소|배\s*제|상\s*실|제\s*외|무\s*효|불\s*가|수\s*없|부\s*적\s*격|탈\s*락|해\s*지|해\s*제'
+              r'|(인\s*정|체\s*결|결\s*정|선\s*정|접\s*수|평\s*가)\s*하\s*지\s*(않|아\s*니))')
+V12_NOHOLD = (r'(미\s*(보\s*유|소\s*지|제\s*출|첨\s*부|구\s*비|취\s*득)'
+              r'|(보\s*유|소\s*지|제\s*출|첨\s*부|구\s*비|취\s*득|발\s*급\s*받|확\s*인\s*받)\s*(하\s*)?지\s*(않|아\s*니|못)'
+              r'|(받|갖\s*추)\s*지\s*(않|아\s*니|못)|없\s*(는|으\s*면|을\s*경\s*우|이\s*는)|(업\s*체|자)\s*가\s*아\s*닌)')
+V12_NOHOLD_CONSEQ = re.compile(V12_NOHOLD + r'[^.。]{0,40}' + V12_CONSEQ)
+V12_MORE = re.compile(
+    r'(보\s*유|소\s*지|구\s*비|취\s*득|제\s*출)?\s*[\(（]?\s*필\s*수(?!\s*(가|는|이|은)?\s*아\s*[니닙님닌])'
+    r'|(보\s*유|소\s*지|구\s*비|취\s*득|갖\s*출|득)\s*할\s*것|(보\s*유|소\s*지|구\s*비|받)\s*(하\s*)?고\s*있\s*어\s*야'
+    r'|있\s*어\s*야[^.。]{0,20}(입\s*찰|참\s*가|참\s*여|투\s*찰|견\s*적|계\s*약)'
+    r'|(보\s*유|소\s*지|구\s*비|취\s*득|발\s*급\s*받|득)\s*(한|은)\s*(법\s*인|제\s*조\s*사|제\s*조\s*업\s*체|기\s*업\s*체|공\s*급\s*사|업\s*소|사\s*업\s*장|개\s*인|단\s*체)'
+    r'|(구\s*비|득)\s*한\s*(업\s*체|자|사\s*업\s*자)|(업\s*체|자)\s*(이\s*)?라\s*야'
+    r'|(보\s*유|소\s*지|받\s*은)\s*(한\s*)?(업\s*체|자)\s*(와|과)\s*(의\s*)?(수\s*의\s*)?계\s*약'
+    r'|(받\s*은|확\s*인\s*된|인\s*정\s*된)\s*(제\s*품|물\s*품)\s*(으\s*로|이\s*어\s*야|일\s*것|을\s*납\s*품)'
+    r'|(낙\s*찰\s*자|계\s*약\s*상\s*대\s*자|계\s*약\s*자|공\s*급\s*자|납\s*품\s*업\s*체)\s*(는|가|은)?[^.。]{0,50}(제\s*출|구\s*비|보\s*유|소\s*지|유\s*지)\s*하\s*여\s*야'
+    r'|(시|때)\s*(에\s*)?[^.。]{0,40}(제\s*출|첨\s*부)\s*하\s*여\s*야'
+    r'|(제\s*출|제\s*시)\s*할\s*수\s*있\s*는\s*(업\s*체|자)'
+    r'|(참\s*가|입\s*찰)\s*자\s*격[^.。]{0,30}(제\s*출|구\s*비)\s*하\s*여\s*야'
+    r'|확\s*인\s*받\s*은\s*(업\s*체|자)')
+# The 고시 title "중소기업자간 경쟁제품 직접생산 확인기준" names the certification standard, not a competition product.
+V12_STANDARD_NAME = re.compile(r'중\s*소\s*기\s*업\s*자\s*간\s*경\s*쟁\s*제\s*품\s*직\s*접\s*생\s*산\s*확\s*인\s*기\s*준')
+V12_REVOKED = re.compile(r'확\s*인\s*(이|을|의)?\s*취\s*소|제\s*11\s*조|하\s*청|위\s*반|부\s*정\s*당|타\s*사\s*제\s*품'
+                         r'|완\s*제\s*품|허\s*위|위\s*조|변\s*조')
+
+
+def v12_more_lines(b):
+    from .families import DOC_LIST
+    cat = catalog.load()
+    cert = [ln for ln in b.notice.lines if DP_CERT.search(ln.text) or V12_CERT_STATUTE.search(ln.text)]
+    if any(catalog.cites_listed(clause_text(b.notice, ln), cat, b.meta.P) for ln in cert):
+        return []
+    out = []
+    for ln in cert:
+        t = ln.text
+        conseq = bool(V12_NOHOLD_CONSEQ.search(t)) and not V12_REVOKED.search(t)
+        clause = clause_text(b.notice, ln)
+        named_only = bool(V12_COMPETITION.search(clause)) and not V12_COMPETITION.search(V12_STANDARD_NAME.sub(' ', clause))
+        if ln.doc_type == '공고문' and ln.sec == 'EVAL' or METHOD_SUMMARY.search(t) or V12_SANCTION.search(t) and not conseq \
+                or V12_ADMIT.search(t) or DP_BONUS.search(t) or V12_COMPETITION.search(clause) and not named_only:
+            continue
+        if (DOC_LIST.search(t) or LIST_ENTRY.search(t)) and not re.search(V12_CONSEQ, t):
+            continue
+        # A validity or verification note on a certificate required elsewhere, or a line that admits another document or
+        # route instead of the certificate, is not the possession requirement.
+        if DP_NOTE.search(t) and not DP_POSSESS_STEM.search(t) or DP_VERIFY.search(t) or V12_VERIFY2.search(t) \
+                or V12_ALT.search(clause) or V12_ALT_LIST.search(t) or V12_ALT_ROUTE.search(clause):
+            continue
+        if conseq or V12_MORE.search(t) or (V12_CERT_STATUTE.search(t) or named_only) \
+                and (V12_PART.search(t) and not V12_EXEMPT.search(t) or V12_BAR.search(t)):
+            out.append(ln)
+    return out
+
+
 def v12(b):
     """v12 is judged by the procured object (talkboard): a certificate for a listed competition product that the model
     reads as the procured work itself shows the purchase is that product, whatever our title families say."""
@@ -3034,6 +3187,8 @@ def v12(b):
     cat = catalog.load()
     lines = []
     wide = v12_wide_lines(b) if switches.V12_EXPLICIT_ANY and switches.V12_EXPLICIT_WIDE else []
+    if switches.V12_MORE_FORMS and switches.V12_EXPLICIT_ANY and switches.V12_EXPLICIT_WIDE:
+        wide = wide + [ln for ln in v12_more_lines(b) if ln not in wide]
     for ln in dp_required(b, positive=True) + (v12_explicit_lines(b) if switches.V12_EXPLICIT_ANY else []) + wide:
         clause = clause_text(b.notice, ln)
         # Audit E: the verification, possession and condition wording is read on the clause (a layout break splits "…확인(" /
@@ -3048,7 +3203,8 @@ def v12(b):
             continue
         if switches.V12_X3 and (V12_ALT.search(clause) or V12_VERIFY2.search(t)):
             continue
-        if switches.AUDIT_FIXES and not DP_CERT.search(clause):
+        if switches.AUDIT_FIXES and not DP_CERT.search(clause) \
+                and not (switches.V12_MORE_FORMS and V12_CERT_STATUTE.search(clause)):
             continue
         if switches.AUDIT_FIXES2 and not DP_CERT.search(evidence_sentence(clause, ln.text)):
             continue
@@ -3125,8 +3281,15 @@ def small_only_text(b):
         before = lines[k - 1].text if k and not SMALL_TEXT_ITEM.match(ln.text) else ''
         core = SMALL_TEXT_EXCLUDED.sub(' ', SMALL_TEXT_NAMES.sub(' ', clause))
         prior = SMALL_TEXT_EXCLUDED.sub(' ', SMALL_TEXT_NAMES.sub(' ', ' '.join(before.split())))
+        if switches.U2_V13_SUBSET_TEXT:
+            from .u2_size_subset import subset_core
+            core, prior = subset_core(core), subset_core(prior)
         if SMALL_TEXT_NOTE.search(core) or SMALL_TEXT_OTHER.search(core) or SMALL_TEXT_OTHER.search(prior):
             continue
+        if switches.U2_V13_SUBSET_TEXT and SMALL_TEXT_CLASS.search(core):
+            from .u2_size_subset import subset_who
+            if subset_who(clause):
+                return ln
         if SMALL_TEXT_CLASS.search(core) and SMALL_TEXT_WHO.search(core):
             return ln
     return None
@@ -3170,9 +3333,16 @@ def small_only_any(b):
         edge = norm(before.rstrip()[-12:] + ln.text.lstrip()[:4])
         core = SMALL_ANY_EXCLUDED.sub(' ', SMALL_TEXT_EXCLUDED.sub(' ', SMALL_TEXT_NAMES.sub(' ', clause)))
         prior = SMALL_ANY_EXCLUDED.sub(' ', SMALL_TEXT_EXCLUDED.sub(' ', SMALL_TEXT_NAMES.sub(' ', norm(before))))
+        if switches.U2_V13_SUBSET_TEXT:
+            from .u2_size_subset import subset_core
+            core, prior = subset_core(core), subset_core(prior)
         if SMALL_ANY_NOTE.search(clause) or SMALL_ANY_NOTE.search(core) or SMALL_TEXT_OTHER.search(core) \
                 or SMALL_TEXT_OTHER.search(prior) or SMALL_TEXT_OTHER.search(SMALL_TEXT_NAMES.sub(' ', edge)):
             continue
+        if switches.U2_V13_SUBSET_TEXT and SMALL_TEXT_CLASS.search(core):
+            from .u2_size_subset import subset_who
+            if subset_who(clause):
+                return ln
         if SMALL_TEXT_CLASS.search(core) and SMALL_ANY_WHO.search(core) and SMALL_ANY_BID.search(core):
             return ln
     return None
@@ -3988,7 +4158,11 @@ def _rtd_v21_mode_base(b):
     if not switches.V21_SHARE_FORMS:
         return hit
     from .v21_share_forms import augment as share_forms
-    return share_forms(b, hit)
+    hit = share_forms(b, hit)
+    if hit is not None or not switches.V21_SHARE_FORMS2:
+        return hit
+    from .v21_share_forms2 import augment as share_forms2
+    return share_forms2(b, hit)
 
 
 def v21(b):
@@ -4098,7 +4272,11 @@ def v22(b):
     if hit is not None or not switches.V22_ATTEND_FORMS:
         return hit
     from .v22_attend_forms import augment as attend_forms
-    return attend_forms(b, hit)
+    hit = attend_forms(b, hit)
+    if hit is not None or not switches.V22_ATTEND_FORMS2:
+        return hit
+    from .v22_attend_forms2 import augment as attend_forms2
+    return attend_forms2(b, hit)
 
 
 NO_BRIEF = re.compile(r'생략|미\s*개최|개최\s*(하지\s*)?않|(설명회|설명)\s*(는|은)?\s*[:：]?\s*(없음|없습니다|미개최)|해당\s*없음|미\s*실시|실시\s*하지\s*않|(으로|로)\s*갈음')
@@ -4217,7 +4395,11 @@ def v23(b):
         return hit
     if switches.V23_DATE_FORMS:
         from .v23_date_forms import decide as date_forms
-        return date_forms(b, hit)
+        got = date_forms(b, hit)
+        if got is not None or not switches.V23_YY_WEEKDAY:
+            return got
+        from .v23_yy_weekday import decide as yy_weekday
+        return yy_weekday(b, None)
     from .rtd_v23_dates import decide
     return decide(b, hit)
 
@@ -5087,6 +5269,92 @@ def v24_method_list(b):
     return None
 
 
+# Switch V24_ATTACH_AMOUNT (talkboard: the budget axis compares the notice's 사업예산 with 나라장터's 배정예산·추정가격): the
+# attachments state the budget too. A digit permutation of a registered value is a transposition; a labelled field needs a gap
+# of at least a fifth (rounded budgets, VAT and adjustments stay within it), no 공고문 statement of the same amount, no
+# registered value restated on its line, and no breakdown, note, settlement, period or unit amount or compound label.
+V24_ATT_GAP = 0.2
+V24_ATT_PORTION = re.compile(r'^\W{0,3}(※|\*|＊|주\s*[)）])|정\s*산|별\s*도|연\s*간|월\s*간|단\s*가|개\s*당|건\s*당|회\s*당|인\s*당|식\s*당|변\s*동')
+
+
+def v24_attach_stated(b, lines):
+    out = []
+    for k, ln in enumerate(lines):
+        t = ln.text
+        if '단가' in t:
+            continue
+        found = False
+        for m in AMOUNT_FIELD_L.finditer(t):
+            if m.start() > 0 and re.match(r'[가-힣]', t[m.start() - 1]):
+                continue                      # a compound label ("홍보용역비") names a part of the work
+            u = unit_amount_after(t[m.end():], (b.meta.P, b.meta.B))
+            if u is not None and not OTHER_AMOUNT_FIELD.search(t[m.end():m.end() + 12]):
+                out.append((ln, u, m.group(1)))
+                found = True
+            a = AMOUNT_AFTER_LABEL_L.match(t[m.end():])
+            if a and not OTHER_AMOUNT_FIELD.search(t[m.end():m.end() + a.start(1)]):
+                out.append((ln, float(a.group(1).replace(',', '')), m.group(1)))
+                found = True
+        if found or not AMOUNT_FIELD.search(t) or AMOUNT_ANY.search(t) or OTHER_AMOUNT_FIELD.search(t):
+            continue
+        m = AMOUNT_FIELD.search(t)
+        if m.start() > 0 and re.match(r'[가-힣]', t[m.start() - 1]) or not REGISTERED_FIELD.fullmatch(m.group(1)):
+            continue
+        for nxt in lines[k + 1:k + 3]:
+            if not nxt.text.strip():
+                continue
+            if nxt.doc != ln.doc:
+                break
+            u = unit_amount_after(nxt.text, (b.meta.P, b.meta.B))
+            if u is not None:
+                out.append((nxt, u, m.group(1)))
+                break
+            a = AMOUNT_LEAD_T.match(nxt.text)
+            if a:
+                out.append((nxt, float(a.group(1).replace(',', '')), m.group(1)))
+            break
+    return out
+
+
+def v24_attach_amount(b):
+    P, B = b.meta.P, b.meta.B
+    if not (P or B):
+        return None
+    att = [ln for ln in b.notice.lines if ln.doc_type != '공고문']
+    registered = {str(int(v)) for v in (B, P) if v}
+    for ln in att:
+        t = ln.text
+        for m in AMOUNT_ANY.finditer(t):
+            raw = m.group(1)
+            if ',' not in raw and not re.match(r'\s*원', t[m.end():]) and not re.search(r'(금|[₩￦])\s*$', t[:m.start()]):
+                continue
+            d = raw.replace(',', '')
+            if int(d) < 1e5 or any(vat_related(float(d), r) for r in (B, P) if r):
+                continue
+            if any(len(d) == len(r) and d != r and sorted(d) == sorted(r) for r in registered):
+                return ln
+    found = [x for x in v24_attach_stated(b, att) if x[1] >= 1e5]
+    vals = [v for _, v, _ in found]
+    if len(vals) >= 2 and any(r is not None and abs(sum(vals) - r) <= 2 for r in (P, B)):
+        return None
+    notice_vals = {round(v) for _, v, _, _ in stated_amounts(b)}
+    for ln, v, label in found:
+        if agrees(v, P) or agrees(v, B) or any(vat_related(v, r) for r in (P, B) if r) or round(v) in notice_vals:
+            continue
+        if BREAKDOWN.search(ln.text) or V24_ATT_PORTION.search(ln.text):
+            continue
+        if any(agrees(float(x.replace(',', '')), r) for x in AMOUNT_ANY.findall(ln.text) for r in (P, B) if r):
+            continue                          # the line restates a registered value (a Korean-numeral twin, a VAT split)
+        ref = (P if ESTIMATE_FIELD.fullmatch(label) else B) or P or B
+        q = v / ref
+        if not 0.5 <= q <= 2 or 1 - V24_ATT_GAP + 1e-9 < q < 1 + V24_ATT_GAP - 1e-9:
+            continue
+        if any(abs(r / v - k) <= 0.005 * k for r in (P, B) if r for k in (2, 3, 4, 5)):
+            continue
+        return ln
+    return None
+
+
 def v24_axes(b):
     for axis in V24_AXES:
         if switches.V24_NO_METHOD and axis is v24_method:
@@ -5114,6 +5382,9 @@ def v24_axes(b):
         ln = v24_method_list(b)
         if ln is not None:
             return ln
+    if switches.V24_ATTACH_AMOUNT:
+        ln = v24_base_zone(b) if switches.V24_BASE_ZONE else None
+        return ln if ln is not None else v24_attach_amount(b)
     return v24_base_zone(b) if switches.V24_BASE_ZONE else None
 
 

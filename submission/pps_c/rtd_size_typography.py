@@ -5,6 +5,10 @@ DOTS=str.maketrans({c:'·' for c in '⸱∙⋅•‧・･․ㆍ'})
 WORDS=re.compile(r'중\s*소\s*기\s*업|중\s*·\s*소\s*기\s*업|중\s*기\s*업|소\s*기\s*업|소\s*상\s*공\s*인')
 
 def normal(text):
+    from . import switches
+    if switches.U2_SIZE_SUBSET:
+        from .u2_size_subset import subset_small
+        text = subset_small(text)
     return WORDS.sub(lambda m:re.sub(r'\s+','',m.group()),text.translate(DOTS))
 
 def class_of(b,ln):
