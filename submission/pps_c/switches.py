@@ -174,6 +174,9 @@ V12_TITLE_SW = False
 # Probes (expert audit X3), each False = current behaviour: V12_X3 skips a 직접생산 demand that offers another route or only
 # verifies a certificate; V12_MANUF fires on a manufacturer-only demand in a goods purchase outside the competition products.
 V12_X3 = False
+# Independent X3 filters. Final candidate: legacy=False, ALT=True, VERIFY=False.
+V12_X3_ALT = False
+V12_X3_VERIFY = False
 V12_MANUF = False
 # Probe: v12 does not follow the model's "과업과 같은 종류" reading when the title's object is research, education, a training
 # course, a school trip or lodging (dev DEV-053, DEV-056). False = current behaviour.

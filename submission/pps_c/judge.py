@@ -3626,6 +3626,10 @@ def v12(b):
             continue
         if switches.V12_X3 and (V12_ALT.search(clause) or V12_VERIFY2.search(t)):
             continue
+        if switches.V12_X3_ALT or switches.V12_X3_VERIFY:
+            from .v12_x3_split import exclusion_match
+            if exclusion_match(clause, t, alt=switches.V12_X3_ALT, verify=switches.V12_X3_VERIFY):
+                continue
         if switches.AUDIT_FIXES and not DP_CERT.search(clause) \
                 and not (switches.V12_MORE_FORMS and V12_CERT_STATUTE.search(clause)):
             continue
