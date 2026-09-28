@@ -1,16 +1,15 @@
 {
   "schema_version": 2,
-  "updated_utc": "2026-09-28T06:05:00+00:00",
+  "updated_utc": "2026-09-28T14:11:36+00:00",
   "competition": "DACON 236754",
   "goal_official_macro_f1": 0.8,
   "official": {
     "best": {
-      "name": "R0928",
-      "score": 0.7360846704,
-      "zip": "artifacts/rebuild_c/MAIN0928b_union/submit.zip",
-      "zip_sha256": "dc71c65f65e1c73838d904beb8a7d0c7c8a5ebb88fc9bd24988d72e117e0dfb4",
-      "slot": "spare1",
-      "main_team_best": "THKA 0.7253205225 (no main submission since 9/27)"
+      "name": "BIGSHOT0928_v6",
+      "score": 0.7535786066,
+      "zip": "artifacts/rebuild_c/BIGSHOT0928_v6_clean/submit.zip",
+      "zip_sha256": "20481534d7fb5ff8ebba05036d3865b485b1c39ee6b3073e30f66713e582af81",
+      "slot": "main"
     },
     "adopted_overrides": "union of the switch overrides of CG V9B REX6 AFBbR8 PRX4X V24W1PG X4OBJ AFBaR2 V20OR (runs/rebuild_c/transfer_20260925/final_calc.py merge)",
     "combined_estimate": {
@@ -386,8 +385,8 @@
         "name": "BIGSHOT0928_v6",
         "kst": "2026-09-28",
         "slot": "main",
-        "score": null,
-        "outcome": "submitted 14:56:58 KST (receipt official_submission_BIGSHOT0928_v6.json); computed measured part 0.7426"
+        "score": 0.7535786066,
+        "outcome": "main; +0.0109 over the measured base 0.7426364 (union + the four stage ORs); red-team rounds 1-3 and the v9/v20 extensions together; per-group split measured by the 9/29 spare probes"
       },
       {
         "row": "130",
@@ -398,7 +397,7 @@
       },
       {
         "row": "131",
-        "name": "SPR0929_P1_v9",
+        "name": "SPR0929_P1W_v9",
         "kst": "2026-09-29",
         "slot": "spare2",
         "score": null
@@ -419,7 +418,7 @@
       },
       {
         "row": "134",
-        "name": "SPR0929_P4_v19v12",
+        "name": "SPR0929_P4W_v19v12",
         "kst": "2026-09-29",
         "slot": "spare5",
         "score": null
@@ -433,37 +432,101 @@
       },
       {
         "row": "136",
-        "name": "SPR0929_P6_v1v4",
+        "name": "SPR0929_P5W_comp",
         "kst": "2026-09-29",
         "slot": "spare7",
         "score": null
       },
       {
         "row": "137",
-        "name": "SPR0929_P7_region_rec",
+        "name": "SPR0929_V12M",
         "kst": "2026-09-29",
         "slot": "spare8",
         "score": null
       },
       {
         "row": "138",
-        "name": "SPR0929_P8_size",
+        "name": "SPR0929_P8W_size",
         "kst": "2026-09-29",
         "slot": "spare9",
         "score": null
       },
       {
         "row": "139",
-        "name": "SPR0929_P10_v20bet",
+        "name": "SPR0929_P6P7W",
         "kst": "2026-09-29",
         "slot": "spare10",
         "score": null
+      },
+      {
+        "row": "140",
+        "name": "SPR0928X_v20bet_z912",
+        "kst": "2026-09-28",
+        "slot": "manual",
+        "score": 0.69612,
+        "outcome": "manual 9/28 (score read to 5 digits); P2 + v20 bet = 0.69612 - 0.6994061 (D20) = -0.00329: the bet (57 goods notices) is off; P2 alone comes from the 9/29 P2 probe"
+      },
+      {
+        "row": "141",
+        "name": "SPR0928Y_v24_region1s",
+        "kst": "2026-09-28",
+        "slot": "manual",
+        "score": 0.6963495731,
+        "outcome": "manual 9/28; V24_REGION_ONESIDED = +0.00116 vs D24 0.6951891267: on (the organizer ruling holds on the test; dev said 1/14)"
+      },
+      {
+        "row": "142",
+        "name": "SPR0928Y_v24_licence1s",
+        "kst": "2026-09-28",
+        "slot": "manual",
+        "score": 0.69526,
+        "outcome": "manual 9/28 (score read to 5 digits); V24_LICENCE_ONESIDED = +0.00007 vs D24: on (break-even)"
+      },
+      {
+        "row": "143",
+        "name": "SPR0928Z_v19cap",
+        "kst": "2026-09-28",
+        "slot": "manual",
+        "score": null,
+        "outcome": "pending (manual slot, user); V19_CAP_PRE effect = score - 0.6948463554 (union, v9 v12 zeroed)"
+      },
+      {
+        "row": "144",
+        "name": "SPR0928Z_v24cov",
+        "kst": "2026-09-28",
+        "slot": "manual",
+        "score": 0.6953899449,
+        "outcome": "manual 9/28 (resubmitted after a server error); round-6 X1 v24 coverage = +0.00020 vs D24 0.6951891267: kept"
+      },
+      {
+        "row": "145",
+        "name": "SPR0929_X9X3_d9",
+        "kst": "2026-09-29",
+        "slot": "spare11",
+        "score": null,
+        "outcome": "pending; 9/28 D9 design (union + v9 stage, v12 zeroed) + V9_X3; effect = score - 0.7100332713 (D9). Replay: dev v9 -5 (all label 0), t2500 -64, para -15 host (planted 43/43 kept)"
+      },
+      {
+        "row": "146",
+        "name": "SPR0929_Y24H1_region1s",
+        "kst": "2026-09-29",
+        "slot": "spare12",
+        "score": null,
+        "outcome": "pending; 9/28 region1s design + V24_BUDGET_VS_P='nego' (협상 + 기초금액 + registered 추정가격 nowhere; organizer 417272: DEV-062 is a budget-axis case); effect = score - 0.6963495731; leaderboard-only slot, visible only above 0.6952647837"
+      },
+      {
+        "row": "147",
+        "name": "SPR0929_Y24H1B_region1s",
+        "kst": "2026-09-29",
+        "slot": "spare13",
+        "score": null,
+        "outcome": "pending; same design + V24_BUDGET_VS_P='base' (any award method); effect = score - 0.6963495731; leaderboard-only slot, visible only above 0.6953899449"
       }
     ]
   },
   "task": {
-    "status": "bigshot_v6_submitted_score_pending",
-    "next_action": "Main 9/28: BIGSHOT0928_v6 (artifacts/rebuild_c/BIGSHOT0928_v6_clean/submit.zip, sha256 20481534..., source 72e9577) submitted 14:56:58 KST: the union, the stage ORs that won (v9 v11 v20 v24), red-team rounds 1-3 (95 overrides, runs/rebuild_c/bigshot0928/spec_v6.json). 9/29 00:00:01: Windows task dacon_0929 (starts 23:58) submits ten spare probes (runs/rebuild_c/probes0929/zero_manifest.json): the union with v3 v5 v6 v21 v22 v23 zeroed (spare1) and that base plus one item group (spares 2-10); probe minus base = the group's effect; all score about 0.51 (user: spares far below the top 100). The final main (before 10:00 9/29, user approval) keeps the v6 groups that measure positive and drops the negative ones.",
+    "status": "probes_0929_13_scheduled_final_v8k_pending",
+    "next_action": "9/29 00:00:01: 13 spare probes (spare1-10 dacon_0929; spare11-13 dacon_0929b or by hand), ledger rows 130-139 and 145-147; spare11 9/28 carries SPR0928Z_v19cap (row 143). Final candidate spec runs/rebuild_c/bigshot0928/spec_v8k.json (v8i + V7_ONE_CLAUSE + V24_NONE_SCOPED, EVIDENCE_WRAP off). Morning runbook: docs/LOCAL_HANDOFF.md \"9/29 아침 순서\". Main before 10:00 KST with user approval.",
     "main_slot_rule": "From 9/28 the main slot carries the strongest supported package; spare probes keep minimal bases below 0.75 (user).",
     "held": "CODE_AUDIT_BASE=False keeps the 9/26 audit estimate/article/date-role repairs dormant until measured separately; THINKING_FAMILIES=() keeps thinking off by default.",
     "lesson_0927": "preregistered estimates were about 4x too high in total (+0.012 measured vs about +0.05); practitioner-standard removals paid in v19/v20/v22 and v1 but lost in v9, v14-v18 and competition scope; the organizer mostly labels literally",
