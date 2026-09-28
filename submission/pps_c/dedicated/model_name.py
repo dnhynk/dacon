@@ -435,6 +435,10 @@ def service_product(ln, expr):
     return bool(SERVICE_DEMAND.search(s) or SERVICE_FLOOR.match(after))
 
 
+# V9_EXISTING_COMPAT: a goods purchase line that demands compatibility or linkage with the named installed equipment.
+COMPAT_DEMAND = re.compile(r'호\s*환|연\s*동|연\s*계')
+
+
 def _switches():
     from .. import switches
     return switches
@@ -449,6 +453,9 @@ def verdict(b):
         if role == 'supplied_item' and b.meta.work == '용역' and not _switches().V9_STAGE_SERVICE_ITEMS:
             if not (_switches().V9_SERVICE_PRODUCT and service_product(ln, _expr)):
                 continue    # in service notices these were flight numbers, the app to build, line-ups (9/27 reading: 9 of 10 not v9)
+        if (_switches().V9_EXISTING_COMPAT and role == 'existing_equipment' and b.meta.work == '물품' and kind in FIRE_KINDS
+                and COMPAT_DEMAND.search(clean(ln.text))):
+            return ln
         if fires(kind, role):
             return ln
     return None

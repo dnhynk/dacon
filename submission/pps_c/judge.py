@@ -3931,18 +3931,32 @@ def x6_pledge_stage(b, ln):
     return 'OTHER'
 
 
+# V19_CAP_PRE: the contracted or delivering firm ("계약(납품)업체는 …") is the post-award party, and "제출 가능 여부" is a
+# checklist item; neither is a bid qualification.
+CAP_NOT_BID = re.compile(r'계\s*약\s*(\(\s*납\s*품\s*\)\s*)?업\s*체|납\s*품\s*업\s*체|가\s*능\s*여\s*부')
+
+
+def cap_qualification(b, ln):
+    """V19_CAP_PRE: a capability clause for the third-party pledge that no contract, award or 적격심사 cue times."""
+    if x6_pledge_stage(b, ln) != 'PRE_CAP':
+        return False
+    t = clause_text(b.notice, ln)
+    return not X6_POST.search(t) and not X6_QUAL_STAGE.search(t) and not CAP_NOT_BID.search(t)
+
+
 def x6_pledge_violation(b, ln):
     """False for a demand at the 적격심사 stage, after the award, under the lawful regime, an untimed capability clause, or
     a document that is no pledge or agreement (maker or dealer certificates); bid-timed, list and unstated demands stand."""
     t = clause_text(b.notice, ln)
-    if x6_pledge_stage(b, ln) in ('QUAL_STAGE', 'POST', 'LAWFUL', 'PRE_CAP'):
+    cap_pre = switches.V19_CAP_PRE and cap_qualification(b, ln)
+    if x6_pledge_stage(b, ln) in ('QUAL_STAGE', 'POST', 'LAWFUL', 'PRE_CAP') and not cap_pre:
         return False
     # A wrapped clause carries its 적격심사·계약 시 cue on another physical line than the stage text reads (audit REX6 W2).
     if (X6_QUAL_STAGE.search(t) or X6_POST.search(t)) and not X6_PRE_TIME.search(t) \
             and not (switches.C2_PLEDGE_VOCAB and X6_PRE_TIME_C2.search(t)) \
             and not (X6_PRE_HOLD.search(t) and X6_SUBJECT_BIDDER.search(t)):
         return False
-    if X6_CAPABILITY.search(t) and not X6_PRE_TIME.search(t):
+    if X6_CAPABILITY.search(t) and not X6_PRE_TIME.search(t) and not cap_pre:
         return False
     return bool(X6_PLEDGE.search(t) or switches.C2_PLEDGE_VOCAB and X6_PLEDGE_C2.search(t))
 
@@ -3972,7 +3986,8 @@ V19_LATE_STAGE = re.compile(r'적\s*격\s*심\s*사|이\s*행\s*능\s*력|심\s*
 
 def list_deadline_pre(b, ln):
     t = ln.text.strip()
-    if ln.doc_type != '공고문' or ln.sec == 'EVAL' or not (V19_ITEM_MARK.match(t) or X6_LIST_ENTRY.search(t)):
+    if (ln.doc_type != '공고문' and not switches.V19_LIST_ATTACH) or ln.sec == 'EVAL' or not (V19_ITEM_MARK.match(t)
+                                                                              or X6_LIST_ENTRY.search(t)):
         return False
     doc = [x for x in b.notice.lines if x.doc == ln.doc]
     k = next(n for n, x in enumerate(doc) if x.i == ln.i)
@@ -4018,6 +4033,8 @@ def v19(b):
         if not timed and switches.V19_CPU_TIMED and x6_pledge_stage(b, ln) in ('PRE', 'PRE_LIST'):
             timed = True
         if not timed and switches.V19_LIST_DEADLINE and list_deadline_pre(b, ln):
+            timed = True
+        if not timed and switches.V19_CAP_PRE and cap_qualification(b, ln):
             timed = True
         if not timed and switches.V19_BID_BAR and bid_bar_timed(b, ln):
             timed = True

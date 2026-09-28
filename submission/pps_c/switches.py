@@ -551,11 +551,21 @@ V24_METHOD_LIST = False
 # 견적서·제안서 제출) and none of them sets it at the 적격심사, award, contract or delivery stage (talkboard 9/28: an undated
 # 확약서 entry is timed by its submission-document section and that section's deadline). False = current behaviour.
 V19_LIST_DEADLINE = False
+# v19 (talkboard 9/28: the submission-document sections of the 공고문 and its attachments set an undated 확약서 entry):
+# V19_LIST_DEADLINE also reads the lists of attached documents (규격서, 제안요청서, 과업지시서). False = current behaviour.
+V19_LIST_ATTACH = False
+# v9 (talkboard 9/1: v9 holds when the specification names a specific model or maker): in a goods purchase, a line that
+# demands compatibility or linkage with a named installed model designates that model. False = current behaviour.
+V9_EXISTING_COMPAT = False
 # v19: a qualification that the bidder hold or have been issued the third-party pledge ("…확약서를 보유한 업체", "…발급받은
 # 업체에 한하여 입찰에 참가") or obtain it in advance ("사전에 발급받아", "입찰참가신청서와 함께 제출") sets the pledge before the
 # bid in the X6 stage check instead of reading as a capability (talkboard 9/28: v19 is a pledge submitted at the bid or issued
 # or held before it); "제출할 수 있는", "제출 가능한" stay capabilities. False = current behaviour.
 V19_HOLD_QUAL = False
+# v19 (user reading of the talkboard 9/28 ruling): a participation qualification that the bidder be able to submit the
+# third-party pledge ("제조사로부터 물품공급확약서를 확보하여 제출할 수 있는 업체", "정품공급확약서 제출이 가능한 업체")
+# demands that it be secured before the bid, unless the clause sets it at the contract, award or 적격심사 stage.
+V19_CAP_PRE = False
 # v12: a 공고문 line outside the evaluation and document-list sections (or an attachment's qualification line) that names the
 # 직접생산확인 certificate and states in its own words that only its holders may bid ("…를 보유한 업체", "…받은 업체만 입찰에
 # 참가할 수 있습니다", "…제출하지 않는 업체는 입찰에 참가할 수 없습니다") is a possession requirement whatever section or role
