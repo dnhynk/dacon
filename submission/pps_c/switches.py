@@ -415,6 +415,11 @@ V24_BASIC_REGION = False
 # Red team A2 (switch V24_POW10): v24 fires when, in a field group none of whose labelled values agrees with 나라장터, a value
 # equals the registered amount x 10^k (k = ±1..±3; a dropped or added zero). False = current behaviour.
 V24_POW10 = False
+# v24, organizer ruling (talkboard 418042, 9/28): a participation restriction stated on one side only is compared like any
+# other. V24_REGION_ONESIDED: 나라장터 지역제한여부 'N' while the notice restricts the bidder's location as a qualification.
+# V24_LICENCE_ONESIDED: 업종제한여부 'N' while a qualification line requires a 나라장터 업종 by code. False = current behaviour.
+V24_REGION_ONESIDED = False
+V24_LICENCE_ONESIDED = False
 # Red team A2 (switch V20_STATEMENT_STRICT): v20's statement reader takes a 제48조 citation only of the 소프트웨어 진흥법 (not
 # 지방계약법 시행령 제48조) and not a bare list entry naming the 중소 SW사업자 지침 among applicable rules. False = current behaviour.
 V20_STATEMENT_STRICT = False

@@ -5442,6 +5442,34 @@ def v24_attach_amount(b):
     return None
 
 
+# Organizer ruling (talkboard 418042, 9/28): a region or licence restriction that is a participation qualification in the
+# notice while 나라장터 registers none is a mismatch; the restriction does not drop out for being on one side only.
+def v24_region_onesided(b):
+    if b.meta.region_flag != 'N':
+        return None
+    lines, sido, basic = region_restriction(b)
+    if switches.AUDIT_FIXES and lines:
+        lines = [ln for ln in lines if region_clause(b, ln) is not None] if switches.AUDIT_FIXES3 else [
+            ln for ln in lines if not JV_PARTNER.search(clause_text(b.notice, ln))]
+    if lines and (sido or basic or any(orderer_level(ln.text) for ln in lines)):
+        return lines[0]
+    return None
+
+
+def v24_licence_onesided(b):
+    if b.meta.license_flag != 'N':
+        return None
+    for ln in b.notice.lines:
+        if ln.sec != 'QUAL' or '업종' not in ln.text:
+            continue
+        t = clause_text(b.notice, ln)
+        if LICENSE_GUIDE.search(t) or LICENSE_ALT.search(t) or alternative_item(b.notice, ln):
+            continue
+        if any(x for g in LICENSE_CODE.findall(t) for x in g):
+            return ln
+    return None
+
+
 def v24_axes(b):
     for axis in V24_AXES:
         if switches.V24_NO_METHOD and axis is v24_method:
@@ -5457,6 +5485,7 @@ def v24_axes(b):
             return ln
     for on, extra in ((switches.V24_LICENCE_PARTIAL, v24_licence_partial), (switches.V24_BASIC_REGION, v24_basic_region), (switches.V24_BASIC_SCOPE, v24_basic_scope),
                       (switches.V24_POW10, v24_pow10),
+                      (switches.V24_REGION_ONESIDED, v24_region_onesided), (switches.V24_LICENCE_ONESIDED, v24_licence_onesided),
                       (switches.V24_BARE_TAG, v24_bare_tag)):
         ln = extra(b) if on else None
         if ln is not None:
