@@ -517,6 +517,12 @@ V20_STAGE_CONTENT_HW = False
 V9_STAGE_COMPUTER_PARTS = False
 # v9 stage: in a service notice a maker or model named for the item the contractor supplies fires too. False = current.
 V9_STAGE_SERVICE_ITEMS = False
+# v9 stage, service notices (with V9_STAGE_SERVICE_ITEMS off): a maker or model the model read as an item the contractor
+# supplies still fires when the line demands that product: the name carries a Latin letter or a digit (a product or model,
+# not a person, place or event) and the line installs, mounts, uses, rents, supplies, introduces or maintains it ("… 탑재",
+# "… 방식 사용", "… 유지보수"), or the name is followed by a class floor or an equivalent ("GRAND MA2이상급", "… 동등"). Examples,
+# travel itineraries and flight codes stay out. False = current behaviour.
+V9_SERVICE_PRODUCT = False
 
 # v20 stage: strong SW-project vocabulary hits in the head text that make a candidate without an SW사업자 qualification.
 V20_STAGE_CONTENT_HITS = 2
@@ -810,3 +816,14 @@ OBJ_DP_LICENSE = ()
 # 직접생산 certificate or 세부품명 line) is an SW candidate as when it gives the 8111 code, also when its title is withheld
 # and no SW사업자 requirement remains. False = current behaviour.
 V20_STAGE_IT_NAME = False
+# v12: a service notice whose object the strict classification (catalog.classify under SCOPE_FIXES: the title words 페어 and
+# 영상·인쇄 광고물, exhibition and conference wording, the orderer's 나라장터 registration of a designated competition product)
+# identifies as a listed competition service is no general-product purchase; v12 does not judge it. False = current behaviour.
+V12_STRICT_OBJECT = False
+# v10: a clause that only states that the certificates are checked in the 종합정보망 ("‘…확인서’ 및 ‘직접생산확인증명서’가 …
+# 확인되지 않거나 … 입찰참가자격이 없습니다", also wrapped over two lines) verifies a certificate and is no possession requirement
+# (as C2_DP_PRESENT_LITERAL treats the "확인이 안 될 경우" form). False = current behaviour.
+V10_VERIFY_NOTE = False
+# v14-v18: an article title in parentheses ("제2조의2(중소기업자의 우선조달계약)") names no size class; it is removed
+# before the clause's class is read. False = current behaviour.
+W4_SIZE_ARTICLE_TITLE = False

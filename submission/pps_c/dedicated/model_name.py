@@ -415,6 +415,26 @@ def cpu_fallback(notice):
     return best[1] if best else None
 
 
+# V9_SERVICE_PRODUCT (집행기준 제5조④5 on a 과업지시서): a service notice's supplied-item designation is a product the task
+# demands when its name has a Latin letter or a digit and the line installs, mounts, uses, rents, supplies, introduces or
+# maintains it, or a class floor (이상급) or an equivalent follows the name. Examples, itineraries and flight codes are none.
+SERVICE_DEMAND = re.compile(r'탑\s*재|설\s*치|사\s*용|임\s*차|렌\s*탈|대\s*여|납\s*품|공\s*급|도\s*입|유\s*지\s*보\s*수|유\s*지\s*관\s*리')
+SERVICE_FLOOR = re.compile(r'^\W{0,3}(이\s*상\s*급|동\s*등|동\s*급|또\s*는\s*동|상\s*당)')
+SERVICE_EXAMPLE = re.compile(r'^\W{0,3}(예\s*시|예\s*[):：]|참\s*고\s*[):：])')
+SERVICE_TRAVEL = re.compile(r'항\s*공|공\s*항|탑\s*승|출\s*발|도\s*착|→|숙\s*박|호\s*텔|편\s*명')
+SERVICE_FLIGHT = re.compile(r'^[A-Z]{2}\d{3,4}$')
+SERVICE_PRODUCT_CHAR = re.compile(r'[A-Za-z0-9]')
+
+
+def service_product(ln, expr):
+    s, e = clean(ln.text), clean(expr)
+    if not SERVICE_PRODUCT_CHAR.search(e) or SERVICE_FLIGHT.match(e) or SERVICE_EXAMPLE.match(s) or SERVICE_TRAVEL.search(s):
+        return False
+    k = s.find(e)
+    after = s[k + len(e):k + len(e) + 12] if k >= 0 else ''
+    return bool(SERVICE_DEMAND.search(s) or SERVICE_FLOOR.match(after))
+
+
 def _switches():
     from .. import switches
     return switches
@@ -427,7 +447,8 @@ def verdict(b):
         return cpu_fallback(b.notice)
     for ln, _expr, kind, role in reading.get('designations', ()):
         if role == 'supplied_item' and b.meta.work == '용역' and not _switches().V9_STAGE_SERVICE_ITEMS:
-            continue    # in service notices these were flight numbers, the app to build, line-ups (9/27 reading: 9 of 10 not v9)
+            if not (_switches().V9_SERVICE_PRODUCT and service_product(ln, _expr)):
+                continue    # in service notices these were flight numbers, the app to build, line-ups (9/27 reading: 9 of 10 not v9)
         if fires(kind, role):
             return ln
     return None

@@ -368,6 +368,11 @@ def small_only_c2(text):
     return False
 
 
+# W4_SIZE_ARTICLE_TITLE (set by judge while it reads v14-v18): an article title in parentheses ("제2조의2(중소기업자의
+# 우선조달계약)") names no size class and is removed before size_words reads the clause.
+ARTICLE_TITLE_OFF = [False]
+
+
 def size_words(text):
     """The size class a clause restricts to once law, agency and article names are removed: 'sme' (중기업 included),
     'small' (소기업·소상공인 only) or None.
@@ -375,6 +380,8 @@ def size_words(text):
     Order: an explicit exclusion of 중기업; the certificates the bidder must hold, each read from the words just before
     "확인서" (only 소기업·소상공인 options means small; a 중기업·중소기업 option means the certificate decides
     nothing, since 중·소기업·소상공인 확인서 is issued to every SME); then the entity the clause names."""
+    if ARTICLE_TITLE_OFF[0]:
+        text = ARTICLE_TITLE.sub(' ', text or '')
     t = SIZE_NAMES.sub(' ', strip_law_titles(text or ''))
     if switches.RTD4_CERT_LIST:
         # a small-class word listed with the 중·소기업 certificate names that certificate's holders, not an entity

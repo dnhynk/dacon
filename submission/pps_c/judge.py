@@ -2545,6 +2545,14 @@ def dp_only_verifies(ln):
     return bool(DP_VERIFY.search(t) and not DP_POSSESS.search(t) and DP_CERT_SUBJECT.search(t))
 
 
+# V10_VERIFY_NOTE: the clause (with its wrapped continuation) names the certificate as the subject of a 종합정보망 check
+# ("…‘직접생산확인증명서’가 … 확인되지 않거나", "…확인(…)되지 않을 경우") and holds no possession wording.
+def dp_verify_note(b, ln):
+    if not switches.V10_VERIFY_NOTE:
+        return False
+    own = own_clause(b, ln)
+    return bool((V12_VERIFY2.search(own) or DP_VERIFY.search(own)) and DP_CERT_SUBJECT.search(own) and not DP_POSSESS.search(own))
+
 # V10_EVAL_NOT_REQ: evaluation points or preference for holding the certificate; a clause that also states who may bid
 # is not one.
 DP_EVAL = re.compile(r'가\s*점|배\s*점|평\s*가\s*(항\s*목|기\s*준|시|에\s*서)|신\s*인\s*도|기\s*술\s*능\s*력\s*평\s*가|우\s*대|[\(（]\s*\d+(\.\d+)?\s*점\s*[\)）]|\|\s*\d+(\.\d+)?\s*점')
@@ -2563,14 +2571,14 @@ def dp_present(b):
     certificate outside a sanction or document-list line (a deleted requirement leaves only such mentions)."""
     from .families import DOC_LIST
     if switches.C2_DP_PRESENT_LITERAL:
-        if any(not dp_only_verifies(ln) and not dp_eval_line(b, ln) for ln in dp_required(b)):
+        if any(not dp_only_verifies(ln) and not dp_eval_line(b, ln) and not dp_verify_note(b, ln) for ln in dp_required(b)):
             return True
     elif dp_required(b):
         return True
     for ln in b.cands.get('dp', []):
         if qual_section(ln, b.notice) and not METHOD_SUMMARY.search(ln.text) and not DP_SANCTION.search(ln.text) \
                 and not DOC_LIST.search(ln.text) and ln.sec != 'DOCS' \
-                and not (switches.C2_DP_PRESENT_LITERAL and dp_only_verifies(ln)) and not dp_eval_line(b, ln) and not (switches.V10_NOTE_NOT_REQ and not DP_POSSESS_STEM.search(own_clause(b, ln))):
+                and not (switches.C2_DP_PRESENT_LITERAL and dp_only_verifies(ln)) and not dp_eval_line(b, ln) and not dp_verify_note(b, ln) and not (switches.V10_NOTE_NOT_REQ and not DP_POSSESS_STEM.search(own_clause(b, ln))):
             return True
     return False
 
@@ -3183,6 +3191,8 @@ def v12(b):
     """v12 is judged by the procured object (talkboard): a certificate for a listed competition product that the model
     reads as the procured work itself shows the purchase is that product, whatever our title families say."""
     if b.scope.competitive is not False:
+        return None
+    if switches.V12_STRICT_OBJECT and b.meta.work == '용역' and strict_service_scope(b):
         return None
     cat = catalog.load()
     lines = []
@@ -5450,6 +5460,24 @@ def _t4w_rule(it):
 
 
 v14, v15, v17 = (_t4w_rule(it) for it in ('v14', 'v15', 'v17'))
+
+
+# W4_SIZE_ARTICLE_TITLE: v14-v18 read size classes with article titles in parentheses removed; in "제2조의2(중소기업자의
+# 우선조달계약)에 따른 소기업·소상공인" the title names the article, and the clause limits bidders to 소기업·소상공인.
+def _w4a_rule(base):
+    def rule(b):
+        if not switches.W4_SIZE_ARTICLE_TITLE:
+            return base(b)
+        from . import families
+        families.ARTICLE_TITLE_OFF[0] = True
+        try:
+            return base(b)
+        finally:
+            families.ARTICLE_TITLE_OFF[0] = False
+    return rule
+
+
+v14, v15, v16, v17, v18 = (_w4a_rule(f) for f in (v14, v15, v16, v17, v18))
 
 
 RULES = {'v1': v1, 'v2': v2, 'v3': v3, 'v4': v4, 'v5': v5, 'v6': v6, 'v7': v7, 'v8': v8, 'v9': v9, 'v10': v10,
