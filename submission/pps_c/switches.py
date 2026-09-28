@@ -955,3 +955,20 @@ W3_V7_ATTACH_REGION = False
 # 은행, 대기업 …), the clause admits no private or general party and states a requirement (w3_v4_model). Consulted only
 # when no other v4 source fires. False = current behaviour.
 W3_V4_MODEL_BUYER = False
+# v13: small-only participation clauses in wordings and layouts the V13_SMALL_ANYWHERE reader misses: other bullets
+# (▣ ▶ ◎ ➂ ⑴ ㉮ *, table rows, bracketed labels), label-and-value lines ("(입찰참가자격) … 소상공인", "입찰자격: 소기업/소상공인",
+# "기업규모: 소기업, 소상공인"), rule shapes ("…에 해당할 것", "…으로 한다", "…전용 입찰", "소기업·소상공인 제한(…)") and bars
+# on everybody else ("소기업·소상공인이 아닌 중소기업자는 … 불가", "…확인서가 없는 업체의 입찰은 무효", "중기업 확인서를 소지한
+# 업체는 입찰에 참가할 수 없습니다") (x2_v13_forms). Method statements and notes stay out. False = current behaviour.
+V13_FORMS2 = False
+# v10: a clause that names the 직접생산 certificate only to waive it ("…미소지 업체도 입찰에 참가할 수 있음", "…와 관계없이 … 참가
+# 가능", "…요건이 아님", "제출하지 않아도", "생략", "해당 없음", "적용하지 않"), to offer another route ("…또는 동등 이상의 …",
+# "…또는 제조사 공급확약서", "…를 소지하거나 …") or to ask it of some firms only ("(해당 업체에 한함)", "(해당 시)", "(필요 시)")
+# requires nothing of every bidder: no possession requirement (판로지원법 제9조 checks each bidder). False = current behaviour.
+V10_WAIVER = False
+# v11: a size clause that admits 중견기업 next to 중소기업 ("중소기업 또는 「중견기업 …특별법」에 따른 중견기업", "중소기업 및
+# 중견기업", "중소·중견기업으로서 …") or, naming nobody as who may bid, states no size limit ("기업규모 제한 없음", "중소기업
+# 여부와 관계없이", "확인서 제출 불요") or asks the certificate of some firms only ("(해당 시)", "(필요 시)") does not limit a
+# competition-product bid to SMEs (판로지원법 제7조①); with only such clauses (and v11 notes) the SME restriction is absent.
+# Clauses that bar 중견기업 stay restrictions. False = current behaviour.
+V11_WIDENED = False

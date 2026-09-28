@@ -2587,6 +2587,20 @@ def dp_verify_note(b, ln):
     own = own_clause(b, ln)
     return bool((V12_VERIFY2.search(own) or DP_VERIFY.search(own)) and DP_CERT_SUBJECT.search(own) and not DP_POSSESS.search(own))
 
+# V10_WAIVER: the clause waives the certificate, offers another route or asks it of some firms only; a waiver word next to
+# a possession requirement ("…소지한 업체 (서류 제출 생략)") waives only the paper, so it counts only without one.
+DP_WAIVER = re.compile(r'미\s*소\s*지\s*(업\s*체|자)?\s*도|관\s*계\s*없\s*이|무\s*관\s*하\s*게|요\s*건\s*이\s*아\s*[니닙님]|없\s*이\s*도|생\s*략|미\s*적\s*용'
+                       r'|(제\s*출|요\s*구)\s*(하\s*지\s*(않|아\s*니)|불\s*요)|해\s*당\s*(없\s*음|사\s*항\s*없)|적\s*용\s*(하\s*지\s*않|되\s*지\s*않|제\s*외)'
+                       r'|대\s*상\s*이\s*아\s*[니닙님]|해\s*당\s*(업\s*체|자)\s*에\s*한|[\(（]\s*(필\s*요|해\s*당)\s*시\s*[\)）]')
+DP_ROUTE = re.compile(r'또\s*는\s*(동\s*등|이\s*에\s*준\s*하\s*는)|소\s*지\s*하\s*거\s*나')
+
+
+def dp_waived(b, ln):
+    if not switches.V10_WAIVER:
+        return False
+    own = own_clause(b, ln)
+    return bool(DP_ROUTE.search(own) or V12_ALT.search(own) or DP_WAIVER.search(own) and not DP_POSSESS.search(own))
+
 # V10_EVAL_NOT_REQ: evaluation points or preference for holding the certificate; a clause that also states who may bid
 # is not one.
 DP_EVAL = re.compile(r'가\s*점|배\s*점|평\s*가\s*(항\s*목|기\s*준|시|에\s*서)|신\s*인\s*도|기\s*술\s*능\s*력\s*평\s*가|우\s*대|[\(（]\s*\d+(\.\d+)?\s*점\s*[\)）]|\|\s*\d+(\.\d+)?\s*점')
@@ -2605,14 +2619,14 @@ def dp_present(b):
     certificate outside a sanction or document-list line (a deleted requirement leaves only such mentions)."""
     from .families import DOC_LIST
     if switches.C2_DP_PRESENT_LITERAL:
-        if any(not dp_only_verifies(ln) and not dp_eval_line(b, ln) and not dp_verify_note(b, ln) for ln in dp_required(b)):
+        if any(not dp_only_verifies(ln) and not dp_eval_line(b, ln) and not dp_verify_note(b, ln) and not dp_waived(b, ln) for ln in dp_required(b)):
             return True
     elif dp_required(b):
         return True
     for ln in b.cands.get('dp', []):
         if qual_section(ln, b.notice) and not METHOD_SUMMARY.search(ln.text) and not DP_SANCTION.search(ln.text) \
                 and not DOC_LIST.search(ln.text) and ln.sec != 'DOCS' \
-                and not (switches.C2_DP_PRESENT_LITERAL and dp_only_verifies(ln)) and not dp_eval_line(b, ln) and not dp_verify_note(b, ln) and not (switches.V10_NOTE_NOT_REQ and not DP_POSSESS_STEM.search(own_clause(b, ln))):
+                and not (switches.C2_DP_PRESENT_LITERAL and dp_only_verifies(ln)) and not dp_eval_line(b, ln) and not dp_verify_note(b, ln) and not dp_waived(b, ln) and not (switches.V10_NOTE_NOT_REQ and not DP_POSSESS_STEM.search(own_clause(b, ln))):
             return True
     return False
 
@@ -2929,6 +2943,21 @@ def v11_note_line(b, ln):
     return bool(V11_METHOD.search(own) or V11_CERT_NOTE.search(own) or SIZE_ADMISSION.search(own))
 
 
+# V11_WIDENED: the clause admits 중견기업 next to 중소기업 and bars nobody of that class.
+V11_WIDE_ADMIT = re.compile(r'중\s*[·ㆍ・]?\s*소\s*기\s*업\s*자?\s*(또\s*는|및|,|·|ㆍ|과|와|이\s*나)\s*([「『][^」』]{0,40}[」』]\s*(에\s*따\s*른|상\s*의?)\s*)?중\s*견\s*기\s*업'
+                            r'|중\s*견\s*기\s*업\s*(또\s*는|및|,|·|ㆍ|과|와)\s*중\s*소\s*기\s*업|중\s*소\s*[·ㆍ・]\s*중\s*견\s*기\s*업')
+V11_WIDE_BAR = re.compile(r'중\s*견\s*기\s*업[^.。]{0,30}(수\s*없|불\s*가|제\s*외|제\s*한|금\s*지|아\s*닌)')
+# A clause that states no size restriction ("기업규모 제한 없음", "중소기업 여부와 관계없이", "…확인서 제출 불요") or asks the
+# certificate of some firms only ("(해당 시)", "(필요 시)", "(해당 업체에 한함)") restricts nobody, unless it names who may bid.
+V11_NO_LIMIT = re.compile(r'(규\s*모|중\s*소\s*기\s*업)\s*(에\s*)?(의\s*)?제\s*한\s*(이\s*)?없|관\s*계\s*없\s*이|무\s*관|제\s*출\s*(불\s*요|하\s*지\s*않\s*아\s*도)'
+                          r'|[\(（]\s*(필\s*요|해\s*당)\s*시\s*[\)）]|해\s*당\s*(업\s*체|자)\s*에\s*한')
+
+
+def v11_widened(b, ln):
+    own = own_clause(b, ln)
+    return bool(V11_WIDE_ADMIT.search(own) and not V11_WIDE_BAR.search(own) or V11_NO_LIMIT.search(own) and not V11_CLASS_WHO.search(own))
+
+
 def v11(b):
     """판로지원법 제7조 requires SME competition in the *bidding* for a competition product (item: "…경쟁제품 입찰 중소
     없음"); a 소액수의 quotation is not a bid, as the organizer's 소액수의 exception for v13 also reflects."""
@@ -2937,6 +2966,9 @@ def v11(b):
         return None
     state, lines, _ = size_state(b)
     if switches.V11_NOTE_NOT_RESTRICT and state is not None and lines and all(v11_note_line(b, ln) for ln in lines):
+        state = None
+    if switches.V11_WIDENED and state is not None and lines and any(v11_widened(b, ln) for ln in lines) \
+            and all(v11_widened(b, ln) or v11_note_line(b, ln) for ln in lines):
         state = None
     if state is None and 'v11' in switches.SMALL_TEXT_CLAUSE and small_only_text(b) is not None:
         state = 'small'
@@ -3646,6 +3678,11 @@ def v13_rule(b):
             return hit
     if switches.V13_SMALL_ANYWHERE and state != 'small':
         hit = small_only_any(b)
+        if hit is not None:
+            return hit
+    if switches.V13_FORMS2 and state != 'small':
+        from .x2_v13_forms import small_only_any2
+        hit = small_only_any2(b)
         if hit is not None:
             return hit
     if switches.V13_ANY_SECTION and state != 'sme':
