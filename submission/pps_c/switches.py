@@ -1053,3 +1053,6 @@ RTB_V24_LICENCE_OR = False
 V20_TASK_SW = False
 
 READ_SKIP_EMPTY_LABELS = False
+
+# RT-E2: all-document industry absence, independent of the legacy switch.
+V24_LICENCE_SILENT2 = False

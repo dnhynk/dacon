@@ -5820,6 +5820,11 @@ def v24_region_reverse(b):
     return None
 
 
+def v24_licence_silent2(b):
+    from .v24_licence_silent2 import detect
+    return detect(b)
+
+
 def v24_licence_reverse(b):
     if b.meta.license_flag != 'Y':
         return None
@@ -5887,6 +5892,7 @@ def v24_axes(b):
                       (switches.V24_REGION_ONESIDED, v24_region_onesided), (switches.V24_LICENCE_ONESIDED, v24_licence_onesided),
                       (switches.V24_REGION_NONE_STATED or switches.V24_REGION_SILENT, v24_region_reverse),
                       (switches.V24_LICENCE_NONE_STATED or switches.V24_LICENCE_SILENT, v24_licence_reverse),
+                      (switches.V24_LICENCE_SILENT2, v24_licence_silent2),
                       (switches.V24_BARE_TAG, v24_bare_tag)):
         ln = extra(b) if on else None
         if ln is not None:
