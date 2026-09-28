@@ -87,6 +87,10 @@ X4_SERVER_ARCH = False
 # designation, title labels, 디자인 plans/IP, 감리, 회의록, 저수조 licences, SW objects — and nothing else changes. False =
 # current behaviour.
 SCOPE_FIXES = False
+# v10·v11·v13 (items listed here) keep a service object only when catalog.classify under SCOPE_FIXES also finds
+# the listed service (디자인 plans and IP rights, 감리, 회의록, 저수조 licences, SW objects and management systems are not the
+# listed service); objects that classification adds are not taken. () = current behaviour.
+COMP_SCOPE_EXCLUDE = ()
 # Probe (audit RB): v11 takes a 공고문 eligibility clause ("…소상공인으로서 … 확인서를 소지한 업체") or a declared "소기업 또는
 # 소상공인 간 우선조달계약 대상" as the SME restriction when the model read none. False = current behaviour.
 V11_ELIGIBLE = False
@@ -107,6 +111,11 @@ V6_META_BASIC = False
 V7_META_MULTI = False
 # v7 also reads a qualification or 공고문 BID-section clause (wrapped lines joined) stating the bidder's location with 2+ 시·도.
 V7_CLAUSE = False
+# Red team R3 (switch V7_ADJACENT): below T, v7 also fires on a bidder-location clause that extends the region to adjacent
+# 시·도 without naming them ("경상남도 또는 인접 시·도", "관할 시·도 및 인접 시·도") or names a multi-시·도 region group
+# (수도권, 충청권, 호남권, 영남권, 동남권, 대경권); 지방계약법 시행규칙 제25조③ (인접 시·도는 예외 사유가 있을 때만).
+# False = current behaviour.
+V7_ADJACENT = False
 # Probes (expert audit X7), each False = current behaviour: V6_LABEL_BASIC — v6 reads a "지역제한: 여주, 양평" label of 시·군 names;
 # V6_ORDERER_ANY — v6 reads the bidder's 본점 "[수요기관(기초자치단체)]내" in any 공고문 section; V6_OFFICE_DUTY — v6 does not take
 # an office-setup duty from the start of the work as the bidder's location; V7_SITE_SPAN — v7 does not fire when the work's site
@@ -236,6 +245,11 @@ X2_HELD_RECORD_X = False
 X2_ATTACH_QUAL = False
 # v8 takes those records too, and a CPU-read bidder location when no region line was read and none is registered (λ_v8 unknown).
 X2_V8_ADDS = False
+# Red team R3 (switch X2_HELD_VERBS): the held-record readers that work without a perf reading (PERF_UNREAD, and x2_unread_records
+# for v2/v8 and V4_UNREAD) also take a firm that installed, built, developed, provided, acted for, sold, leased or
+# maintained the object, alone or chained ("납품하고 설치한 업체", "납품 및 설치를 완료한 업체"), or that has N years or
+# times of career or experience ("운영 경력 3년 이상인 업체"). False = current behaviour.
+X2_HELD_VERBS = False
 # v24 전용 판독 단계(pps_c/v24, runs/rebuild_c/v24_pipeline/DESIGN_V24.md): 모델이 공고문의 예산·추정가격·추정금액·기초금액·계약방법·지역제한·업종
 # 표기를 그대로 옮기고 CPU가 meta와 비교한다. 발화하면 기존 v24 경로보다 먼저 그 줄을 반환하고, 아니면 기존 경로로 간다(합집합).
 # False = current behaviour.
@@ -332,10 +346,24 @@ V24_BARE_TAG = False
 # Red team A2 (switch V4_BUYER_NOUN): a buyer kind directly qualifying the record noun ("공공기관(…) 통근버스 운행 실적") limits the
 # record to that buyer although no ordering verb or particle follows it. False = current behaviour.
 V4_BUYER_NOUN = False
+# Red team R3 (switch V4_BUYER_VERBS): after a buyer kind with the particle "에" ("학교에 … 공급한", "대학병원에 … 설치한"), v4 also reads
+# supplying, installing, providing, selling, leasing, operating, building or producing verbs as the record's buyer relation
+# (BUYER_VERB names ordering, delivery and performance only). False = current behaviour.
+V4_BUYER_VERBS = False
+# Red team R3 (switch V4_NAMED_BUYER): v4 also reads a record limited to one named buyer when no buyer kind decides the
+# clause: a public body named with its own name ("한국전력공사에 납품한", "서울특별시에서 발주한"), an anonymised institution token, the orderer
+# token directly qualifying the record ("[수요기관(공기업)] 3년 내 납품실적"), the orderer itself ("당 기관에 납품한") or a clause
+# that refuses private records ("민간 발주 실적은 인정하지 아니함"); 정부 입찰·계약 집행기준 제5조④3, 지방 집행기준 제1장 7.나.1)5).
+# False = current behaviour.
+V4_NAMED_BUYER = False
 # Red team A2 (switch V8_TOKEN_REGION): v8 also takes a 공고문 qualification clause that restricts the bidder's location to the
 # anonymised orderer/local-government token ("본점소재지가 [수요기관(기초자치단체)]내에 소재"), which the region family never
 # selects. False = current behaviour.
 V8_TOKEN_REGION = False
+# Red team R3 (switch V8_REGION_WORDS): the CPU bidder-location reader v8 uses when no region line was read and none is registered
+# (x2_cpu_region) also takes "<시·도> 소재 업체", "도내·관내·시내·군내 업체" and multi-시·도 region groups ("수도권 소재 업체"),
+# unless the clause is a preference, a partner or a subcontract. False = current behaviour.
+V8_REGION_WORDS = False
 # Red team A2 (switch V4_UNREAD): v4 also reads held-record clauses the perf family never selected (x2_unread_records, as v2
 # under X2_HELD_RECORD_X) and fires when such a clause limits the record to a named kind of buyer. False = current behaviour.
 V4_UNREAD = False
@@ -397,6 +425,10 @@ RTD_V2_COMPLETED_EXPERIENCE = False
 # Probe (red team B2): v13 keeps a small-only firing when the 조항호 registers the 판로지원법 제7조의2 small-business
 # restricted competition (talkboard v13: amount bands are no requirement, the only exception is 소액수의). False = current.
 V13_REG72_KEEP = False
+# A 공고문 participation clause that literally limits the bid to 소기업·소상공인 (statute and rule names removed; 중기업,
+# 중·소기업, 중소기업자 or 중견기업 not admitted) counts when the model read no size restriction in the qualification
+# section: for v13 as the small-only limit, for v11 as a present SME restriction. Items listed here; () = current behaviour.
+SMALL_TEXT_CLAUSE = ()
 # Probe (red team B2, with C2_DP_PRESENT_LITERAL): v10's presence test also skips validity notes (※ … 발급된 것으로 유효기간
 # 내에 있어야) and competition-conditioned lines, and X4 ignores them. False = current.
 V10_NOTE_NOT_REQ = False
@@ -448,3 +480,31 @@ V9_STAGE_SERVICE_ITEMS = False
 V20_STAGE_CONTENT_HITS = 2
 # v9 stage: the best excerpt-line score a notice needs before the model reads it for designations.
 V9_STAGE_GATE_SCORE = 5
+
+# v22 (organizer answer 9/28): a line naming the proposer's own presentation, or a 제안설명회 line whose consequence is an
+# evaluation-stage one (평가 제외, 0점, 협상적격자 제외, 등록 취소), is not the orderer's briefing as a participation condition
+# unless it names that briefing. False = current behaviour.
+V22_PROPOSER_EVENT = False
+
+# v24 licence axis by name: the 공고문 requires a licence while neither a registered 업종 code nor a registered licence
+# name stem occurs anywhere in it (judge.v24_licence_name). False = current behaviour.
+V24_LICENCE_NAME = False
+
+# v24 method axis: a bid-attribute list or a lone method cell ("총액입찰, 제한경쟁, 적격심사대상") stating one method other
+# than 나라장터 계약방법, with no field or title tag naming the registered one (judge.v24_method_list). False = current behaviour.
+V24_METHOD_LIST = False
+# v19: a third-party pledge entry of a 공고문 submission-document list is demanded at the bid when the list's heading, its
+# intro lines or the heading's parent item set the list at the bid, estimate or proposal submission (입찰참가신청·입찰등록·
+# 견적서·제안서 제출) and none of them sets it at the 적격심사, award, contract or delivery stage (talkboard 9/28: an undated
+# 확약서 entry is timed by its submission-document section and that section's deadline). False = current behaviour.
+V19_LIST_DEADLINE = False
+# v19: a qualification that the bidder hold or have been issued the third-party pledge ("…확약서를 보유한 업체", "…발급받은
+# 업체에 한하여 입찰에 참가") or obtain it in advance ("사전에 발급받아", "입찰참가신청서와 함께 제출") sets the pledge before the
+# bid in the X6 stage check instead of reading as a capability (talkboard 9/28: v19 is a pledge submitted at the bid or issued
+# or held before it); "제출할 수 있는", "제출 가능한" stay capabilities. False = current behaviour.
+V19_HOLD_QUAL = False
+# v12: a 공고문 line outside the evaluation and document-list sections (or an attachment's qualification line) that names the
+# 직접생산확인 certificate and states in its own words that only its holders may bid ("…를 보유한 업체", "…받은 업체만 입찰에
+# 참가할 수 있습니다", "…제출하지 않는 업체는 입찰에 참가할 수 없습니다") is a possession requirement whatever section or role
+# the model gave it; the other v12 conditions apply unchanged. False = current behaviour.
+V12_EXPLICIT_ANY = False
