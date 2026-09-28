@@ -375,6 +375,18 @@ def classify_service(notice, meta, cat):
             continue
         if not (by_title or by_license):
             continue
+        # RTD4_EVENT_LICENSE: the free-registration 행사대행업 names who may bid; a service whose title or project-name line
+        # names its work without any event word (this family's or its sub-families' title words, 개최, conference …) is no
+        # 행사기획및대행서비스 because of that license (a withheld name decides nothing).
+        if switches.RTD4_EVENT_LICENSE and fam == 'event' and not by_title:
+            names = re.findall(r'(?:공\s*고|사\s*업|용\s*역|과\s*업|건)\s*(?:[(（][^)）]{0,6}[)）])?\s*명\s*[:：]\s*([^\n|]{2,80})',
+                               '\n'.join(ln.text for ln in notice.lines[:120] if ln.doc_type == '공고문')) + [title]
+            names = [n for n in names if re.search(r'용\s*역|사\s*업|운\s*영|대\s*행|위\s*탁|구\s*매|제\s*작|개\s*최|조\s*성', n)]
+            event_words = '|'.join([tpat] + [t for f, c, t, lp, lim, bas in families if f in EVENT_SUBFAMILIES and t]
+                                   + [r'개\s*최|(?i:conference|forum|festival|expo|fair|summit|symposium|ceremony|show|pavilion)|콘\s*퍼\s*런\s*스|축\s*전'
+                                      r'|쇼\s*케\s*이\s*스|설\s*명\s*회|이\s*벤\s*트|전\s*시|부\s*스|경\s*기\s*운\s*영'])
+            if names and not any(re.search(event_words, n) for n in names):
+                continue
         # A license names who may bid, not what is bought: it assigns a family only when the title names no other work
         # (dev: 전산기기 임차 and 그린PC 보급 under an SW license are not SW services). SW services need the work named: in
         # the title, or in the overview when the title is withheld.

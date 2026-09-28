@@ -508,3 +508,18 @@ V19_HOLD_QUAL = False
 # 참가할 수 있습니다", "…제출하지 않는 업체는 입찰에 참가할 수 없습니다") is a possession requirement whatever section or role
 # the model gave it; the other v12 conditions apply unchanged. False = current behaviour.
 V12_EXPLICIT_ANY = False
+# v14-v18: a line that only names the kind of bid ("소기업·소상공인 간 제한경쟁 입찰입니다", "입찰방법: 제한경쟁(…, 중소기업)",
+# the 나라장터 tag) states no participation qualification: v16/v18 find the restriction absent when every size line is
+# one and no qualification line names a size class; v14/v15/v17 do not fire on such lines alone. False = current.
+RTD4_BID_DECL = False
+# v14-v18: a clause stating the size class of who may bid in the notice's own words ("… 소기업 또는 소상공인으로서 …
+# 확인서를 소지한 자", "입찰참가업체는 … 소기업 …") counts when the size reading returned no restriction: it removes a
+# v16/v18 absence and gives v14/v15/v17 the class (공고문 only for these). False = current.
+RTD4_SIZE_UNREAD = False
+# v11/v13-v18 size class: "소상공인 또는 중·소기업 확인서를 소지한 업체" admits every holder of the 중·소기업 certificate
+# (the whole SME class), not the small class the first word names. False = current.
+RTD4_CERT_LIST = False
+# Services: the 행사대행업 registration (기타자유업) names who may bid, not what is bought; a service that only this license
+# puts in the 행사기획·대행 competition family, with no event work in its title or project-name lines, is a general service
+# (v14-v18 apply, v10/v11/v13 do not). False = current.
+RTD4_EVENT_LICENSE = False

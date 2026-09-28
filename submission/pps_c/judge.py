@@ -2815,6 +2815,10 @@ def tag_only(lines):
 
 def x5_positive_off(b, lines):
     """v14/v15/v17: D (listed 경쟁제품 by 직생) and F (tag-only evidence)."""
+    if switches.RTD4_BID_DECL:
+        from .rtd4_bid_decl import positive_decl_only
+        if positive_decl_only(b, lines):
+            return True
     return (switches.X5_DP_LISTED_ANY and dp_listed_object(b)) or (switches.X5_TAG_NOT_POSITIVE and tag_only(lines))
 
 
@@ -2892,6 +2896,10 @@ def _rtd_v16_base(b):
     state, lines, exc = size_state(b, gate_normal=switches.RTD_SIZE_TYPOGRAPHY)
     if switches.X5_METHOD_STATEMENT and method_only(b, lines):
         state = None
+    if switches.RTD4_BID_DECL and state is not None:
+        from .rtd4_bid_decl import decl_only
+        if decl_only(b, lines):
+            state = None
     return (True if state is None and not exc and not designated_class_limit(b)
             and not (switches.AUDIT_FIXES and sme_certificate_required(b)) else None)
 
@@ -2953,6 +2961,10 @@ def _rtd_v18_base(b):
     state, lines, exc = size_state(b, gate_normal=switches.RTD_SIZE_TYPOGRAPHY)
     if switches.X5_METHOD_STATEMENT and method_only(b, lines):
         state = None
+    if switches.RTD4_BID_DECL and state is not None:
+        from .rtd4_bid_decl import decl_only
+        if decl_only(b, lines):
+            state = None
     return True if state is None and not exc and not designated_class_limit(b) else None
 
 
@@ -4463,6 +4475,21 @@ def v24_axes(b):
         if ln is not None:
             return ln
     return v24_base_zone(b) if switches.V24_BASE_ZONE else None
+
+
+# RTD4_SIZE_UNREAD: v14-v18 read a size-class participation clause stated in the notice's own words when the size
+# reading returned none (rtd4_size_unread).
+_RTD4_BASE = {'v14': v14, 'v15': v15, 'v16': v16, 'v17': v17, 'v18': v18}
+
+
+def _rtd4_rule(it):
+    def rule(b):
+        from .rtd4_size_unread import adjust
+        return adjust(b, it, _RTD4_BASE[it](b))
+    return rule
+
+
+v14, v15, v16, v17, v18 = (_rtd4_rule(it) for it in ('v14', 'v15', 'v16', 'v17', 'v18'))
 
 
 RULES = {'v1': v1, 'v2': v2, 'v3': v3, 'v4': v4, 'v5': v5, 'v6': v6, 'v7': v7, 'v8': v8, 'v9': v9, 'v10': v10,

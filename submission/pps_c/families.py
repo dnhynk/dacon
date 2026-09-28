@@ -376,6 +376,9 @@ def size_words(text):
     "확인서" (only 소기업·소상공인 options means small; a 중기업·중소기업 option means the certificate decides
     nothing, since 중·소기업·소상공인 확인서 is issued to every SME); then the entity the clause names."""
     t = SIZE_NAMES.sub(' ', strip_law_titles(text or ''))
+    if switches.RTD4_CERT_LIST:
+        # a small-class word listed with the 중·소기업 certificate names that certificate's holders, not an entity
+        t = re.sub(r'(소\s*기\s*업|소\s*상\s*공\s*인)\s*(또\s*는|및|,|·|ㆍ)\s*(?=중\s*[·ㆍ・‧․]?\s*소\s*기\s*업\s*(\(\s*소\s*상\s*공\s*인\s*\)\s*)?확\s*인\s*서)', ' ', t)
     if switches.AUDIT_FIXES:
         t = PREFERENCE_PAREN.sub(' ', RESEARCH_FIRM.sub(' ', t))
     if NO_MEDIUM.search(t) or switches.C2_SIZE_NO_MEDIUM and small_only_c2(t):
