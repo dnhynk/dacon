@@ -443,3 +443,8 @@ V20_STAGE_CONTENT_HW = False
 V9_STAGE_COMPUTER_PARTS = False
 # v9 stage: in a service notice a maker or model named for the item the contractor supplies fires too. False = current.
 V9_STAGE_SERVICE_ITEMS = False
+
+# v20 stage: strong SW-project vocabulary hits in the head text that make a candidate without an SW사업자 qualification.
+V20_STAGE_CONTENT_HITS = 2
+# v9 stage: the best excerpt-line score a notice needs before the model reads it for designations.
+V9_STAGE_GATE_SCORE = 5

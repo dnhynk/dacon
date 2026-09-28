@@ -272,7 +272,8 @@ def select(notice, cap=MAX_EXCERPTS, info=None):
 
 def gated(notice, info=None):
     info = analyse(notice) if info is None else info
-    return bool(info) and max(x['score'] for x in info.values()) >= GATE_SCORE
+    from .. import switches
+    return bool(info) and max(x['score'] for x in info.values()) >= switches.V9_STAGE_GATE_SCORE
 
 
 # ------------------------------------------------------------------------------------------------ prompt and schema

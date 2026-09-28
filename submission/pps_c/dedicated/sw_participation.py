@@ -140,7 +140,8 @@ def signals(notice):
     self_sw = (sw_qualification(notice, full) or bool(IT_SERVICE_CODE.search(full))
                or any(c[:4] in ('8111', '4323') for c in codes))
     hits = len(STRONG_SW.findall(head_text(notice)))
-    cand = 'self_sw' if self_sw else ('content_sw' if hits >= CONTENT_HITS else None)
+    from .. import switches
+    cand = 'self_sw' if self_sw else ('content_sw' if hits >= switches.V20_STAGE_CONTENT_HITS else None)
     return {'cand': cand, 'band': band_status(full_lines(notice)) if cand else None, 'content_hits': hits}
 
 
