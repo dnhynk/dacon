@@ -991,6 +991,9 @@ def v1(b):
         hit = v1_nationwide(b)
     if hit is None and switches.V1_FACILITY_SCALE:
         hit = x3_facility_scale(b)
+    if hit is None and getattr(switches, 'X3_V1_PLACED', False):
+        from . import x3_v148          # red team X3 (round 6), default off
+        hit = x3_v148.v1(b)
     return hit
 
 
@@ -1455,6 +1458,9 @@ def v4(b):
     if hit is None and switches.W3_V4_HELD_HISTORY:
         from . import w3_v4_held
         hit = w3_v4_held.hit(b)
+    if hit is None and getattr(switches, 'X3_V4_PLACED', False):
+        from . import x3_v148          # red team X3 (round 6), default off
+        hit = x3_v148.v4(b)
     return hit
 
 
@@ -1778,6 +1784,9 @@ def v8(b):
     if hit is None and switches.W3_REC_PAREN:
         from . import w3_rec_paren
         hit = w3_rec_paren.v8(b)
+    if hit is None and getattr(switches, 'X3_V8_PLACED', False):
+        from . import x3_v148          # red team X3 (round 6), default off
+        hit = x3_v148.v8(b)
     return hit
 
 
@@ -4319,6 +4328,9 @@ def v19(b):
                 and not ((switches.AUDIT_FIXES3 or switches.V19_PLEDGE_FIXES) and not pledge_sentence(b, ln)) \
                 and not (switches.V19_STAGE and not (x6_pledge_violation(b, ln) or qual)):
             return ln
+    if getattr(switches, 'X3_V19_TIME', False) or getattr(switches, 'X3_V19_ISSUER', False):
+        from . import x3_v19
+        return x3_v19.extra(b)
     return None
 
 
@@ -4463,10 +4475,17 @@ def v20(b):
         return None
     if switches.V20_BAND_MISMATCH and band_mismatch(b):
         return True
+    if getattr(switches, 'X3_V20_BAND_MORE', False):
+        from . import x3_v20
+        if x3_v20.band_misfit(b.notice, b.meta.B or (b.meta.P * 1.1 if b.meta.P else None)):
+            return True
     if switches.V20_STATEMENT_WRAP:
         from .dedicated import sw_participation as swp
         if swp.wrapped_statement(b.notice):
             return None
+    if getattr(switches, 'X3_V20_NEEDS_BASIS', False):
+        from . import x3_v20
+        return None if x3_v20.sw_statement(b) else True
     return None if sw_statement(b) else True
 
 

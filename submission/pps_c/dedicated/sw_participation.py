@@ -215,6 +215,12 @@ def signals(notice):
     self_sw = self_sw or (switches.V20_STAGE_IT_NAME and bool(IT_SERVICE_NAME.search(full)))
     cand = 'self_sw' if self_sw else ('content_sw' if hits >= switches.V20_STAGE_CONTENT_HITS else None)
     band = band_status(full_lines(notice)) if cand else None
+    if band == 'statement' and getattr(switches, 'X3_V20_NEEDS_BASIS', False):
+        from .. import x3_v20
+        band = x3_v20.band_status(full_lines(notice))
+    if band == 'statement' and getattr(switches, 'X3_V20_BAND_MORE', False):
+        from .. import x3_v20
+        band = 'absent' if x3_v20.band_misfit(notice, x3_v20.amount_of(notice)) else band
     if band not in (None, 'statement') and switches.V20_STATEMENT_WRAP and wrapped_statement(notice):
         band = 'statement'
     return {'cand': cand, 'band': band, 'content_hits': hits}

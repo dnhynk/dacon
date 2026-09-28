@@ -981,3 +981,42 @@ V10_WAIVER = False
 V11_WIDENED = False
 # Evidence text: a clause the layout wrapped onto the next line is quoted to its end (csvout.wrap). False = current behaviour.
 EVIDENCE_WRAP = False
+# X3_V19_TIME (v19): a third-party pledge line the other checks leave untimed counts as demanded at the bid when its
+# clause sets it at the bid in other words: "입찰에 앞서", 접수·참여·응찰 시, in the bid or proposal documents, a bar on
+# bidders without it, a 참가 요건 label, an "(입찰서류)" entry, or issuance/holding before the bid in these words with
+# the copy handed over at contract (x3_v19.py). False = current behaviour.
+X3_V19_TIME = False
+# X3_V19_ISSUER (v19): a pledge line naming a third-party issuer outside the judge lists (생산업체, 제작업체, 개발사,
+# 수입사·수입원, 파트너사, 공급권자, 저작권자, an anonymised company token) or the maker's 공급·기술지원 보증서 is judged
+# like one naming 제조사 (x3_v19.py). False = current behaviour.
+X3_V19_ISSUER = False
+# X3_V20_NEEDS_BASIS (v20): a 대기업 참여제한 statement counts only when its clause or the heading above it names its
+# basis (소프트웨어 진흥법, 제48조, the 중소 SW사업자 지침 or its 과기정통부 고시): 지침 제3조② "적용 근거 포함" (x3_v20.py).
+# False = current behaviour.
+X3_V20_NEEDS_BASIS = False
+# X3_V20_BAND_MORE (v20): band statements written "N억원 이하", in Korean numerals, in won or as "80억원 이상" name a
+# 지침 band too; when every band line misfits the 사업금액 (추정가격 + VAT) the notice states another project's restriction,
+# on the main path and in the v20 stage (x3_v20.py). False = current behaviour.
+X3_V20_BAND_MORE = False
+
+# Red team X3 (round 6, x3_v148.placed_inst / placed_network): a v1 limit to institution kinds written with the bidding
+# act or a target label as subject ("입찰참가는 … 산학협력단만 가능", "※ 입찰참가는 … 연구기관에 한합니다", "| 참가대상 | … |"),
+# with general or for-profit firms barred ("일반 영리업체 참가 불가"), or in an attachment for the performing institution
+# ("과업 수행기관은 … 산학협력단으로 한정", under "수행기관 자격"); and a nationwide network the bidder must set up ("각 시·도에
+# 지사를 두어야"). Consulted only when no other v1 source fires. False = current behaviour.
+X3_V1_PLACED = False
+
+# Red team X3 (round 6, x3_v148.placed_buyer): a record counted only for a buyer kind (집행기준 제5조④3) in a 공고문 note
+# or an attachment line with a bidder subject or participation label: school, kindergarten, university and hospital
+# buyers too ("납품 실적은 공공기관 및 학교 납품분에 한하여 인정"), private records refused in other words ("민간 실적은 …
+# 보지 않습니다"), or an attachment or 공고문 bidding line whose bidder or performing firm must hold a record for a named
+# public buyer kind. Consulted only when no other v4 source fires. False = current behaviour.
+X3_V4_PLACED = False
+
+# Red team X3 (round 6, x3_v148.placed_region / placed_record): v8 when one side (record or bidder location) is written
+# only in an attachment or a 공고문 bidding/notes line: a location under a procedure-prefixed participation label
+# ("제안참가자격 : 전라북도에 주된 사무소를 둔 업체"), a participation area ("입찰참가 가능 지역은 강원특별자치도"), a location
+# limit on the firm that performs the work ("과업 수행업체는 충청북도 내에 본사를 둔 업체로 한정"), or a held record of that
+# firm or under such a label ("과업 수행업체는 … 실적이 있어야"). Consulted only when no other v8 source fires. False =
+# current behaviour.
+X3_V8_PLACED = False
