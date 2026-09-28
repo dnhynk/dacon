@@ -35,6 +35,8 @@ V9_X3 = False
 # Probe (expert audit X3 direction b): v9 also fires on a vehicle purchase naming the car model or a goods line naming a
 # maker's brand product, without 동등 wording. False = current behaviour.
 V9_X3B = False
+# Continue the existing v9 brand/code fallbacks when x3b finds no evidence.
+V9_FALLBACK_CHAIN = False
 # Probe: goods whose every listed 세부품명 is software are an SW사업 by default without the SW사업자 licence condition
 # (SW진흥법 §2 counts 유통; audit L-C). False = current behaviour.
 SW_GOODS_ANY = False

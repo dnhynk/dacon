@@ -2257,7 +2257,9 @@ def v9(b):
         if extra is not None:
             return extra
     if not lines and switches.V9_X3B:
-        return x3b_line(b)
+        extra = x3b_line(b)
+        if extra is not None or not switches.V9_FALLBACK_CHAIN:
+            return extra
     if not lines and switches.V9_BRAND_REQ and switches.V9_CODE_LISTING:
         return v9_brand_line(b) or v9_code_listing(b)
     if not lines and switches.V9_BRAND_REQ:
