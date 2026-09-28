@@ -170,6 +170,38 @@ def band_status(text):
     return status
 
 
+# V20_STATEMENT_WRAP: the 대기업 participation sentence with the SW law or the 지침 as its basis, read over wrapped lines
+# (up to two more non-empty lines of the same document until a sentence end, not across a new list item).
+WRAP_BASIS = re.compile(SW + r'\s*(산\s*업\s*)?진\s*흥\s*법|중\s*소\s*' + SW + r'\s*사\s*업\s*자\s*의\s*사\s*업\s*참\s*여\s*지\s*원'
+                        r'|대\s*기\s*업\s*인\s*' + SW + r'\s*사\s*업\s*자\s*가\s*참\s*여\s*할\s*수\s*있\s*는\s*사\s*업\s*금\s*액')
+WRAP_BAR = re.compile(r'(대\s*기\s*업|중\s*견\s*기\s*업)[^.。]{0,60}?(참\s*여|참\s*가|입\s*찰)[^.。]{0,24}?(제\s*한|불\s*가|없|배\s*제)')
+WRAP_END = re.compile(r'(다|함|음|임|것|요)\s*[.。]?\s*$|[.。]\s*$')
+WRAP_ITEM = re.compile(r'^\s*([가-하]\s*[.)]|\(?\d{1,2}\s*[.)]|[①-⑳]|[○●◎◦•ㅇ❍□■▶►▷※*\-ｏ]|\|)')
+
+
+def wrapped_statement(notice):
+    lines = notice.lines
+    for k, ln in enumerate(lines):
+        joined = norm(ln.text)
+        if not joined:
+            continue
+        j, added = k, 0
+        while added < 2 and not WRAP_END.search(joined):
+            j += 1
+            while j < len(lines) and lines[j].doc == ln.doc and not norm(lines[j].text):
+                j += 1
+            if j >= len(lines) or lines[j].doc != ln.doc or WRAP_ITEM.match(lines[j].text):
+                break
+            joined += ' ' + norm(lines[j].text)
+            added += 1
+        if not (WRAP_BASIS.search(joined) and WRAP_BAR.search(joined)):
+            continue
+        if SOJA.search(joined) and not BAND_MARK.search(joined):
+            continue
+        return True
+    return False
+
+
 def signals(notice):
     """{'cand': 'self_sw' | 'content_sw' | None, 'band': status or None, 'content_hits': int}."""
     full = full_text(notice)
@@ -182,7 +214,10 @@ def signals(notice):
     # 소프트웨어유지및지원서비스") states its own IT-service object, as its 8111 code does.
     self_sw = self_sw or (switches.V20_STAGE_IT_NAME and bool(IT_SERVICE_NAME.search(full)))
     cand = 'self_sw' if self_sw else ('content_sw' if hits >= switches.V20_STAGE_CONTENT_HITS else None)
-    return {'cand': cand, 'band': band_status(full_lines(notice)) if cand else None, 'content_hits': hits}
+    band = band_status(full_lines(notice)) if cand else None
+    if band not in (None, 'statement') and switches.V20_STATEMENT_WRAP and wrapped_statement(notice):
+        band = 'statement'
+    return {'cand': cand, 'band': band, 'content_hits': hits}
 
 
 def cpu(b):

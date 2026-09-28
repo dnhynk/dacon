@@ -751,6 +751,13 @@ V20_BAND_MISMATCH = False
 # 사업 참여 지원)", "제48조에 따른 사업금액 산정 시 …") states neither whether the 제48조 restriction applies nor its basis: with
 # the 지침 name, such article titles and the amount-computation phrase removed the line must still state it. False = current.
 V20_CITATION_ONLY = False
+# v20: a sentence that names the SW law or the 중소 SW사업자 지침 (or the 고시 title "대기업인 소프트웨어사업자가 참여할 수 있는
+# 사업금액의 하한") and says large (or 중견) firms may not bid states that the 제48조 restriction applies and its basis (지침
+# 제3조②), also when it wraps over up to three lines ("「소프트웨어 진흥법」에 의한 「중소 소프트웨어사업자의 사업 참여 지원에 /
+# 관한 지침」…에 의거하여 대기업 및 중견기업은 입 / 찰에 참여할 수 없음") or gives the law without an article ("본 사업은 「소프트웨어
+# 진흥법」이 적용되는 사업으로 대기업 및 중견기업은 입찰에 참여할 수 없음"); such a notice is compliant for the v20 stage and the
+# shared rule. Cross-shareholding (상호출자) sentences without a band word stay out. False = current behaviour.
+V20_STATEMENT_WRAP = False
 # v20 stage: a line that only cites 소프트웨어 진흥법 제48조 or the 중소 SW사업자 지침 (a law list "적용법령: …", "제48조(중소
 # 소프트웨어사업자의 사업 참여 지원)") is a citation for the model to read, not a CPU statement, unless the line itself (names,
 # article titles and list labels removed) or its wrapped continuation has an application verb. False = current behaviour.
@@ -816,6 +823,12 @@ OBJ_DP_LICENSE = ()
 # 직접생산 certificate or 세부품명 line) is an SW candidate as when it gives the 8111 code, also when its title is withheld
 # and no SW사업자 requirement remains. False = current behaviour.
 V20_STAGE_IT_NAME = False
+# v20: a service notice whose title names a software deliverable (정보시스템, 홈페이지, 플랫폼, 대시보드, 앱, 솔루션, DB, a business
+# 프로그램 …) with development, operation or use work ("CRM 프로그램 2차 개발", "데이터 대시보드 운영·고도화", "스크랩 프로그램 이용")
+# is an SW project (소프트웨어 진흥법 제2조) although the SW-scope reading and the v20 stage did not make it one. Education and
+# event 프로그램, titles facts.not_sw_title refuses or headed by study, audit, teaching or event work, and objects the v20 stage
+# read as non-software stay out; v20 fires only when neither statement reader finds the 제48조 statement. False = current.
+V20_TITLE_SW = False
 # v12: a service notice whose object the strict classification (catalog.classify under SCOPE_FIXES: the title words 페어 and
 # 영상·인쇄 광고물, exhibition and conference wording, the orderer's 나라장터 registration of a designated competition product)
 # identifies as a listed competition service is no general-product purchase; v12 does not judge it. False = current behaviour.
@@ -827,3 +840,39 @@ V10_VERIFY_NOTE = False
 # v14-v18: an article title in parentheses ("제2조의2(중소기업자의 우선조달계약)") names no size class; it is removed
 # before the clause's class is read. False = current behaviour.
 W4_SIZE_ARTICLE_TITLE = False
+# v4: a 공고문 qualification record clause naming a public buyer kind next to the record ("… 공공기관 고압가스용기 납품 완료
+# 이력을 보유하여야 합니다"), read by the model as limited to specific orderers, when the requirement is worded "…이력/실적/경험
+# … 보유하여야/있어야" beyond the shared predicate's reach; the other gates of the model-reading path hold (w3_v4_held).
+# Consulted only when no other v4 source fires. False = current behaviour.
+W3_V4_HELD_HISTORY = False
+# v4: a record requirement whose buyers are care or welfare facility kinds outside the buyer vocabulary ("사회복지관련 기관이나,
+# 노인관련시설, 또는 장기요양기관에서 … 운영 실적이 있는 업체") is limited to specific institutions (w3_v4_care). Consulted only
+# when no other v4 source fires. False = current behaviour.
+W3_V4_CARE_KINDS = False
+# v2, v4, v8: a 공고문 qualification line stating a held record is a record requirement although a parenthetical says how to
+# prove it ("…수행경험을 보유한 기관 (관련 실적증명서류 제출, …)"): the PERF_UNREAD exclusion words are read outside parentheses,
+# the other PERF_UNREAD gates hold (w3_rec_paren). Consulted only when no other source fires. False = current behaviour.
+W3_REC_PAREN = False
+# v4: a statement limiting the counted records to schools or a public-buyer kind ("실적증명서 1부 [중·고등학교 실적만 해당]")
+# when the 공고문 qualification section itself requires a record; statements without such a requirement or inside 적격심사·평가
+# text stay out (w3_v4_only). Consulted only when no other v4 source fires. False = current behaviour.
+W3_V4_ONLY_REQ = False
+# v2, v4, v8: a 공고문 line outside the qualification section that the perf family read as a participation condition is a
+# record requirement in an evaluation, document or notes block too when its own wording makes it one: a consequence for bidders
+# without the record ("…투찰 할 경우 사전 부적격", "참가할 수 없음"), or a bidder predicate ("…실적이 있는 업체") with no scoring
+# or 적격심사 wording in it or in the six lines above; forms, document notes and staffing stay out (w3_rec_context). Consulted
+# only when no other source fires. False = current behaviour.
+W3_REC_CONTEXT = False
+# v19: a 확약서 entry of a 공고문 document list whose other entries name the 적격심사 submission ("적격심사 신청서 및 관련
+# 증빙자료 제출") is due after the bid opening; a CPU list timing is withdrawn there unless the list heading names the bid or
+# estimate submission; a model reading placing the demand before the bid stands (w3_v19_review). False = current behaviour.
+W3_V19_REVIEW_LIST = False
+# v7 (with REGION_CLAUSE_FORMS2): below T, a bidder-location clause in an attachment's qualification section naming two or more
+# 시·도 ("경기도 또는 서울 내 사업장이 위치해 있으며 …", 과업지시서) extends the restriction as the 공고문 clauses do; JV partner,
+# title and "지역제한 없음" clauses excluded (w3_v7_attach). False = current behaviour.
+W3_V7_ATTACH_REGION = False
+# v4: a qualification-section record clause (공고문 or attachment) the perf family read as limited to specific orderers keeps
+# that reading when the CPU buyer reader finds no buyer relation at all (a buyer outside its vocabulary: 프로축구단, 제1금융권
+# 은행, 대기업 …), the clause admits no private or general party and states a requirement (w3_v4_model). Consulted only
+# when no other v4 source fires. False = current behaviour.
+W3_V4_MODEL_BUYER = False

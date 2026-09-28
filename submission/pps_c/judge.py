@@ -1069,6 +1069,12 @@ def v2(b):
     if hit is None:
         from . import u1_records
         hit = u1_records.v2_more(b)        # red team U1 sources (switches U1_*, default off)
+    if hit is None and switches.W3_REC_CONTEXT:
+        from . import w3_rec_context
+        hit = w3_rec_context.v2(b)
+    if hit is None and switches.W3_REC_PAREN:
+        from . import w3_rec_paren
+        hit = w3_rec_paren.v2(b)
     return hit
 
 
@@ -1431,6 +1437,24 @@ def v4(b):
     if hit is None:
         from . import u1_records
         hit = u1_records.v4_more(b)        # red team U1 sources (switches U1_*, default off)
+    if hit is None and switches.W3_V4_MODEL_BUYER:
+        from . import w3_v4_model
+        hit = w3_v4_model.hit(b)
+    if hit is None and switches.W3_REC_CONTEXT:
+        from . import w3_rec_context
+        hit = w3_rec_context.v4(b)
+    if hit is None and switches.W3_V4_ONLY_REQ:
+        from . import w3_v4_only
+        hit = w3_v4_only.hit(b)
+    if hit is None and switches.W3_REC_PAREN:
+        from . import w3_rec_paren
+        hit = w3_rec_paren.v4(b)
+    if hit is None and switches.W3_V4_CARE_KINDS:
+        from . import w3_v4_care
+        hit = w3_v4_care.hit(b)
+    if hit is None and switches.W3_V4_HELD_HISTORY:
+        from . import w3_v4_held
+        hit = w3_v4_held.hit(b)
     return hit
 
 
@@ -1736,7 +1760,11 @@ def v7(b):
     if got is not None or not switches.REGION_CLAUSE_FORMS2:
         return got
     from .region_clause_forms2 import v7 as clause_forms2
-    return clause_forms2(b, got)
+    got = clause_forms2(b, got)
+    if got is None and switches.W3_V7_ATTACH_REGION:
+        from . import w3_v7_attach
+        got = w3_v7_attach.hit(b)
+    return got
 
 
 def v8(b):
@@ -1744,6 +1772,12 @@ def v8(b):
     if hit is None:
         from . import u1_records
         hit = u1_records.v8_more(b)        # red team U1 sources (switches U1_*, default off)
+    if hit is None and switches.W3_REC_CONTEXT:
+        from . import w3_rec_context
+        hit = w3_rec_context.v8(b)
+    if hit is None and switches.W3_REC_PAREN:
+        from . import w3_rec_paren
+        hit = w3_rec_paren.v8(b)
     return hit
 
 
@@ -3993,6 +4027,9 @@ def v19(b):
         if (not timed and switches.AUDIT_FIXES2 and switches.V19_LIST_STAGE and r.get('시점', '') in ('불명', '')
                 and (ln.doc_type == '공고문' and ln.sec == 'QUAL' or pre_award_list(b, ln))):
             timed = True
+        if switches.W3_V19_REVIEW_LIST and timed:
+            from . import w3_v19_review
+            timed = w3_v19_review.timed(b, ln, r, timed)
         if str(r.get('발급 주체', '')).startswith('제3자') and timed and pledge_demanded(ln) \
                 and not ((switches.AUDIT_FIXES2 or switches.V19_PLEDGE_FIXES) and not pledge_document(b, ln)) \
                 and not ((switches.AUDIT_FIXES3 or switches.V19_PLEDGE_FIXES) and not pledge_sentence(b, ln)) \
@@ -4095,8 +4132,44 @@ def band_mismatch(b):
     return seen
 
 
+# V20_TITLE_SW (소프트웨어 진흥법 제2조제2호·제3호: SW의 개발·운영·유지관리 and SW-related services are SW사업): a service title
+# naming a software deliverable with development, operation or use work makes the notice an SW project. A bare 프로그램 counts
+# only with development or use work after it and no education, event or care word before it ("…양성교육 프로그램 개발",
+# "강좌프로그램 개발" are teaching). Goods titles name what the goods serve (the goods path decides by 세부품명); a title
+# facts.not_sw_title refuses, a study, audit, teaching or event head and an object the v20 stage read as non-software stay
+# out, and the stage's statement reader must find no 제48조 statement (judge.sw_statement is checked by v20 itself).
+V20_TITLE_NOUN = (r'(정\s*보\s*시\s*스\s*템|전\s*산\s*시\s*스\s*템|홈\s*페\s*이\s*지|누\s*리\s*집|웹\s*사\s*이\s*트|어\s*플\s*리\s*케\s*이\s*션'
+                  r'|애\s*플\s*리\s*케\s*이\s*션|(?<![가-힣])앱|플\s*랫\s*폼|대\s*시\s*보\s*드|포\s*털|데\s*이\s*터\s*베\s*이\s*스|(?<![A-Za-z])DB(?![A-Za-z])'
+                  r'|솔\s*루\s*션|챗\s*봇|소\s*프\s*트\s*웨\s*어|(?<![A-Za-z])S/?W(?![A-Za-z])'
+                  r'|((?<![A-Za-z])(CRM|ERP|LMS|CMS|MIS)(?![A-Za-z])|업\s*무|관\s*리|행\s*정|회\s*계|전\s*산|정\s*보|통\s*계|급\s*여|인\s*사|민\s*원|예\s*약'
+                  r'|스\s*크\s*랩|해\s*석)\s*프\s*로\s*그\s*램|프\s*로\s*그\s*램(?=\s*(\d+\s*차\s*)?(개\s*발|구\s*축|고\s*도\s*화|이\s*용)))')
+V20_TITLE_VERB = (r'(재\s*구\s*축|개\s*발|구\s*축|고\s*도\s*화|개\s*편|리\s*뉴\s*얼|유\s*지\s*보\s*수|유\s*지\s*관\s*리|운\s*영|이\s*용|도\s*입|전\s*환'
+                  r'|이\s*관|임\s*차|구\s*독)')
+V20_TITLE_SW_RE = re.compile(V20_TITLE_NOUN + r'[^,()\[\]|]{0,12}?' + V20_TITLE_VERB)
+V20_TITLE_PROGRAM = re.compile(r'프\s*로\s*그\s*램')
+V20_TITLE_EDU = re.compile(r'(교\s*육|강\s*좌|강\s*의|체\s*험|양\s*성|훈\s*련|연\s*수|문\s*화|예\s*술|관\s*광|행\s*사|축\s*제|방\s*과\s*후|돌\s*봄'
+                           r'|치\s*유|상\s*담|재\s*활|운\s*동|건\s*강|진\s*로|역\s*량|멘\s*토\s*링|창\s*업|교\s*류|학\s*습|놀\s*이)\s*$')
+
+
+def title_sw_project(b):
+    """V20_TITLE_SW: the title names a software deliverable with development, operation or use work (see above)."""
+    if b.meta.work == '물품':
+        return False
+    from . import facts
+    from .dedicated import sw_participation as swp
+    texts = facts.title_texts(b)
+    named = any(not (V20_TITLE_PROGRAM.match(m.group(0)) and V20_TITLE_EDU.search(t[:m.start()]))
+                for t in texts for m in V20_TITLE_SW_RE.finditer(t))
+    if not named or facts.not_sw_title(b) or any(facts.study_head(catalog.title_head(t)) for t in texts):
+        return False
+    reading = getattr(b, swp.FAM, None)
+    if reading and reading['object_type'] in swp.NON_SW_OBJECTS:
+        return False
+    return swp.band_status(swp.full_lines(b.notice)) != 'statement'
+
+
 def v20(b):
-    if b.sw_project != '소프트웨어 개발·구축·유지관리·운영':
+    if b.sw_project != '소프트웨어 개발·구축·유지관리·운영' and not (switches.V20_TITLE_SW and title_sw_project(b)):
         return None
     if b.meta.private and not switches.V20_PRIVATE:
         return None
@@ -4106,6 +4179,10 @@ def v20(b):
         return None
     if switches.V20_BAND_MISMATCH and band_mismatch(b):
         return True
+    if switches.V20_STATEMENT_WRAP:
+        from .dedicated import sw_participation as swp
+        if swp.wrapped_statement(b.notice):
+            return None
     return None if sw_statement(b) else True
 
 
