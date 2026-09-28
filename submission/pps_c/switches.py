@@ -972,3 +972,5 @@ V10_WAIVER = False
 # competition-product bid to SMEs (판로지원법 제7조①); with only such clauses (and v11 notes) the SME restriction is absent.
 # Clauses that bar 중견기업 stay restrictions. False = current behaviour.
 V11_WIDENED = False
+# Evidence text: a clause the layout wrapped onto the next line is quoted to its end (csvout.wrap). False = current behaviour.
+EVIDENCE_WRAP = False

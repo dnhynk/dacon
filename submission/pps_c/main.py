@@ -211,7 +211,7 @@ def run(args):
         except Exception as e:   # one notice's failure must not stop the whole output
             log(f'judge failed on {rec["id"]}: {e!r}; its items are written as 0')
             verdicts = {it: (0, '') for it in judge.ITEMS}
-        rows.append(csvout.row(rec['id'], verdicts, '\n'.join(d['text'] for d in rec['docs'])))
+        rows.append(csvout.row(rec['id'], verdicts, '\n'.join(d['text'] for d in rec['docs']), [d['text'] for d in rec['docs']]))
     out_path = str(Path(args.output_dir) / 'submission.csv')
     csvout.write(rows, out_path)
     errs = csvout.validate(out_path, [r['id'] for r in recs])
