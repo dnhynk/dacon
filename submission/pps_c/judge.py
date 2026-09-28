@@ -5754,6 +5754,38 @@ def v24_licence_onesided(b):
     return None
 
 
+LICENCE_NONE = re.compile(r'업\s*종\s*제\s*한\s*(여\s*부)?\s*[:：|]?\s*(없\s*음|없\s*습\s*니\s*다|미\s*적\s*용|해\s*당\s*(사\s*항\s*)?없\s*음|N\b)'
+                          r'|업\s*종\s*제\s*한\s*(을\s*)?(두\s*지\s*않|하\s*지\s*않)')
+LOCATION_ANY = re.compile(r'소\s*재|본\s*점|주\s*된\s*영\s*업\s*소|지\s*역\s*제\s*한|관\s*내|\[수요기관\([^)]*자치단체')
+INDUSTRY_ANY = re.compile(r'업\s*종|면\s*허|등\s*록\s*한\s*(자|업\s*체)|\(\d{4}\)|\[\d{4}\]')
+
+
+# Organizer ruling (talkboard 418042 나): a restriction 나라장터 registers but the notice does not have is a mismatch too;
+# the notice must state that it has none, or never mention the requirement at all (not merely a phrase the readers missed).
+def v24_region_reverse(b):
+    if b.meta.region_flag != 'Y':
+        return None
+    if switches.V24_REGION_NONE_STATED:
+        ln = next((ln for ln in b.notice.lines if REGION_NONE.search(ln.text)), None)
+        if ln is not None:
+            return ln
+    if switches.V24_REGION_SILENT and not any(LOCATION_ANY.search(ln.text) for ln in b.notice.lines):
+        return next((ln for ln in b.notice.lines if ln.sec == 'QUAL'), None)
+    return None
+
+
+def v24_licence_reverse(b):
+    if b.meta.license_flag != 'Y':
+        return None
+    if switches.V24_LICENCE_NONE_STATED:
+        ln = next((ln for ln in b.notice.lines if LICENCE_NONE.search(ln.text)), None)
+        if ln is not None:
+            return ln
+    if switches.V24_LICENCE_SILENT and not any(INDUSTRY_ANY.search(ln.text) for ln in b.notice.lines):
+        return next((ln for ln in b.notice.lines if ln.sec == 'QUAL'), None)
+    return None
+
+
 def v24_axes(b):
     for axis in V24_AXES:
         if switches.V24_NO_METHOD and axis is v24_method:
@@ -5770,6 +5802,8 @@ def v24_axes(b):
     for on, extra in ((switches.V24_LICENCE_PARTIAL, v24_licence_partial), (switches.V24_BASIC_REGION, v24_basic_region), (switches.V24_BASIC_SCOPE, v24_basic_scope),
                       (switches.V24_POW10, v24_pow10),
                       (switches.V24_REGION_ONESIDED, v24_region_onesided), (switches.V24_LICENCE_ONESIDED, v24_licence_onesided),
+                      (switches.V24_REGION_NONE_STATED or switches.V24_REGION_SILENT, v24_region_reverse),
+                      (switches.V24_LICENCE_NONE_STATED or switches.V24_LICENCE_SILENT, v24_licence_reverse),
                       (switches.V24_BARE_TAG, v24_bare_tag)):
         ln = extra(b) if on else None
         if ln is not None:
