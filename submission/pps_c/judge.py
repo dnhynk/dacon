@@ -2442,6 +2442,9 @@ def dp_note_only(ln):
     t = ln.text
     if DP_CONDITIONAL.search(t) or DP_BONUS.search(t):
         return True
+    if switches.V10_NOTE_MARKS and (DP_NOTE.search(t) or DP_NOTE_WHEN.search(t)) and DP_NOTE_BULLET.match(t) \
+            and not DP_POSSESS_STEM.search(t):
+        return True
     return bool(DP_NOTE.search(t) and DP_NOTE_MARK.match(t) and not DP_POSSESS_STEM.search(t))
 
 
@@ -2453,6 +2456,9 @@ DP_POSSESS_STEM = re.compile(r'소\s*지|보\s*유|갖\s*[추춘]|필\s*한|등\
 # A validity statement is a note when the line is written as one (※, *, ☞, 주), 단,); a numbered qualification item that says the
 # certificate must be valid ("나. … 직접생산증명서[…]를 … 발급한 것으로서 유효기간 내에 있어야 합니다") is the requirement.
 DP_NOTE_MARK = re.compile(r'^\W{0,3}(※|\*|＊|☞|주\s*[)）]|참\s*고|단\s*,)')
+# V10_NOTE_MARKS: a validity or check-timing note under any bullet; numbered items (가., 1), ①) stay requirements.
+DP_NOTE_WHEN = re.compile(r'발\s*급\s*분|기\s*준\s*(으\s*로|일)[^.。]{0,12}확\s*인|확\s*인\s*하\s*며|인\s*정\s*하\s*지\s*않|인\s*정\s*(함|합\s*니\s*다|됨)')
+DP_NOTE_BULLET = re.compile(r'^\s*[\-–·•○◦ㅇ▶►▷▸◈◆◇★☆]')
 
 
 def dp_only_verifies(ln):
@@ -2463,19 +2469,32 @@ def dp_only_verifies(ln):
     return bool(DP_VERIFY.search(t) and not DP_POSSESS.search(t) and DP_CERT_SUBJECT.search(t))
 
 
+# V10_EVAL_NOT_REQ: evaluation points or preference for holding the certificate; a clause that also states who may bid
+# is not one.
+DP_EVAL = re.compile(r'가\s*점|배\s*점|평\s*가\s*(항\s*목|기\s*준|시|에\s*서)|신\s*인\s*도|기\s*술\s*능\s*력\s*평\s*가|우\s*대|[\(（]\s*\d+(\.\d+)?\s*점\s*[\)）]|\|\s*\d+(\.\d+)?\s*점')
+DP_EVAL_WHO = re.compile(r'참\s*가\s*자\s*격|입\s*찰\s*(에\s*)?참\s*(가|여)|참\s*(가|여)\s*할\s*수|에\s*한\s*(함|하여|한다)|만\s*(참|입\s*찰)')
+
+
+def dp_eval_line(b, ln):
+    if not switches.V10_EVAL_NOT_REQ:
+        return False
+    own = own_clause(b, ln)
+    return bool(DP_EVAL.search(own) and not DP_EVAL_WHO.search(own))
+
+
 def dp_present(b):
     """Absence test for v10: the model read a possession requirement, or the qualification section mentions the
     certificate outside a sanction or document-list line (a deleted requirement leaves only such mentions)."""
     from .families import DOC_LIST
     if switches.C2_DP_PRESENT_LITERAL:
-        if any(not dp_only_verifies(ln) for ln in dp_required(b)):
+        if any(not dp_only_verifies(ln) and not dp_eval_line(b, ln) for ln in dp_required(b)):
             return True
     elif dp_required(b):
         return True
     for ln in b.cands.get('dp', []):
         if qual_section(ln, b.notice) and not METHOD_SUMMARY.search(ln.text) and not DP_SANCTION.search(ln.text) \
                 and not DOC_LIST.search(ln.text) and ln.sec != 'DOCS' \
-                and not (switches.C2_DP_PRESENT_LITERAL and dp_only_verifies(ln)) and not (switches.V10_NOTE_NOT_REQ and not DP_POSSESS_STEM.search(own_clause(b, ln))):
+                and not (switches.C2_DP_PRESENT_LITERAL and dp_only_verifies(ln)) and not dp_eval_line(b, ln) and not (switches.V10_NOTE_NOT_REQ and not DP_POSSESS_STEM.search(own_clause(b, ln))):
             return True
     return False
 
@@ -2662,6 +2681,23 @@ def strict_service_scope(b):
     return s.competitive is True
 
 
+# OBJ_DP_DOCS: a document-list or caution line (DOCS or NOTE section, any document) that names the 직접생산 certificate for
+# a listed competition service admitted at P (with its wrapped next line).
+DP_DOCS_WORD = re.compile(r'직\s*접\s*생\s*산')
+
+
+def dp_docs_object(b):
+    cat = catalog.load()
+    lines = b.notice.lines
+    for k, ln in enumerate(lines):
+        if ln.sec not in ('DOCS', 'NOTE') or not DP_DOCS_WORD.search(ln.text):
+            continue
+        nxt = lines[k + 1].text if k + 1 < len(lines) and lines[k + 1].doc == ln.doc else ''
+        if catalog.cites_listed(ln.text + ' ' + nxt, cat, b.meta.P, services_only=True):
+            return True
+    return False
+
+
 def competitive_service(b, item=None):
     """v10·v11·v13 are judged on service purchases, and on goods only for the items in switches.COMPETITIVE_GOODS. Dev has
     no label on 16 competition-product goods, but C with goods judged would fire on only 2 of them (both v10), so that
@@ -2678,6 +2714,8 @@ def competitive_service(b, item=None):
             and catalog.DESIGNATED_REGISTRATION.search(str(b.meta.clause or '')):
         return True
     if item in switches.COMP_MIXED and b.scope.basis == 'goods:mixed':
+        return True
+    if item in switches.OBJ_DP_DOCS and b.meta.work == '용역' and b.scope.basis == 'service:none' and dp_docs_object(b):
         return True
     if item in switches.OBJ_VIDEO_LICENSE and b.meta.work == '용역' and b.scope.basis == 'service:none' \
             and (video_by_license(b) or booth_title(b)):
@@ -2725,6 +2763,15 @@ V11_APPLIED = re.compile(r'^\W{0,6}(\d{1,2}\s*[\.\)]\s*)?다\s*만|신\s*청\s*�
 V11_SPECIAL = re.compile(r'협\s*동\s*조\s*합\s*(은|는|이|의)|특\s*별\s*법\s*인\s*(은|는|으\s*로|이|의)|간\s*주\s*되\s*는')
 V11_HOLDER = re.compile(r'확\s*인\s*서\s*[>》’」』)\]]*\s*(를|을)\s*(소\s*지|보\s*유|발\s*급\s*받|취\s*득)[^.。]{0,6}(자|업\s*체)')
 V11_CLASS_SUBJECT = re.compile(r'(중\s*소\s*기\s*업\s*자?|소\s*기\s*업\s*자?|소\s*상\s*공\s*인)\s*(또\s*는|및|,)?[^.。]{0,40}?(?<!것)(으\s*로|로)\s*서')
+# V11_NOTE_TOPICS: a method statement in other shapes (a 입찰·계약·경쟁 방법 label, "제한경쟁에 의한 방식(…)", "제한입찰(…)", a bare
+# "중소기업자간 제한경쟁" tag), a certificate verification or issue note, a document, evaluation, information or contract note.
+V11_NOTE_TOPIC = re.compile(r'(입\s*찰|계\s*약|경\s*쟁)\s*(방\s*법|방\s*식)\s*(표\s*시\s*)?[:：]|제\s*한\s*(경\s*쟁|입\s*찰)\s*(에\s*의\s*한\s*(방\s*식|입\s*찰)\s*)?[\(（]'
+                            r'|중\s*소\s*기\s*업\s*자?\s*간\s*(의\s*)?(제\s*한\s*)?경\s*쟁\s*(입\s*찰)?\s*[)）]?\s*$'
+                            r'|확\s*인\s*(가\s*능\s*하\s*(여\s*야|며)|하\s*므\s*로)|미\s*확\s*인|확\s*인\s*(이\s*)?(되\s*지\s*않\s*(거\s*나|으\s*면)|안\s*되\s*거\s*나)|조\s*회\s*(결\s*과|되\s*지)|직\s*접\s*확\s*인|별\s*도\s*(로\s*)?제\s*출\s*하\s*지'
+                            r'|여\s*부\s*는[^.。]{0,40}판\s*단|판\s*단\s*기\s*준\s*일|범\s*위\s*는[^.。]{0,60}따\s*(릅|름|른|라)'
+                            r'|원\s*본\s*을\s*제\s*시|\|\s*\d+\s*부\s*\||평\s*가\s*항\s*목|제\s*출\s*대\s*상\s*에\s*서\s*제\s*외|가\s*점|배\s*점|우\s*대'
+                            r'|문\s*의\s*[:：]|발\s*급\s*(은|에\s*는)[^.。]{0,30}소\s*요|신\s*청\s*하\s*시\s*기\s*바\s*랍|권\s*장'
+                            r'|(지\s*위|요\s*건)\s*(을|를)\s*상\s*실|위\s*조|변\s*조|허\s*위|제\s*7\s*조\s*[\(（]\s*중\s*소\s*기\s*업\s*자\s*간')
 
 
 def v11_note_line(b, ln):
@@ -2736,6 +2783,8 @@ def v11_note_line(b, ln):
     if V11_APPLIED.search(own) and not V11_CLASS_SUBJECT.search(own) \
             or V11_SPECIAL.search(own) and not V11_CLASS_SUBJECT.search(own) and not V11_HOLDER.search(own):
         return True
+    if switches.V11_NOTE_TOPICS and V11_NOTE_TOPIC.search(own) and not V11_CLASS_WHO.search(own):
+        return True                 # a method statement or a note that names no bidder class
     if V11_ITEM_CLASS.search(ln.text):
         return False                # a list item that names the class is the eligibility clause
     if V11_CLASS_WHO.search(own):
@@ -3054,6 +3103,8 @@ SMALL_TEXT_WHO = re.compile(r'(으로|로)\s*서|(소\s*지|보\s*유)\s*한\s*(
 SMALL_TEXT_NOTE = re.compile(r'^\W{0,3}(※|\*|＊|☞|◇|주\s*[)）]|참\s*고|단\s*,|다\s*만)|경\s*우\s*(에\s*는|입\s*찰|참\s*가)|되\s*지\s*않|안\s*될|신\s*청\s*한'
                              r'|실\s*적|평\s*가|가\s*점|배\s*점|확\s*인\s*서\s*[’"」』>)\]]*\s*(는|가)(?![가-힣])')
 SMALL_TEXT_ITEM = re.compile(r'^\W{0,3}([가-하]\s*[\.\)]|\(?\s*\d{1,2}\s*[\.\)]|[①-⑳]|[○●◦•ㅇ❍□■▫◐◈※\-])')
+# SMALL_TEXT_CERT_NAME: "중소기업(소상공인) 확인서" names the certificate (the SME class), not a small-only bidder class.
+SMALL_TEXT_CERT = re.compile(r'(중\s*[·ㆍ・․‧]?\s*소\s*기\s*업)\s*[\(（]\s*(소\s*기\s*업\s*[·ㆍ・․‧,]?\s*)?(소\s*상\s*공\s*인)?\s*[\)）]\s*(확\s*인\s*서)')
 
 
 def small_only_text(b):
@@ -3069,12 +3120,60 @@ def small_only_text(b):
                 break
             parts.append(nxt.text)
         clause = ' '.join(' '.join(parts).split())
+        if switches.SMALL_TEXT_CERT_NAME:
+            clause = SMALL_TEXT_CERT.sub(r'\1 \4', clause)
         before = lines[k - 1].text if k and not SMALL_TEXT_ITEM.match(ln.text) else ''
         core = SMALL_TEXT_EXCLUDED.sub(' ', SMALL_TEXT_NAMES.sub(' ', clause))
         prior = SMALL_TEXT_EXCLUDED.sub(' ', SMALL_TEXT_NAMES.sub(' ', ' '.join(before.split())))
         if SMALL_TEXT_NOTE.search(core) or SMALL_TEXT_OTHER.search(core) or SMALL_TEXT_OTHER.search(prior):
             continue
         if SMALL_TEXT_CLASS.search(core) and SMALL_TEXT_WHO.search(core):
+            return ln
+    return None
+
+
+# V13_SMALL_ANYWHERE: a literal small-only participation clause in any 공고문 section (evaluation lines aside) or attachment,
+# whatever bullet opens it (※, ○, -, a table cell). The clause names who may take part (참가·참여·입찰·자격·대상·한정·제한·요건,
+# "…로서", "…소지한 자", "…일 것"); notes on certificates, records, evaluation, judgement or conditional cases, document
+# demands, admissions of deemed special corporations, and clauses admitting 중소기업자, 중·소기업, 중기업 or "(… 포함)" do not
+# count. 강소기업 is no size class; "중소기업(소상공인) 확인서" and "중소기업확인서상" name the SME certificate.
+SMALL_ANY_NOTE = re.compile(r'경\s*우\s*(에\s*는|입\s*찰|참\s*가)|되\s*지\s*않|안\s*될|신\s*청\s*한|실\s*적|평\s*가|가\s*점|배\s*점|우\s*대|판\s*단|참\s*고'
+                            r'|확\s*인\s*서\s*[’“”\"」』>)\]]*\s*(는|가|의)(?![가-힣])|기\s*업\s*구\s*분|사\s*본|\d\s*부(?![가-힣])|[\(（]\s*(소\s*기\s*업|소\s*상\s*공\s*인)[^)）]{0,12}포\s*함\s*[\)）]'
+                            r'|간\s*주\s*되\s*는|특\s*별\s*법\s*인|비\s*영\s*리|제\s*출\s*하\s*여\s*야|제\s*출\s*할\s*것')
+SMALL_ANY_EXCLUDED = re.compile(r'중\s*기\s*업\s*(이|은|는)?\s*(입\s*찰\s*에\s*)?(참\s*가|참\s*여)\s*한\s*경\s*우[^.。]{0,20}무\s*효'
+                                r'|중\s*기\s*업\s*(확\s*인\s*서\s*)?(소\s*지\s*)?(업\s*체|자)?\s*(는|은)?\s*(입\s*찰\s*에\s*)?(참\s*여|참\s*가)\s*(할\s*수\s*없|불\s*가)'
+                                r'|[\(（]\s*중\s*기\s*업\s*포\s*함\s*[\)）]|(중\s*소\s*기\s*업\s*자?\s*중\s*)?중\s*기\s*업\s*(을|은)?\s*제\s*외\s*(한|하고)'
+                                r'|중\s*소\s*기\s*업\s*확\s*인\s*서\s*상')
+SMALL_ANY_CERT = re.compile(r'(중\s*[·ㆍ・․‧]?\s*소\s*기\s*업)\s*[\(（]\s*(소\s*기\s*업\s*[·ㆍ・․‧,]?\s*)?(소\s*상\s*공\s*인)?\s*[\)）]\s*(확\s*인\s*서)')
+SMALL_ANY_WHO = re.compile(SMALL_TEXT_WHO.pattern + r'|(참\s*가|참\s*여|입\s*찰)\s*(가\s*능|대\s*상)|(참\s*가|참\s*여)\s*자\s*격\s*(을\s*)?(제\s*한|한\s*정)'
+                           r'|(소\s*지|보\s*유)\s*(한\s*)?(업\s*체|자)|기\s*업\s*규\s*모|간\s*제\s*한\s*경\s*쟁|아\s*닌\s*(자|업\s*체)[^.。]{0,20}(참\s*가|참\s*여|입\s*찰)')
+SMALL_ANY_BID = re.compile(r'참\s*가|참\s*여|입\s*찰|자\s*격|대\s*상|한\s*정|제\s*한|요\s*건|에\s*한\s*(함|하여|해)|일\s*것|이\s*어\s*야|(으\s*로|로)\s*서|소\s*지\s*한')
+SMALL_ANY_DOTS = re.compile(r'[･⸱∙⋅]')
+SMALL_ANY_STRONG = re.compile(r'강\s*소\s*기\s*업')
+
+
+def small_only_any(b):
+    """V13_SMALL_ANYWHERE: the first line (any document, any section but 공고문 evaluation lines) that starts a literal
+    small-only participation clause, or None. The line before it decides nothing but may not name another class."""
+    lines = [ln for ln in b.notice.lines if ln.text.strip()]
+    for k, ln in enumerate(lines):
+        if ln.doc_type == '공고문' and ln.sec == 'EVAL' or METHOD_SUMMARY.search(ln.text) or not SMALL_TEXT_CLASS.search(ln.text):
+            continue
+        parts = [ln.text]
+        for nxt in lines[k + 1:k + 3]:
+            if nxt.doc != ln.doc or SMALL_TEXT_ITEM.match(nxt.text):
+                break
+            parts.append(nxt.text)
+        before = lines[k - 1].text if k and lines[k - 1].doc == ln.doc and not SMALL_TEXT_ITEM.match(ln.text) else ''
+        norm = lambda s: SMALL_ANY_CERT.sub(r'\1 \4', SMALL_ANY_STRONG.sub(' ', SMALL_ANY_DOTS.sub('·', ' '.join(s.split()))))
+        clause = norm(' '.join(parts))
+        edge = norm(before.rstrip()[-12:] + ln.text.lstrip()[:4])
+        core = SMALL_ANY_EXCLUDED.sub(' ', SMALL_TEXT_EXCLUDED.sub(' ', SMALL_TEXT_NAMES.sub(' ', clause)))
+        prior = SMALL_ANY_EXCLUDED.sub(' ', SMALL_TEXT_EXCLUDED.sub(' ', SMALL_TEXT_NAMES.sub(' ', norm(before))))
+        if SMALL_ANY_NOTE.search(clause) or SMALL_ANY_NOTE.search(core) or SMALL_TEXT_OTHER.search(core) \
+                or SMALL_TEXT_OTHER.search(prior) or SMALL_TEXT_OTHER.search(SMALL_TEXT_NAMES.sub(' ', edge)):
+            continue
+        if SMALL_TEXT_CLASS.search(core) and SMALL_ANY_WHO.search(core) and SMALL_ANY_BID.search(core):
             return ln
     return None
 
@@ -3099,6 +3198,10 @@ def v13_rule(b):
     # 입찰공고 (a BID·EVAL declaration, an attachment) restricts the bid as it does for v11; then the registered class.
     if 'v13' in switches.SMALL_TEXT_CLAUSE and state is None:
         hit = small_only_text(b)
+        if hit is not None:
+            return hit
+    if switches.V13_SMALL_ANYWHERE and state != 'small':
+        hit = small_only_any(b)
         if hit is not None:
             return hit
     if switches.V13_ANY_SECTION and state != 'sme':
@@ -3732,10 +3835,19 @@ SW_LAW_BEFORE = re.compile(r'(소\s*프\s*트\s*웨\s*어|S\s*W)\s*(산\s*업\s*
 BARE_GUIDE = re.compile(r'^\W*(?:[ｏo○◦·•\-]|\d{1,2}\s*[\.\)])?\s*[「｢『]?\s*중\s*소\s*소\s*프\s*트\s*웨\s*어\s*사\s*업\s*자\s*의\s*사\s*업\s*참\s*여\s*지\s*원\s*에\s*관\s*한\s*지\s*침\s*[」｣』]?\s*(?:[\(（][^)）]*[\)）])?\s*$')
 
 
+# V20_CITATION_ONLY: citations that state nothing by themselves: the 지침 name (with its 고시 number), an article title in
+# parentheses after "…조" that names no restriction, and the amount-computation phrase "사업금액 산정".
+SW_CITATION = re.compile(r'[「『｢]?\s*중\s*소\s*소\s*프\s*트\s*웨\s*어\s*사\s*업\s*자\s*의\s*사\s*업\s*참\s*여\s*지\s*원\s*에\s*관\s*한\s*지\s*침\s*[」』｣]?(\s*[\(（][^)）]{0,40}[\)）])?'
+                         r'(?!\s*[」』｣]?\s*(을|를|에)?\s*(적\s*용|준\s*수|따\s*라|따\s*른|의\s*거|의\s*하|의\s*한))'
+                         r'|(?<=조)\s*[\(（](?![^)）]*(제\s*한|하\s*한|불\s*가|적\s*용|대\s*기\s*업|중\s*견))[^)）]{0,40}[\)）]|사\s*업\s*금\s*액\s*(의\s*)?산\s*정')
+
+
 def sw_statement_match(pat, t):
     """Red team A2: the line states the 제48조 participation restriction (V20_STATEMENT_STRICT reading)."""
     if BARE_GUIDE.match(t):
         return False
+    if switches.V20_CITATION_ONLY:
+        t = SW_CITATION.sub(' ', t)
     for m in pat.finditer(t):
         if re.match(r'제\s*48\s*조', m.group(0)) and not SW_LAW_BEFORE.search(t[max(0, m.start() - 40):m.start()]):
             continue
@@ -3775,6 +3887,34 @@ def unbound_orderer(b):
     return bool(count) and max(count.items(), key=lambda kv: kv[1])[0] in V20_UNBOUND
 
 
+# V20_BAND_MISMATCH: 지침 제2조 별표1 bands the 사업금액 (budget with VAT; else 추정가격 × 1.1) at 20·40·80억. A statement line
+# naming one band ("본 사업은 사업금액이 20억원 미만인 사업으로서 …", "20억 이상 40억원 미만의 사업으로서 …") for a 사업금액
+# outside it states another band's restriction, not this project's; tables of bands, annual amounts and conditions are skipped.
+V20_BAND = re.compile(r'(?<![\d.,])(\d{2})\s*억\s*원?\s*(이\s*상\s*(?<![\d.,])(\d{2})\s*억\s*원?\s*)?미\s*만')
+V20_BAND_CTX = re.compile(r'대\s*기\s*업|중\s*견|하\s*한|제\s*48\s*조|참\s*여\s*지\s*원')
+V20_BAND_SKIP = re.compile(r'연\s*간|경\s*우|이\s*면|인\s*때|구\s*간|각\s*각|\|')
+
+
+def band_mismatch(b):
+    amount = b.meta.B or (b.meta.P * 1.1 if b.meta.P else None)
+    if not amount:
+        return False
+    seen = False
+    for ln in b.notice.lines:
+        t = ln.text
+        if not V20_BAND_CTX.search(t) or V20_BAND_SKIP.search(t):
+            continue
+        ms = [m for m in V20_BAND.finditer(t) if m.group(1) in ('20', '40', '80') and m.group(3) in (None, '40', '80')]
+        if len(ms) != 1:
+            continue
+        m = ms[0]
+        lo, hi = (int(m.group(1)), int(m.group(3))) if m.group(3) else (0, int(m.group(1)))
+        seen = True
+        if lo * 1e8 <= amount < hi * 1e8:
+            return False
+    return seen
+
+
 def v20(b):
     if b.sw_project != '소프트웨어 개발·구축·유지관리·운영':
         return None
@@ -3784,6 +3924,8 @@ def v20(b):
         return None
     if switches.V20_MIN_ESTIMATE and (b.meta.P or 0) < switches.V20_MIN_ESTIMATE:
         return None
+    if switches.V20_BAND_MISMATCH and band_mismatch(b):
+        return True
     return None if sw_statement(b) else True
 
 

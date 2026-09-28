@@ -630,3 +630,41 @@ V24_AMOUNT_UNITS = False
 # equipment, issuers of certificates or pledges, software named as a working environment and negated demands ("…으로 한정하지
 # 않음") are not. False = current behaviour.
 V9_BRAND_REQ = False
+# Items judged as buying a listed competition service when a service notice without a catalog object names that service
+# (admitted at its 추정가격) for the 직접생산 certificate in a document list or caution ("직접생산확인증명서(세부품명: …)
+# 1부"): the notice subjects its purchase to 판로지원법 제9조 for that service; () = current behaviour.
+OBJ_DP_DOCS = ()
+# SMALL_TEXT_CLAUSE: "중소기업(소상공인) 확인서" and "중소기업(소기업·소상공인) 확인서" name the certificate of the whole SME
+# class, not a small-only bidder class ("중소기업자(소기업·소상공인에 한함)" still excludes 중기업). False = current behaviour.
+SMALL_TEXT_CERT_NAME = False
+# v10: a line that awards evaluation points or preference for holding the 직접생산 certificate ("…보유한 업체는 적격심사 시
+# 신인도 가점", "직접생산 확인 품목 보유 여부(5점)") is an evaluation item, not the participation requirement, whatever its
+# section or reading (a clause that also states who may bid stays a requirement). False = current behaviour.
+V10_EVAL_NOT_REQ = False
+# v10 (with V10_NOTE_NOT_REQ): a validity or check-timing note on the 직접생산 certificate ("…발급된 것으로서 유효기간 내에
+# 있어야", "…발급분도 인정", "…기준으로 확인하며") is a note under any bullet (-, ○, ▶, ◈, ★, ㅇ …), not only ※ * 주);
+# numbered items (가., 1), ①) and lines with holder wording stay requirements. False = current behaviour.
+V10_NOTE_MARKS = False
+# v11 (with V11_NOTE_NOT_RESTRICT): a size line whose clause names no bidder class and is a method statement in another
+# shape ("입찰방법 : 총액입찰, 중소기업자 간 제한경쟁입찰", "제한경쟁에 의한 방식(중·소기업…)", "※ 중소기업자간 제한경쟁"), a
+# certificate verification or issue note ("…확인하므로 … 확인 가능하여야", "미확인 시"), or a document, evaluation,
+# information or contract note is no SME restriction. False = current behaviour.
+V11_NOTE_TOPICS = False
+# v13: a literal small-only participation clause ("…소기업·소상공인만 참여할 수 있습니다", "참가대상: 소기업·소상공인(중기업
+# 참가불가)") counts in any 공고문 section (유의사항, 제출서류 and table rows too; evaluation lines aside) and in the attachments,
+# under any bullet, also when the qualification section states an SME-level class; notes on certificates, records,
+# evaluation or conditional cases, document demands, deemed special corporations and clauses admitting 중소기업자·중기업
+# do not. False = current behaviour.
+V13_SMALL_ANYWHERE = False
+# v20: a statement that names one 사업금액 band of the 지침 (별표1: 20·40·80억; "본 사업은 20억원 미만 사업으로 …") while
+# the notice's 사업금액 (budget with VAT, else 추정가격 × 1.1) lies outside that band states no restriction for this project:
+# the item asks for the statement that fits the band (organizer 9/28). False = current behaviour.
+V20_BAND_MISMATCH = False
+# v20: a line that only cites the SW law or the 중소 SW사업자 지침 (a list of applicable laws, "제48조(중소 소프트웨어사업자의
+# 사업 참여 지원)", "제48조에 따른 사업금액 산정 시 …") states neither whether the 제48조 restriction applies nor its basis: with
+# the 지침 name, such article titles and the amount-computation phrase removed the line must still state it. False = current.
+V20_CITATION_ONLY = False
+# v20 stage: a line that only cites 소프트웨어 진흥법 제48조 or the 중소 SW사업자 지침 (a law list "적용법령: …", "제48조(중소
+# 소프트웨어사업자의 사업 참여 지원)") is a citation for the model to read, not a CPU statement, unless the line itself (names,
+# article titles and list labels removed) or its wrapped continuation has an application verb. False = current behaviour.
+V20_STAGE_CITATION = False

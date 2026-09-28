@@ -115,6 +115,31 @@ def sw_qualification(notice, full):
     return False
 
 
+# V20_STAGE_CITATION: a match that is only the law article or the 지침 name is a statement when its own line, with the
+# 지침 name, article titles naming no restriction and law-list labels (적용법령·관련법령·근거) removed, has an application
+# verb, or when the line wraps (no sentence end) into a next line that is not a new list item and has one.
+CITE_ALT = re.compile(SW + r'\s*(산업)?\s*진흥법\s*」?\s*(제\s*)?48\s*조|중소\s*' + SW + r'\s*사업자의\s*사업\s*참여\s*지원')
+CITE_STRIP = re.compile(r'[「『｢]?\s*중소\s*' + SW + r'\s*사업자의\s*사업\s*참여\s*지원에\s*관한\s*지침\s*[」』｣]?(\s*\([^)]{0,40}\))?'
+                        r'|(?<=조)\s*\((?![^)]*(제한|하한|불가|적용|대기업|중견))[^)]{0,40}\)|(적용|관련|근거)\s*(법령|법규|규정|근거)\s*[:：]?')
+CITE_END = re.compile(r'(다|함|음|임|것|요)\s*[.。]?\s*$|[.。)」』]\s*$')
+CITE_ITEM = re.compile(r'^\s*([가-하]\s*[.)]|\(?\d{1,2}\s*[.)]|[①-⑳]|[○●◎◦•ㅇ❍□■▶►▷※*\-]|\|)')
+
+
+def citation_statement(text, m):
+    """V20_STAGE_CITATION: whether a citation-only BAND match states the restriction (see CITE_STRIP)."""
+    lo = text.rfind('\n', 0, m.start()) + 1
+    eol = text.find('\n', m.end())
+    eol = len(text) if eol < 0 else eol
+    own = CITE_STRIP.sub(' ', text[lo:eol])
+    if STATEMENT_VERB.search(own):
+        return True
+    if eol >= len(text) or CITE_END.search(text[lo:eol]):
+        return False
+    nxt_end = text.find('\n', eol + 1)
+    nxt = text[eol + 1:len(text) if nxt_end < 0 else nxt_end]
+    return not CITE_ITEM.match(nxt) and bool(STATEMENT_VERB.search(CITE_STRIP.sub(' ', nxt)[:160]))
+
+
 def band_status(text):
     """'statement' | 'citation' | 'absent' for the 대기업 참여제한(사업금액 하한) 문구 on line-preserving text (full_lines).
     A statement needs an application verb on the match's line or the next one; a bare name or citation goes to the model;
@@ -126,6 +151,12 @@ def band_status(text):
         hi = len(text) if hi < 0 else text.find('\n', hi + 1)
         win = text[lo:min(len(text) if hi < 0 else hi, m.end() + 160)]
         if SOJA.search(win) and not BAND_MARK.search(win):
+            continue
+        from .. import switches
+        if switches.V20_STAGE_CITATION and CITE_ALT.fullmatch(m.group(0)):
+            if citation_statement(text, m):
+                return 'statement'
+            status = 'citation'
             continue
         if STATEMENT_VERB.search(win):
             return 'statement'
