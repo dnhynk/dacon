@@ -1707,6 +1707,11 @@ def v7_clause_lines(b):
         switches.AUDIT_FIXES2 = saved
 
 
+def v7_one_clause(b, lines):
+    """V7_ONE_CLAUSE: some restriction clause (wrapped lines joined) names two or more 시·도 by itself."""
+    return any(len(regions.mentions(region_clause_text(b.notice, ln))['sido']) >= 2 for ln in lines)
+
+
 def _rtd_v7_base(b):
     lines, sido, _ = region_restriction(b)
     P = b.meta.P
@@ -1715,7 +1720,7 @@ def _rtd_v7_base(b):
     if lines:
         if switches.REG_CONSISTENCY and region_agrees(b, sido):
             return None
-        if len(sido) >= 2:
+        if len(sido) >= 2 and not (switches.V7_ONE_CLAUSE and not v7_one_clause(b, lines)):
             if switches.V7_SITE_SPAN and x7_site_spans(b, sido):
                 return None
             return max(lines, key=lambda ln: len(regions.mentions(ln.text)['sido']))
@@ -5781,11 +5786,22 @@ INDUSTRY_ANY = re.compile(r'업\s*종|면\s*허|등\s*록\s*한\s*(자|업\s*체
 
 # Organizer ruling (talkboard 418042 나): a restriction 나라장터 registers but the notice does not have is a mismatch too;
 # the notice must state that it has none, or never mention the requirement at all (not merely a phrase the readers missed).
+NONE_SCOPE = re.compile(r'공\s*동\s*수\s*급|공\s*동\s*도\s*급|구\s*성\s*원|참\s*여\s*업\s*체|분\s*담|대\s*표\s*사|제\s*한\s*적\s*용|이\s*외'
+                        r'|(허\s*가|등\s*록|면\s*허|인\s*가)\s*(를\s*(받\s*은|필\s*한)\s*)?(업\s*체|자|사\s*업\s*자)\s*(는|은)')
+
+
+def none_scoped(t):
+    """V24_NONE_SCOPED: the words before the "지역제한 없음" match scope it to some bidders or name a restriction that applies."""
+    m = REGION_NONE.search(t)
+    return bool(m and NONE_SCOPE.search(t[:m.start()]))
+
+
 def v24_region_reverse(b):
     if b.meta.region_flag != 'Y':
         return None
     if switches.V24_REGION_NONE_STATED:
-        ln = next((ln for ln in b.notice.lines if REGION_NONE.search(ln.text)), None)
+        ln = next((ln for ln in b.notice.lines if REGION_NONE.search(ln.text)
+                   and not (switches.V24_NONE_SCOPED and none_scoped(ln.text))), None)
         if ln is not None:
             return ln
     if switches.V24_REGION_SILENT and not any(LOCATION_ANY.search(ln.text) for ln in b.notice.lines):

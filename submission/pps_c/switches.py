@@ -1020,3 +1020,13 @@ X3_V4_PLACED = False
 # firm or under such a label ("과업 수행업체는 … 실적이 있어야"). Consulted only when no other v8 source fires. False =
 # current behaviour.
 X3_V8_PLACED = False
+# v7: below T, the union of the region-restriction lines extends a restriction to an adjacent area only when one clause
+# itself names two or more 시·도; clauses that each name one (a 시·군 clause next to another clause on a different 시·도)
+# restrict to conflicting areas, not to one area and its neighbours. The per-clause readers are unchanged.
+# False = current behaviour.
+V7_ONE_CLAUSE = False
+# v24 (with V24_REGION_NONE_STATED): a "지역제한 없음" statement about some bidders only (공동수급 구성원·참여업체, the lead's
+# partners, a licence-holder class as its subject: "…허가 업체는 지역제한 하지 않음", "대표사 이외 구성원은 지역제한을 하지
+# 않습니다") or next to a restriction that applies ("대표사 지역 제한적용") leaves the notice's own restriction in place; it
+# is no statement that the notice has none. False = current behaviour.
+V24_NONE_SCOPED = False
