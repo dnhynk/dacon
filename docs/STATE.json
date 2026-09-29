@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "updated_utc": "2026-09-28T14:11:36+00:00",
+  "updated_utc": "2026-09-29T00:59:54+00:00",
   "competition": "DACON 236754",
   "goal_official_macro_f1": 0.8,
   "official": {
@@ -393,49 +393,56 @@
         "name": "SPR0929_BASE",
         "kst": "2026-09-29",
         "slot": "spare1",
-        "score": null
+        "score": 0.5118726844,
+        "outcome": "base of the 9/29 group probes"
       },
       {
         "row": "131",
         "name": "SPR0929_P1W_v9",
         "kst": "2026-09-29",
         "slot": "spare2",
-        "score": null
+        "score": 0.5134396428,
+        "outcome": "effect vs BASE +0.0015669584: kept in the final"
       },
       {
         "row": "132",
         "name": "SPR0929_P2_v20",
         "kst": "2026-09-29",
         "slot": "spare3",
-        "score": null
+        "score": 0.5158482196,
+        "outcome": "effect vs BASE +0.0039755352: kept in the final"
       },
       {
         "row": "133",
         "name": "SPR0929_P3_v24",
         "kst": "2026-09-29",
         "slot": "spare4",
-        "score": null
+        "score": 0.5143221487,
+        "outcome": "effect vs BASE +0.0024494643: kept in the final"
       },
       {
         "row": "134",
         "name": "SPR0929_P4W_v19v12",
         "kst": "2026-09-29",
         "slot": "spare5",
-        "score": null
+        "score": 0.5120483771,
+        "outcome": "effect vs BASE +0.0001756927: kept in the final"
       },
       {
         "row": "135",
         "name": "SPR0929_P5_comp",
         "kst": "2026-09-29",
         "slot": "spare6",
-        "score": null
+        "score": 0.5163514855,
+        "outcome": "effect vs BASE +0.0044788011: kept in the final"
       },
       {
         "row": "136",
         "name": "SPR0929_P5W_comp",
         "kst": "2026-09-29",
         "slot": "spare7",
-        "score": null
+        "score": 0.517432746,
+        "outcome": "effect vs BASE +0.0055600616: kept in the final; P5W - P5 (round-5 W2 comp switches) = +0.0010812605"
       },
       {
         "row": "137",
@@ -449,14 +456,16 @@
         "name": "SPR0929_P8W_size",
         "kst": "2026-09-29",
         "slot": "spare9",
-        "score": null
+        "score": 0.5121849704,
+        "outcome": "effect vs BASE +0.0003122860: kept in the final"
       },
       {
         "row": "139",
         "name": "SPR0929_P6P7W",
         "kst": "2026-09-29",
         "slot": "spare10",
-        "score": null
+        "score": 0.5162550271,
+        "outcome": "effect vs BASE +0.0043823427: kept in the final"
       },
       {
         "row": "140",
@@ -486,9 +495,9 @@
         "row": "143",
         "name": "SPR0928Z_v19cap",
         "kst": "2026-09-28",
-        "slot": "manual",
-        "score": null,
-        "outcome": "pending (manual slot, user); V19_CAP_PRE effect = score - 0.6948463554 (union, v9 v12 zeroed)"
+        "slot": "spare11",
+        "score": 0.6941162761,
+        "outcome": "manual 9/28 (spare11); V19_CAP_PRE = 0.6941162761 - 0.6948463554 (Z9Z12) = -0.00073: off in the final"
       },
       {
         "row": "144",
@@ -503,8 +512,8 @@
         "name": "SPR0929_X9X3_d9",
         "kst": "2026-09-29",
         "slot": "spare11",
-        "score": null,
-        "outcome": "pending; 9/28 D9 design (union + v9 stage, v12 zeroed) + V9_X3; effect = score - 0.7100332713 (D9). Replay: dev v9 -5 (all label 0), t2500 -64, para -15 host (planted 43/43 kept)"
+        "score": 0.7109605358,
+        "outcome": "V9_X3 = 0.7109605358 - 0.7100332713 (D9) = +0.0009272645: on in the final"
       },
       {
         "row": "146",
@@ -512,7 +521,7 @@
         "kst": "2026-09-29",
         "slot": "spare12",
         "score": null,
-        "outcome": "pending; 9/28 region1s design + V24_BUDGET_VS_P='nego' (협상 + 기초금액 + registered 추정가격 nowhere; organizer 417272: DEV-062 is a budget-axis case); effect = score - 0.6963495731; leaderboard-only slot, visible only above 0.6952647837"
+        "outcome": "graded 9/29 (c_time 00:00:14) but not above the slot best 0.6952647837: V24_BUDGET_VS_P nego effect <= -0.00108; off"
       },
       {
         "row": "147",
@@ -520,13 +529,21 @@
         "kst": "2026-09-29",
         "slot": "spare13",
         "score": null,
-        "outcome": "pending; same design + V24_BUDGET_VS_P='base' (any award method); effect = score - 0.6963495731; leaderboard-only slot, visible only above 0.6953899449"
+        "outcome": "graded 9/29 (c_time 00:00:18) but not above the slot best 0.6953899449: V24_BUDGET_VS_P base effect <= -0.00096; off"
+      },
+      {
+        "row": "148",
+        "name": "BIGSHOT0929_v8o",
+        "kst": "2026-09-29",
+        "slot": "main",
+        "score": null,
+        "outcome": "final main, submitted 09:36:01 KST (isSubmitted true), grading pending. v8m + 24 switch values (runs/rebuild_c/bigshot0928/spec_v8o.json), source 149c165, clean zip sha256 f20534a02a3c087132bfcd544b1b3a14787d1cc872057fbeaee0f5f9826ffb53, 13,618 requests (inst 1,853), est. L40S 3,995 s. Replay vs v8m: dev v9-4; t2500 v2-4 v4-3 v9-16 v12+1 v13-2 v14-1 v15-1 v19-3 v20-1 v24-9; para v15-1; no other item changed; 0 non-substring evidence on dev/t2500."
       }
     ]
   },
   "task": {
-    "status": "probes_0929_13_scheduled_final_v8k_pending",
-    "next_action": "9/29 00:00:01: 13 spare probes (spare1-10 dacon_0929; spare11-13 dacon_0929b or by hand), ledger rows 130-139 and 145-147; spare11 9/28 carries SPR0928Z_v19cap (row 143). Final candidate spec runs/rebuild_c/bigshot0928/spec_v8k.json (v8i + V7_ONE_CLAUSE + V24_NONE_SCOPED, EVIDENCE_WRAP off). Morning runbook: docs/LOCAL_HANDOFF.md \"9/29 아침 순서\". Main before 10:00 KST with user approval.",
+    "status": "final_main_v8o_submitted_grading_pending",
+    "next_action": "Read the v8o score (runs/rebuild_c/submissions/lb_watch_0929.py main); the board shows a new score only above the best 0.7535786066 (v6). If it is higher, update official.best. 2nd-round preparation (reproducibility rebuild of the submitted zip, cross-notice compliance audit, source specification, self-labelling inventory) starts only after the private top 15 is confirmed on 9/30 10:00 KST; materials are due 10/05 10:00 KST.",
     "main_slot_rule": "From 9/28 the main slot carries the strongest supported package; spare probes keep minimal bases below 0.75 (user).",
     "held": "CODE_AUDIT_BASE=False keeps the 9/26 audit estimate/article/date-role repairs dormant until measured separately; THINKING_FAMILIES=() keeps thinking off by default.",
     "lesson_0927": "preregistered estimates were about 4x too high in total (+0.012 measured vs about +0.05); practitioner-standard removals paid in v19/v20/v22 and v1 but lost in v9, v14-v18 and competition scope; the organizer mostly labels literally",
