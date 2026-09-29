@@ -1091,3 +1091,23 @@ RTP_V24_REGION_ALIASES = False
 
 # RT-R: delivery record OR prior quality approval; CPU matching only.
 V4_CERT_ALTERNATIVE = False
+
+# Explicit installed maker plus a mandatory same-maker acquisition.
+V9_NEW_SAME_MAKER = False
+
+# RT-P2: narrow source-reading correction; opt-in.
+RTP2_V13_NOTE_BOUNDARY = False
+
+# RT-P2: narrow source-reading correction; opt-in.
+RTP2_V13_CONDITIONAL_HEADER = False
+RTS_V14_SW_ADMISSION = False
+RTS_V15_NONPROFIT_NOTE = False
+
+# RT-T: opt-in witness correction.
+RTT_V2_NONE = False
+
+# RT-T: opt-in witness correction.
+RTT_V2_NONRECORD_OR = False
+
+# RT-T: opt-in witness correction.
+RTT_V2_EVAL_CONTEXT = False

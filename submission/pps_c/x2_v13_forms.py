@@ -55,7 +55,7 @@ def small_only_any2(b):
     """small_only_any with the wider bullets, labels, rule shapes and bars above."""
     lines = [ln for ln in b.notice.lines if ln.text.strip()]
     for k, ln in enumerate(lines):
-        if ln.doc_type == '공고문' and ln.sec in ('EVAL', 'BID') or J.METHOD_SUMMARY.search(ln.text) or HEADING.match(ln.text):
+        if J.rtp2_v13_case_header(ln) or ln.doc_type == '공고문' and ln.sec in ('EVAL', 'BID') or J.METHOD_SUMMARY.search(ln.text) or HEADING.match(ln.text):
             continue
         barred = medium_barred(' '.join(ln.text.split()))
         if not J.SMALL_TEXT_CLASS.search(ORG.sub(' ', ln.text)) and not barred:

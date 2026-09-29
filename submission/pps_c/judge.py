@@ -2191,6 +2191,13 @@ def x3_plus_drop(ln):
     return switches.V9_X3 and switches.V9_X3_PLUS and bool(x3_plus_reason(ln.text))
 
 
+def v9_new_same_maker(b, ln):
+    if not getattr(switches, 'V9_NEW_SAME_MAKER', False):
+        return False
+    from .v9_new_same_maker import matches
+    return matches(b, ln)
+
+
 def x3_drop(b, ln):
     """True when a v9 line is lawful practice or noise under the practitioner standard (C1-C5)."""
     clause = clause_text(b.notice, ln)
@@ -2203,12 +2210,12 @@ def x3_drop(b, ln):
             or X3_SW_LINE.search(ln.text) and X3_LICENCE.search(clause):
         return True
     if goods and names and all(X3_CONSUMABLE_NAME.search(n) for n in names) or X3_CONSUMABLE_TITLE.search(title) \
-            or X3_COMPAT.search(clause):
+            or X3_COMPAT.search(clause) and not v9_new_same_maker(b, ln):
         return True
     if b.meta.work == '용역':
         return True
     t = ln.text
-    return bool(X3_GRADE.search(t) or X3_COLOUR.search(t) or X3_FLIGHT.search(t) or X3_SAME_MAKER.search(t)
+    return bool(X3_GRADE.search(t) or X3_COLOUR.search(t) or X3_FLIGHT.search(t) or X3_SAME_MAKER.search(t) and not v9_new_same_maker(b, ln)
                 or X3_EMPTY_LABEL.search(t.strip()) or X3_PLATFORM.search(t) and not X3_MODEL_CODE.search(X3_PLATFORM.sub(' ', t)))
 
 
@@ -2340,6 +2347,11 @@ def v9_code_listing(b):
 
 
 def v9(b):
+    if getattr(switches, 'V9_NEW_SAME_MAKER', False):
+        from .v9_new_same_maker import find
+        extra = find(b)
+        if extra is not None and (not switches.V9_X3 or not x3_drop(b, extra)):
+            return extra
     if switches.V9_READ2:
         return v9_read2(b)
     lines = v9_lines(b)
@@ -2409,6 +2421,10 @@ def size_class(b, ln):
     model's reading only when the wording names no class."""
     from .families import size_normal, size_words
     clause = clause_text(b.notice, ln)
+    # RT-P2: a starred note starts its own clause; do not borrow a truncated bidder class above it.
+    from .families import SMALL_LIMIT_ACTIVE
+    if switches.RTP2_V13_NOTE_BOUNDARY and SMALL_LIMIT_ACTIVE[0] and re.match(r'^\s*[*＊★☆]', ln.text):
+        clause = own_clause(b, ln)
     cls = size_words(size_normal(clause) if switches.AUDIT_FIXES2 else clause)
     if cls:
         return cls
@@ -2559,6 +2575,17 @@ def notice_size_lines(b, lines, primary):
 SIZE_TAG = re.compile(r'대\s*기\s*업\s*\(\s*\)|국\s*내\s*입\s*찰\s*/|제\s*한\s*경\s*쟁\s*[_(（]\s*(중|소)')
 
 
+# RT-P2: a class-conditioned heading ("소기업·소상공인의 경우:") does not limit every bidder.
+RTP2_SMALL_CASE = re.compile(r'^\s*(?:[가-하]\s*[.)]|\d{1,2}\s*[.)]|[①-⑳○●◦•ㅇ❍□■※*＊-])?\s*'
+                            r'(?:소\s*기\s*업|소\s*상\s*공\s*인)(?:\s*(?:[·ㆍ・‧․,，/]|및|또는)\s*'
+                            r'(?:소\s*기\s*업|소\s*상\s*공\s*인))*\s*의\s*경\s*우\s*[:：]')
+
+
+def rtp2_v13_case_header(ln):
+    from .families import SMALL_LIMIT_ACTIVE
+    return switches.RTP2_V13_CONDITIONAL_HEADER and SMALL_LIMIT_ACTIVE[0] and bool(RTP2_SMALL_CASE.match(ln.text))
+
+
 def size_state(b, positive=False, gate_normal=False):
     """('small' | 'sme' | 'unknown' | None, restriction lines, exception stated).
 
@@ -2570,6 +2597,8 @@ def size_state(b, positive=False, gate_normal=False):
         lines = [ln for ln in lines if not (SIZE_TAG.search(ln.text) and not BIDDER_CLASS.search(ln.text))]
     if switches.AUDIT_FIXES2:
         lines = size_lines2(b, lines, positive)
+    if positive:
+        lines = [ln for ln in lines if not rtp2_v13_case_header(ln)]
     exc = any(waives_size_limit(b, ln) for ln in lines_where(b, 'size', 역할='판로지원 예외 명시'))
     if switches.AUDIT_FIXES and not exc:
         exc = exception_in_notice(b)
@@ -3695,7 +3724,7 @@ def small_only_text(b):
     small-only participation clause, or None. A line that continues an earlier one is judged with that line too."""
     lines = [ln for ln in b.notice.lines if ln.doc_type == '공고문' and ln.text.strip()]
     for k, ln in enumerate(lines):
-        if ln.sec in NOT_QUAL_SECTIONS or METHOD_SUMMARY.search(ln.text) or not SMALL_TEXT_CLASS.search(ln.text):
+        if rtp2_v13_case_header(ln) or ln.sec in NOT_QUAL_SECTIONS or METHOD_SUMMARY.search(ln.text) or not SMALL_TEXT_CLASS.search(ln.text):
             continue
         parts = [ln.text]
         for nxt in lines[k + 1:k + 3]:
@@ -3747,7 +3776,7 @@ def small_only_any(b):
     small-only participation clause, or None. The line before it decides nothing but may not name another class."""
     lines = [ln for ln in b.notice.lines if ln.text.strip()]
     for k, ln in enumerate(lines):
-        if ln.doc_type == '공고문' and ln.sec == 'EVAL' or METHOD_SUMMARY.search(ln.text) or not SMALL_TEXT_CLASS.search(ln.text):
+        if rtp2_v13_case_header(ln) or ln.doc_type == '공고문' and ln.sec == 'EVAL' or METHOD_SUMMARY.search(ln.text) or not SMALL_TEXT_CLASS.search(ln.text):
             continue
         parts = [ln.text]
         for nxt in lines[k + 1:k + 3]:
@@ -6149,6 +6178,34 @@ def _t4w_rule(it):
 v14, v15, v17 = (_t4w_rule(it) for it in ('v14', 'v15', 'v17'))
 
 
+# RTS_V14_SW_ADMISSION: narrow source-reading correction, default off.
+def _rts_v14_sw_admission_rule(base):
+    def rule(b):
+        hit = base(b)
+        if not switches.RTS_V14_SW_ADMISSION:
+            return hit
+        from .rts_v14_sw_admission import filter_hit
+        return filter_hit(b, hit)
+    return rule
+
+
+v14 = _rts_v14_sw_admission_rule(v14)
+
+
+# RTS_V15_NONPROFIT_NOTE: narrow source-reading correction, default off.
+def _rts_v15_nonprofit_note_rule(base):
+    def rule(b):
+        hit = base(b)
+        if not switches.RTS_V15_NONPROFIT_NOTE:
+            return hit
+        from .rts_v15_nonprofit_note import filter_hit
+        return filter_hit(b, hit)
+    return rule
+
+
+v15 = _rts_v15_nonprofit_note_rule(v15)
+
+
 # W4_SIZE_ARTICLE_TITLE: v14-v18 read size classes with article titles in parentheses removed; in "제2조의2(중소기업자의
 # 우선조달계약)에 따른 소기업·소상공인" the title names the article, and the clause limits bidders to 소기업·소상공인.
 def _w4a_rule(base):
@@ -6195,6 +6252,48 @@ def _rtb_v24_literal_rule(base):
 
 
 v24 = _rtb_v24_literal_rule(v24)
+
+
+# RTT_V2_NONE: keep only affirmative bidder record requirements.
+def _wrap_rtt_v2_none(base):
+    def rule(b):
+        hit = base(b)
+        if not switches.RTT_V2_NONE:
+            return hit
+        from .rt_t_v2_reading import filter_hit
+        return filter_hit(b, hit, base, 'NONE')
+    return rule
+
+
+v2 = _wrap_rtt_v2_none(v2)
+
+
+# RTT_V2_NONRECORD_OR: keep only affirmative bidder record requirements.
+def _wrap_rtt_v2_nonrecord_or(base):
+    def rule(b):
+        hit = base(b)
+        if not switches.RTT_V2_NONRECORD_OR:
+            return hit
+        from .rt_t_v2_reading import filter_hit
+        return filter_hit(b, hit, base, 'OR')
+    return rule
+
+
+v2 = _wrap_rtt_v2_nonrecord_or(v2)
+
+
+# RTT_V2_EVAL_CONTEXT: keep only affirmative bidder record requirements.
+def _wrap_rtt_v2_eval_context(base):
+    def rule(b):
+        hit = base(b)
+        if not switches.RTT_V2_EVAL_CONTEXT:
+            return hit
+        from .rt_t_v2_reading import filter_hit
+        return filter_hit(b, hit, base, 'EVAL')
+    return rule
+
+
+v2 = _wrap_rtt_v2_eval_context(v2)
 
 
 RULES = {'v1': v1, 'v2': v2, 'v3': v3, 'v4': v4, 'v5': v5, 'v6': v6, 'v7': v7, 'v8': v8, 'v9': v9, 'v10': v10,
