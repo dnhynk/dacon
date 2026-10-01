@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "updated_utc": "2026-09-29T00:59:54+00:00",
+  "updated_utc": "2026-10-01T12:30:00+00:00",
   "competition": "DACON 236754",
   "goal_official_macro_f1": 0.8,
   "official": {
@@ -17,7 +17,6 @@
       "score": 0.7381417,
       "kind": "conditional item-additive estimate, not an official score; items shared by several probes may interact"
     },
-    "preregistration": "runs/harness_improve_20260919/precision_analysis/PREREGISTRATION.md",
     "receipts": "runs/rebuild_c/submissions/official_submission_<name>.json",
     "ledger": [
       {
@@ -537,18 +536,13 @@
         "kst": "2026-09-29",
         "slot": "main",
         "score": null,
-        "outcome": "final main, submitted 09:36:01 KST (isSubmitted true), grading pending. v8m + 24 switch values (runs/rebuild_c/bigshot0928/spec_v8o.json), source 149c165, clean zip sha256 f20534a02a3c087132bfcd544b1b3a14787d1cc872057fbeaee0f5f9826ffb53, 13,618 requests (inst 1,853), est. L40S 3,995 s. Replay vs v8m: dev v9-4; t2500 v2-4 v4-3 v9-16 v12+1 v13-2 v14-1 v15-1 v19-3 v20-1 v24-9; para v15-1; no other item changed; 0 non-substring evidence on dev/t2500."
+        "outcome": "final main, submitted 09:36:01 KST (isSubmitted true); score not recorded. v8m + 24 switch values (runs/rebuild_c/bigshot0928/spec_v8o.json), source 149c165, clean zip sha256 f20534a02a3c087132bfcd544b1b3a14787d1cc872057fbeaee0f5f9826ffb53, 13,618 requests (inst 1,853), est. L40S 3,995 s. Replay vs v8m: dev v9-4; t2500 v2-4 v4-3 v9-16 v12+1 v13-2 v14-1 v15-1 v19-3 v20-1 v24-9; para v15-1; no other item changed; 0 non-substring evidence on dev/t2500."
       }
     ]
   },
   "task": {
-    "status": "final_main_v8o_submitted_grading_pending",
-    "next_action": "Read the v8o score (runs/rebuild_c/submissions/lb_watch_0929.py main); the board shows a new score only above the best 0.7535786066 (v6). If it is higher, update official.best. 2nd-round preparation (reproducibility rebuild of the submitted zip, cross-notice compliance audit, source specification, self-labelling inventory) starts only after the private top 15 is confirmed on 9/30 10:00 KST; materials are due 10/05 10:00 KST.",
-    "main_slot_rule": "From 9/28 the main slot carries the strongest supported package; spare probes keep minimal bases below 0.75 (user).",
-    "held": "CODE_AUDIT_BASE=False keeps the 9/26 audit estimate/article/date-role repairs dormant until measured separately; THINKING_FAMILIES=() keeps thinking off by default.",
-    "lesson_0927": "preregistered estimates were about 4x too high in total (+0.012 measured vs about +0.05); practitioner-standard removals paid in v19/v20/v22 and v1 but lost in v9, v14-v18 and competition scope; the organizer mostly labels literally",
-    "dedicated_stages": "submission/pps_c/dedicated: clean-room stages for v9 (model_name), v12 (general_dp), v24 (input_mismatch), v10/v11/v13 (competition_product), v1/v4/v8 (qualification), v19 (pledge), v20 (sw_participation). DEDICATED replaces an item's shared verdict with the stage's; DEDICATED_OR keeps the shared verdict and adds the stage's firings (user decision 9/27: probe OR). DEDICATED_X4 drops a v10/v11/v13 stage firing on an object X4 excludes; V13_STAGE_SMALL_ONLY drops a v13 stage firing whenever its evidence clause names 중기업, 중·소기업 or 중소기업(자) in any role, once statute and rule names and refused certificates are removed (conservative). All default off; the default replay is byte-identical. Readings measured by the GPU run ded0927 (dev, t2500, para; Colab A100), results under runs/rebuild_c/gpu/ded0927.",
-    "spare_rule": "From 9/28 afternoon (user): spare probes score far below the top 100. The item-zeroing switch exists only in the spare build tree runs/rebuild_c/probes0929/root, never in the canonical tree or a main package."
+    "status": "closed",
+    "next_action": "None. The competition ended 9/29 and the team did not reach the private top 15. The repository is an archive: the runtime, tests, the two final zips and the retrospective documents stay; run caches and probe artifacts were deleted on 10/01."
   },
   "runtime": {
     "entry": "script.py",
@@ -558,10 +552,10 @@
     "build": "tools/build_submission.py",
     "colab_kit": "runs/rebuild_c/colab/make_colab.py",
     "design": "runs/rebuild_c/DESIGN_C.md",
-    "cpu_replay": "runs/rebuild_c/transfer_20260925/replay_switch.py",
     "server_runtime_minutes_C2": 42,
     "dedicated": "submission/pps_c/dedicated (switches DEDICATED, DEDICATED_OR; default off)",
-    "colab_kit_dedicated": "runs/rebuild_c/dedicated_0927/{build_colab.py,make_notebook.py} -> artifacts/rebuild_c/colab/ded0927"
+    "held": "CODE_AUDIT_BASE=False keeps the 9/26 audit estimate/article/date-role repairs dormant until measured separately; THINKING_FAMILIES=() keeps thinking off by default.",
+    "dedicated_stages": "submission/pps_c/dedicated: clean-room stages for v9 (model_name), v12 (general_dp), v24 (input_mismatch), v10/v11/v13 (competition_product), v1/v4/v8 (qualification), v19 (pledge), v20 (sw_participation). DEDICATED replaces an item's shared verdict with the stage's; DEDICATED_OR keeps the shared verdict and adds the stage's firings (user decision 9/27: probe OR). DEDICATED_X4 drops a v10/v11/v13 stage firing on an object X4 excludes; V13_STAGE_SMALL_ONLY drops a v13 stage firing whenever its evidence clause names 중기업, 중·소기업 or 중소기업(자) in any role, once statute and rule names and refused certificates are removed (conservative). All default off; the default replay is byte-identical. Readings measured by the GPU run ded0927 (dev, t2500, para; Colab A100), results under runs/rebuild_c/gpu/ded0927."
   },
   "constraints": {
     "model": "google/gemma-4-26B-A4B-it",
@@ -572,8 +566,7 @@
     "rules": "No construction-trace or dataset-structure rules (user). Official submissions only with the user's permission; no label-extraction probes. GPU only through the Colab kit when CPU replay cannot answer: one run, then release."
   },
   "last_audit": {
-    "report": "runs/rebuild_c/code_audit_20260926/REPORT.md",
-    "packages_manifest": "runs/rebuild_c/code_audit_20260926/claude_manifest_r0927b.json",
-    "final_validation": "runs/rebuild_c/code_audit_20260926/FINAL_VALIDATION_r0927b_closed.json"
-  }
+    "report": "runs/rebuild_c/code_audit_20260926/REPORT.md"
+  },
+  "lesson_0927": "preregistered estimates were about 4x too high in total (+0.012 measured vs about +0.05); practitioner-standard removals paid in v19/v20/v22 and v1 but lost in v9, v14-v18 and competition scope; the organizer mostly labels literally"
 }

@@ -1,1 +1,0 @@
-05:13 UTC V13_SMALL_ANYWHERE v3 (wider who-wording) 0 changes; final tree with 8 switches: all off and all on byte-identical to base on dev/t2500/para; testing OBJ_DP_DOCS (DOCS/NOTE-only object leftover)

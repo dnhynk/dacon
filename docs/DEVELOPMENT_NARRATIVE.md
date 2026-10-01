@@ -1,6 +1,6 @@
 # 개발 서사 (2026-09 초 ~ 09-22): 무엇을 했고, 무엇이 틀렸고, 무엇이 정해졌나
 
-빈 세션이 지난 몇 주의 흐름과 지금의 방향을 한 번에 이해하도록 쓴 문서다. 현재 수치와 상태의 기준은 `docs/STATE.json`과 로컬 `docs/LOCAL_HANDOFF.md`다. 이 문서는 그것들이 왜 지금처럼 되었는지를 설명한다.
+9월 초부터 9/22까지의 흐름과 그때 정해진 방향을 설명한다. 이후 파이프라인 C와 최종 제출은 `docs/STATE.json`에 있다. 본문이 인용하는 `runs/` 경로는 대회 뒤 정리에서 지운 로컬 증거다.
 
 ## 1. 과제
 
@@ -207,9 +207,6 @@
 
 | 알고 싶은 것 | 문서 |
 |---|---|
-| 현재 점수·빌드·상태 | `docs/STATE.json`, 로컬 `docs/LOCAL_HANDOFF.md` |
-| 제출 기록 | `runs/harness_improve_20260919/official_submission_01/`, `official_submission_02/` |
-| 사전 등록과 S1 사용 기록 | `runs/harness_improve_20260919/precision_analysis/PREREGISTRATION.md`, `S1_SEALED.md` |
-| 정밀도 작업 근거 | `precision_analysis/`의 A·B·C·W1·W3·W5 보고서, `W6_v20_sw_evidence/`, `call_ablation/` |
+| 공식 제출 원장 | `docs/STATE.json` |
 | track B 실행기 계약과 시간 | 태그 `archive/pre-cleanup-20260926`의 `docs/RUNTIME_STREAMING.md` |
 | 끝난 옛 실험 목록 | 같은 태그의 `docs/EXPERIMENT_HISTORY.md` |

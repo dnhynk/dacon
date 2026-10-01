@@ -87,8 +87,7 @@ def test_current_registry_is_coherent():
 
 
 def test_current_document_navigation_has_no_missing_targets():
-    files = [ROOT / "README.md", ROOT / "START_HERE.md"]
-    files += [p for p in (ROOT / "docs").glob("*.md") if p.name != "LOCAL_HANDOFF.md"]
+    files = [ROOT / "README.md", *(ROOT / "docs").glob("*.md")]
     for file in files:
         for target in re.findall(r"\[[^\]]+\]\(([^)]+)\)", file.read_text(encoding="utf-8")):
             if target.startswith(("https://", "http://", "#")):

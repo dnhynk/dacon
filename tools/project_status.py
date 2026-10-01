@@ -118,11 +118,10 @@ def main() -> int:
                 print(f"  {entry['row']:>3} {entry.get('kst', ''):10} {entry['name']:<10} {score:<12} {entry.get('outcome', '')}")
         pending = [entry["name"] for entry in official["ledger"] if entry["score"] is None]
         if pending:
-            print(f"Awaiting scores: {', '.join(pending)}")
+            print(f"No recorded score: {', '.join(pending)}")
         print(f"Task: {task['status']}")
         print(f"Next: {task['next_action']}")
         print(f"Entry: {runtime['entry']} -> {runtime['package']} (probe switches: {runtime['switches']})")
-        print("Read docs/LOCAL_HANDOFF.md if available before touching a live agent or GPU.")
         if args.verify:
             audit = result["verification"]
             print(f"Local preservation: {audit['passed']}/{audit['checks']} checks passed")
